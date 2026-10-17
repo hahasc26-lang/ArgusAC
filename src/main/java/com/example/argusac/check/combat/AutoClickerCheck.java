@@ -48,8 +48,8 @@ public class AutoClickerCheck extends AbstractCheck {
 
         long now = System.currentTimeMillis();
 
-        // 过滤单次物理点击由 Bukkit 同时触发 Interact 与 Damage 事件导致的短时间 (<15ms) 重复计数
-        if (now - data.getLastClickTimestamp() < 15L) {
+        // 过滤单次物理点击由 Bukkit 同时触发 Interact 与 Damage 事件导致的短时间 (<30ms) 重复计数
+        if (now - data.getLastClickTimestamp() < 30L) {
             return;
         }
         data.setLastClickTimestamp(now);

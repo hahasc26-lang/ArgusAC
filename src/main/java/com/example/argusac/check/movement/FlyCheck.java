@@ -77,7 +77,7 @@ public class FlyCheck extends AbstractCheck {
         if (predictor != null && predictor.isEnabled()) {
             com.example.argusac.prediction.PredictionResult result = predictor.predict(
                     player, data, to.getX(), to.getY(), to.getZ(), to.getYaw(), to.getPitch(), data.isOnGround());
-            if (!result.isValid() && result.getVerticalResidual() > 0.005) {
+            if (!result.isVerticalValid() && result.getVerticalResidual() > predictor.getVerticalTolerance() * 2.0) {
                 flag(player, 2, "Predict: " + result.getReason(), event);
                 return;
             }
@@ -123,7 +123,7 @@ public class FlyCheck extends AbstractCheck {
         Location checkLoc = loc.clone();
         for (double yOffset = -0.1; yOffset >= -1.0; yOffset -= 0.3) {
             Block b = checkLoc.clone().add(0, yOffset, 0).getBlock();
-            if (adapter.isSolidBlock(b)) {
+            if (adapter.isStandable(b)) {
                 return true;
             }
         }

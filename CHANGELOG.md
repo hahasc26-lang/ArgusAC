@@ -5,6 +5,27 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.1.1] - 2026-10-17
+
+### Fixed & Enhanced (Combat & Movement False-Positive Elimination)
+
+- **KillAura active mitigation & combat disarm system**:
+  - Implemented multi-tier active combat responses: immediate damage and knockback cancellation, instant attack strength/cooldown zeroing (`resetAttackCooldown`), and temporary combat throttling (`Combat Throttle / Disarm`) when continuous aura is detected.
+  - Added impossible backward/blindspot attack detection (> 90 degrees) and abrupt aimbot snap detection (`snap-check`).
+  - Fixed a critical vulnerability where `Rapid Switch` failed to cancel the attack damage event.
+- **Speed check false positive elimination**:
+  - Replaced center-point ground checks with robust 5-point AABB bottom sampling and cross-version standable material identification (`isStandable`), eliminating false air-time accumulation on carpets, slabs, snow layers, stairs, and block edges.
+  - Fixed mid-air acceleration (`AirAccelerate`) checks erroneously penalizing vanilla sprint-jump impulse during takeoff (`airTicks <= 5`) and post-ice jumps (`iceTicks`).
+  - Decoupled movement prediction residual validation: horizontal prediction checks in `SpeedCheck` now strictly depend on `isHorizontalValid()`, preventing vertical slope/stair residuals from tainting speed flags.
+  - Introduced configurable `Speed Violation Buffer` (`speed-buffer-max: 0.25`) to absorb single-tick packet jitters and burst delays, and added ceiling sprint-jump tolerance (1.35x).
+- **AutoClicker double-counting bug fixed**:
+  - Eliminated redundant `handleClick` invocations across network `INTERACT_ENTITY` packets and Bukkit `EntityDamageByEntityEvent`/`PlayerInteractEvent`, standardizing solely on network `ANIMATION` packets.
+  - Increased single-click debounce window to 30 ms to prevent doubled CPS under lag.
+- **Cross-version compatibility & crash fixes**:
+  - Replaced direct 1.14+ enum literals (`Material.COBWEB`, `Material.SCAFFOLDING`, etc.) in `VelocityCheck`, `NoFallCheck`, and `ElytraFlyCheck` with polymorphic adapter methods, resolving fatal `NoSuchFieldError` crashes on 1.12.2.
+  - Added safe `getBlockHardness(Block)` in `VersionAdapter` and guarded `Bukkit.getCurrentTick()`, eliminating `NoSuchMethodError` crashes in `FastBreakCheck` and `NukerCheck`.
+  - Added ice momentum exemption to `InventoryMoveCheck` to avoid false flags when opening containers while sliding on ice.
+
 ## [1.1.0] - 2026-10-17
 
 ### Major Architecture Upgrade (GrimAC-Grade Architecture Evolution)

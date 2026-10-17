@@ -48,8 +48,9 @@ public class InventoryMoveCheck extends AbstractCheck {
         }
 
         long now = System.currentTimeMillis();
-        // 打开容器前 350ms 属于奔跑逼近容器的残余惯性缓冲，受流水冲刷或受到伤害击退亦豁免
-        if (now - data.getInventoryOpenTime() < 350L || com.example.argusac.compat.VersionAdapterFactory.getAdapter().isInWater(player) || data.hasRecentVelocity(800L)) {
+        // 打开容器前 350ms 属于奔跑逼近容器的残余惯性缓冲，受流水冲刷、冰面惯性滑行或受到伤害击退亦豁免
+        if (now - data.getInventoryOpenTime() < 350L || data.getIceTicks() > 0
+                || com.example.argusac.compat.VersionAdapterFactory.getAdapter().isInWater(player) || data.hasRecentVelocity(800L)) {
             return;
         }
 

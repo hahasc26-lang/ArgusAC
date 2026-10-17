@@ -296,6 +296,10 @@ checks:
     ice-modifier: 1.45
     # Speed potion bonus multiplier per potion amplifier level
     speed-potion-multiplier: 0.20
+    # Violation buffer capacity to absorb single-tick packet jitters and network burst
+    speed-buffer-max: 0.25
+    # Buffer decay per legitimate tick
+    speed-buffer-decay: 0.05
 
   # 2. Fly Check
   Fly:
@@ -331,7 +335,7 @@ checks:
     # Minimum standard deviation threshold (detects mechanical uniformity from macro/autoclickers)
     min-std-deviation: 4.5
 
-  # 6. KillAura Check (Combat angles and raytracing)
+  # 6. KillAura Check (Combat angles, raytracing, and active combat mitigations)
   KillAura:
     enabled: true
     max-vl: 18
@@ -341,6 +345,20 @@ checks:
     raytrace-blocks: true
     # Maximum target-switching interval in milliseconds for rapid aura attacks
     target-switch-ms: 80
+    # Immediately reset attacker's attack strength cooldown upon cheat flag
+    reset-cooldown: true
+    # Active combat throttle: temporarily disarm melee damage when continuous aura is detected
+    combat-throttle-enabled: true
+    # Combat throttle duration in milliseconds (default 1500ms)
+    combat-throttle-ms: 1500
+    # Minimum KillAura VL threshold to activate combat throttle
+    combat-throttle-min-vl: 3
+    # Check for impossible backward/blindspot attacks (> 90 degrees)
+    blindspot-check: true
+    # Check for sudden snap aimbots where yaw jerks sharply towards target
+    snap-check: true
+    # Minimum yaw angle jerk in degrees to flag snap aimbot
+    snap-angle-threshold: 45.0
 
   # 7. Velocity Check (Knockback modification / Anti-KB)
   Velocity:

@@ -9,6 +9,8 @@ import org.bukkit.util.Vector;
 public class PredictionResult {
 
     private final boolean valid;
+    private final boolean horizontalValid;
+    private final boolean verticalValid;
     private final double horizontalResidual;
     private final double verticalResidual;
     private final double currentHorizontalBuffer;
@@ -19,7 +21,16 @@ public class PredictionResult {
     public PredictionResult(boolean valid, double horizontalResidual, double verticalResidual,
                             double currentHorizontalBuffer, double currentVerticalBuffer,
                             Vector bestFittedVelocity, String reason) {
+        this(valid, valid, valid, horizontalResidual, verticalResidual, currentHorizontalBuffer, currentVerticalBuffer, bestFittedVelocity, reason);
+    }
+
+    public PredictionResult(boolean valid, boolean horizontalValid, boolean verticalValid,
+                            double horizontalResidual, double verticalResidual,
+                            double currentHorizontalBuffer, double currentVerticalBuffer,
+                            Vector bestFittedVelocity, String reason) {
         this.valid = valid;
+        this.horizontalValid = horizontalValid;
+        this.verticalValid = verticalValid;
         this.horizontalResidual = horizontalResidual;
         this.verticalResidual = verticalResidual;
         this.currentHorizontalBuffer = currentHorizontalBuffer;
@@ -29,7 +40,23 @@ public class PredictionResult {
     }
 
     public static PredictionResult exempt() {
-        return new PredictionResult(true, 0.0, 0.0, 0.0, 0.0, new Vector(0, 0, 0), "Exempt");
+        return new PredictionResult(true, true, true, 0.0, 0.0, 0.0, 0.0, new Vector(0, 0, 0), "Exempt");
+    }
+
+    public boolean isHorizontalValid() {
+        return horizontalValid;
+    }
+
+    public boolean isVerticalValid() {
+        return verticalValid;
+    }
+
+    public boolean isHorizontalInvalid() {
+        return !horizontalValid;
+    }
+
+    public boolean isVerticalInvalid() {
+        return !verticalValid;
     }
 
     public boolean isValid() {

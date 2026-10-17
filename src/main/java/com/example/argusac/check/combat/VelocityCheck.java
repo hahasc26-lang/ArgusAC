@@ -6,7 +6,6 @@ import com.example.argusac.check.AbstractCheck;
 import com.example.argusac.data.PlayerData;
 import org.bukkit.GameMode;
 import org.bukkit.Location;
-import org.bukkit.Material;
 import org.bukkit.block.Block;
 import org.bukkit.entity.Player;
 import org.bukkit.event.player.PlayerMoveEvent;
@@ -127,7 +126,8 @@ public class VelocityCheck extends AbstractCheck {
     private boolean hasBlockAbove(Location loc) {
         Block head = loc.clone().add(0, 1.8, 0).getBlock();
         Block ceiling = loc.clone().add(0, 2.0, 0).getBlock();
-        return head.getType().isSolid() || ceiling.getType().isSolid()
-                || head.getType() == Material.COBWEB || ceiling.getType() == Material.COBWEB;
+        com.example.argusac.compat.VersionAdapter adapter = com.example.argusac.compat.VersionAdapterFactory.getAdapter();
+        return adapter.isSolidBlock(head) || adapter.isSolidBlock(ceiling)
+                || adapter.isClimbable(head) || adapter.isClimbable(ceiling);
     }
 }

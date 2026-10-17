@@ -10,7 +10,6 @@ import com.github.retrooper.packetevents.event.PacketSendEvent;
 import com.github.retrooper.packetevents.protocol.packettype.PacketType;
 import com.github.retrooper.packetevents.protocol.player.User;
 import com.github.retrooper.packetevents.wrapper.play.client.WrapperPlayClientEntityAction;
-import com.github.retrooper.packetevents.wrapper.play.client.WrapperPlayClientInteractEntity;
 import com.github.retrooper.packetevents.wrapper.play.client.WrapperPlayClientPlayerFlying;
 import org.bukkit.entity.Player;
 
@@ -195,13 +194,7 @@ public class PacketPipelineManager extends PacketListenerAbstract {
      * 客户端实体交互包 (Interact Entity) 捕获
      */
     private void handleIncomingInteractEntityPacket(Player player, PlayerData data, PacketReceiveEvent event) {
-        if (plugin.isPlayerExempt(player)) return;
-        try {
-            WrapperPlayClientInteractEntity interact = new WrapperPlayClientInteractEntity(event);
-            if (interact.getAction() == WrapperPlayClientInteractEntity.InteractAction.ATTACK) {
-                plugin.getCheckManager().getAutoClickerCheck().handleClick(player);
-            }
-        } catch (Throwable ignored) {}
+        // 原版客户端物理左键必定发出 ANIMATION 包，实体交互包无需重复统计点击，避免双倍 CPS 误报
     }
 
     /**

@@ -73,4 +73,13 @@ public interface VersionAdapter {
 
     // 视线射线碰撞遮挡判定 (跨版本安全判定隔墙攻击)
     boolean isRayOccluded(Location from, Location to);
+
+    // 战斗反应手段：重置玩家武器充能冷却
+    void resetAttackCooldown(Player player);
+
+    // 方块落足站立物理判定 (包含地毯、雪片、睡莲、台阶等)
+    boolean isStandable(Block block);
+
+    // 跨版本安全获取方块硬度 (消除 1.12.2 Material.getHardness 的 NoSuchMethodError)
+    float getBlockHardness(Block block);
 }

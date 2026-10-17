@@ -5,6 +5,26 @@
 格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.0.0/)，
 并遵循 [语义化版本规范](https://semver.org/lang/zh-CN/)。
 
+## [1.1.1] - 2026-10-17
+
+### 修复与增强 (战斗防御响应强化与移动误报彻底消灭)
+
+- **杀戮光环 (KillAura) 主动防御与战斗缴械机制**：
+  - 建立全链路四重实战反应手段：伤害与击退彻底拦截、攻击者蓄力充能清零 (`resetAttackCooldown`)、连续违规激活战斗抑制与缴械惩罚 (`Combat Throttle / Disarm`，1.5 秒内静默抹除所有近战伤害并伴随警示音效)。
+  - 补充背身盲区攻击拦截 (视线夹角 > 90° 攻击身后目标) 与攻击瞬间自瞄突变偏转检测 (`snap-check`)。
+  - 修复多目标极速切换 (`Rapid Switch`) 遗漏取消攻击伤害事件的致命漏洞。
+- **移动速度 (Speed) 正常移动误报彻底消除**：
+  - 将单点接地检测重构为碰撞箱底面 5 点采样与多版本可站立方块特性识别 (`isStandable`)，彻底解决玩家踩在地毯、雪片、台阶、楼梯与方块边缘悬空误判为在空中的缺陷。
+  - 修复空中加速度检测 (`AirAccelerate`) 粗暴抹杀疾跑跳跃起跳合法 0.2 水平冲量加成的逻辑缺陷 (`airTicks <= 5`)，并补充冰面滑行起跳长程惯性记忆 (`iceTicks`)。
+  - 物理预测引擎解耦：水平速度检测严格仅根据水平残差有效性 (`isHorizontalValid`) 判定，杜绝垂直走楼梯/台阶/下坡连带引发 Speed 误报。
+  - 引入可配置速度违规缓冲区 `Speed Violation Buffer` (`speed-buffer-max: 0.25`)，平滑吸收丢包抖动，并增加天花板压头疾跑跳跃 (1.35x) 容差。
+- **自动连点器 (AutoClicker) 重复计数翻倍误报修复**：
+  - 消除网络层实体交互包与 Bukkit 主线程多事件重叠打点造成的 CPS 翻倍失真，统一收口至网络层 `ANIMATION` 原生包；防抖窗口提升至 30ms。
+- **跨版本全兼容性与崩溃修复**：
+  - 消除 `VelocityCheck`、`NoFallCheck` 与 `ElytraFlyCheck` 中对高版本 Material 枚举 (`COBWEB`, `SCAFFOLDING` 等) 的直接字面引用，杜绝 1.12.2 类加载报 `NoSuchFieldError` 致命错误。
+  - 在 `VersionAdapter` 中封装 `getBlockHardness(Block)` 并对 `Bukkit.getCurrentTick()` 提供安全兼容降级，消灭 `FastBreakCheck` 和 `NukerCheck` 在低版本的 `NoSuchMethodError`。
+  - 为 `InventoryMoveCheck` 增加冰面滑行惯性豁免，消除冰面开箱滑行误报。
+
 ## [1.1.0] - 2026-10-17
 
 ### 重大架构升级 (GrimAC-Grade Architecture Evolution)

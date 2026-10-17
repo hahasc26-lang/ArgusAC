@@ -60,6 +60,18 @@ public class DeterministicMovePredictor {
         return enabled;
     }
 
+    public double getHorizontalTolerance() {
+        return horizontalTolerance;
+    }
+
+    public double getVerticalTolerance() {
+        return verticalTolerance;
+    }
+
+    public double getMaxBuffer() {
+        return maxBuffer;
+    }
+
     /**
      * 核心确定性物理预测入口
      *
@@ -337,13 +349,15 @@ public class DeterministicMovePredictor {
         state.setPrevVz(deltaZ);
         state.setWasOnGround(clientOnGround);
 
-        boolean invalid = (hBuffer > maxBuffer) || (vBuffer > maxBuffer);
+        boolean hInvalid = (hBuffer > maxBuffer);
+        boolean vInvalid = (vBuffer > maxBuffer);
+        boolean invalid = hInvalid || vInvalid;
         String reason = "";
         if (invalid) {
-            if (hBuffer > maxBuffer && vBuffer > maxBuffer) {
+            if (hInvalid && vInvalid) {
                 reason = String.format("Residual breach H=%.4f (buf=%.2f), V=%.4f (buf=%.2f)",
                         minHResidual, hBuffer, minVResidual, vBuffer);
-            } else if (hBuffer > maxBuffer) {
+            } else if (hInvalid) {
                 reason = String.format("Horizontal residual breach: res=%.4f, buf=%.2f, tol=%.4f",
                         minHResidual, hBuffer, horizontalTolerance);
             } else {
@@ -353,7 +367,7 @@ public class DeterministicMovePredictor {
         }
 
         Vector fitted = new Vector(bestFittedH.getX(), bestFittedVy, bestFittedH.getZ());
-        PredictionResult result = new PredictionResult(!invalid, minHResidual, minVResidual, hBuffer, vBuffer, fitted, reason);
+        PredictionResult result = new PredictionResult(!invalid, !hInvalid, !vInvalid, minHResidual, minVResidual, hBuffer, vBuffer, fitted, reason);
         state.cachePrediction(toX, toY, toZ, yaw, pitch, result);
         return result;
     }

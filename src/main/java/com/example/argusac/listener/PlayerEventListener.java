@@ -4,8 +4,11 @@ import com.example.argusac.ArgusACPlugin;
 import com.example.argusac.check.CheckManager;
 import com.example.argusac.data.PlayerData;
 
+import com.example.argusac.compat.VersionAdapter;
+import com.example.argusac.compat.VersionAdapterFactory;
 import com.example.argusac.model.VelocitySourceType;
 import org.bukkit.Location;
+import org.bukkit.block.Block;
 import org.bukkit.entity.Entity;
 import org.bukkit.entity.Player;
 import org.bukkit.event.EventHandler;
@@ -274,9 +277,21 @@ public class PlayerEventListener implements Listener {
 
         data.setFromLocation(from);
         data.setToLocation(to);
-        // 用服务端物理碰撞判断接地状态，替代已废弃的 player.isOnGround()
-        boolean onGround = to.clone().subtract(0, 0.1, 0).getBlock().getType().isSolid();
+        data.setLastLookYaw(to.getYaw());
+        data.setLastLookPitch(to.getPitch());
+
+        // 鲁棒多点与方块材质物理碰撞接地判定 (消除地毯、雪片、台阶、方块边缘悬空误判)
+        boolean onGround = isGrounded(player, to);
         data.setOnGround(onGround);
+
+        // 冰面与粘液块滑行惯性追踪 (离开冰面后维持 25 tick 惯性记忆，彻底消除跳出冰面误报 Speed)
+        VersionAdapter adapter = VersionAdapterFactory.getAdapter();
+        Block under = to.clone().subtract(0, 0.5, 0).getBlock();
+        if (adapter.isIce(under) || adapter.isSlime(under)) {
+            data.setIceTicks(25);
+        } else {
+            data.decrementIceTicks();
+        }
 
         // P1 改法：将“防止回退递归/网络校正误报”与“关闭所有检测”拆开
         // 仅在当前移动为服务端回退的网络校正包时赋予短时校正速度豁免，检测流程继续正常运行，彻底消除 1.5 秒盲区
@@ -373,8 +388,8 @@ public class PlayerEventListener implements Listener {
             return;
         }
 
-        // 点击计数
-        checkManager.getAutoClickerCheck().handleClick(attacker);
+        // 仅在数据包协议管线未就绪时由 Bukkit 事件作为降级统计，杜绝网络层与主线程双重打点导致的 CPS 翻倍误报
+        recordClickIfFallback(attacker);
 
         // 杀戮光环检测
         checkManager.getKillAuraCheck().handleAttack(attacker, event.getEntity(), event);
@@ -397,7 +412,7 @@ public class PlayerEventListener implements Listener {
         }
         Action action = event.getAction();
         if (action == Action.LEFT_CLICK_AIR || action == Action.LEFT_CLICK_BLOCK) {
-            checkManager.getAutoClickerCheck().handleClick(event.getPlayer());
+            recordClickIfFallback(event.getPlayer());
         }
     }
 
@@ -440,6 +455,53 @@ public class PlayerEventListener implements Listener {
             if (data != null) {
                 data.setInventoryOpen(false, null);
             }
+        }
+    }
+
+    /**
+     * 鲁棒多点与环境方块物理碰撞接地判定
+     */
+    private boolean isGrounded(Player player, Location loc) {
+        if (player.isInsideVehicle()) {
+            return true;
+        }
+        VersionAdapter adapter = VersionAdapterFactory.getAdapter();
+        double x = loc.getX();
+        double y = loc.getY();
+        double z = loc.getZ();
+        org.bukkit.World world = loc.getWorld();
+        if (world == null) return false;
+
+        // 探测中心点及四个底角 (AABB 半径 0.28)
+        double[][] points = {
+                {0, 0},
+                {-0.28, -0.28},
+                {0.28, -0.28},
+                {-0.28, 0.28},
+                {0.28, 0.28}
+        };
+
+        for (double[] p : points) {
+            Location checkLoc = new Location(world, x + p[0], y - 0.1, z + p[1]);
+            Block b = checkLoc.getBlock();
+            if (adapter.isStandable(b)) {
+                return true;
+            }
+            // 稍深一层容差 (针对下半砖、雪片堆叠及下坡)
+            Block under = checkLoc.clone().subtract(0, 0.45, 0).getBlock();
+            if (adapter.isStandable(under)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /**
+     * 仅在 PacketEvents 底层数据包协议管线未就绪时，降级采用 Bukkit 事件统计 CPS
+     */
+    private void recordClickIfFallback(Player player) {
+        if (plugin.getPacketPipelineManager() == null || !plugin.getPacketPipelineManager().isActive()) {
+            checkManager.getAutoClickerCheck().handleClick(player);
         }
     }
 }

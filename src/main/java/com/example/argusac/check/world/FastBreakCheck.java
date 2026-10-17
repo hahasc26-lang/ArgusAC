@@ -63,7 +63,7 @@ public class FastBreakCheck extends AbstractCheck {
         }
 
         // 极高硬度方块 (如黑曜石、哭泣黑曜石、远古残骸、深板岩等)
-        float hardness = block.getType().getHardness();
+        float hardness = VersionAdapterFactory.getAdapter().getBlockHardness(block);
         if (hardness < 1.5f) {
             // 极低硬度方块 (花草、火把、泥土等) 允许秒破，不作过严苛检测
             return;

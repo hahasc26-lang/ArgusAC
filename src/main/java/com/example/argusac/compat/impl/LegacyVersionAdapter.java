@@ -471,6 +471,42 @@ public class LegacyVersionAdapter implements VersionAdapter {
         return false;
     }
 
+    @Override
+    public void resetAttackCooldown(Player player) {
+        // 1.8 之前没有攻击蓄力冷却体系，保持空实现
+    }
+
+    @Override
+    public boolean isStandable(Block block) {
+        if (block == null) return false;
+        if (isSolidBlock(block)) return true;
+        String name = block.getType().name();
+        return name.contains("CARPET")
+                || name.contains("SNOW")
+                || name.contains("LILY")
+                || name.contains("SLAB") || name.contains("STEP")
+                || name.contains("STAIRS")
+                || name.contains("TRAPDOOR")
+                || name.contains("FENCE");
+    }
+
+    @Override
+    public float getBlockHardness(Block block) {
+        if (block == null) return 0.0f;
+        try {
+            java.lang.reflect.Method m = block.getType().getClass().getMethod("getHardness");
+            return ((Number) m.invoke(block.getType())).floatValue();
+        } catch (Throwable e) {
+            String name = block.getType().name();
+            if (name.contains("OBSIDIAN")) return 50.0f;
+            if (name.contains("STONE") || name.contains("ORE")) return 3.0f;
+            if (name.contains("WOOD") || name.contains("LOG") || name.contains("PLANK")) return 2.0f;
+            if (name.contains("DIRT") || name.contains("GRASS") || name.contains("SAND")) return 0.5f;
+            if (name.contains("LEAVES") || name.contains("FLOWER") || name.contains("TORCH")) return 0.0f;
+            return 1.5f;
+        }
+    }
+
     private PotionEffectType matchLegacyPotionType(CompatPotionType type) {
         return switch (type) {
             case SPEED -> PotionEffectType.SPEED;

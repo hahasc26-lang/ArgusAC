@@ -47,7 +47,12 @@ public class NukerCheck extends AbstractCheck {
             return;
         }
 
-        long currentTick = Bukkit.getCurrentTick();
+        long currentTick;
+        try {
+            currentTick = Bukkit.getCurrentTick();
+        } catch (Throwable t) {
+            currentTick = System.currentTimeMillis() / 50L;
+        }
         long lastTick = data.getLastBreakTick();
 
         if (currentTick == lastTick) {
@@ -58,7 +63,8 @@ public class NukerCheck extends AbstractCheck {
         }
 
         // 1. 同一游戏刻 (Tick) 内并发破坏多个非零硬度实体方块 (排除双层花草门床自然联动)
-        if (event.getBlock().getType().getHardness() > 0.0f && data.getBreaksThisTick() > maxBreaksPerTick) {
+        float hardness = com.example.argusac.compat.VersionAdapterFactory.getAdapter().getBlockHardness(event.getBlock());
+        if (hardness > 0.0f && data.getBreaksThisTick() > maxBreaksPerTick) {
             event.setCancelled(true);
             flag(player, 2, String.format("Multi-break in single tick count=%d", data.getBreaksThisTick()));
             return;

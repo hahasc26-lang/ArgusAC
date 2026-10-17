@@ -47,19 +47,28 @@ public class ReachCheck extends AbstractCheck {
             return;
         }
 
+        com.example.argusac.compat.VersionAdapter adapter = com.example.argusac.compat.VersionAdapterFactory.getAdapter();
+
+        // 联动战斗抑制期绝对拦截
+        if (data.isCombatThrottled()) {
+            event.setCancelled(true);
+            adapter.resetAttackCooldown(attacker);
+            return;
+        }
+
         Location eyeLocation = attacker.getEyeLocation();
         if (eyeLocation.getWorld() != victim.getWorld()) {
             return;
         }
 
-        int ping = Math.max(0, com.example.argusac.compat.VersionAdapterFactory.getAdapter().getPing(attacker));
+        int ping = Math.max(0, adapter.getPing(attacker));
 
         // 1. 基于实体历史碰撞盒回溯的延迟补偿物理距离计算 (GrimAC-Grade Lag Compensated Reach)
         double distanceToBox;
         if (plugin.getHistoryTracker() != null) {
             distanceToBox = plugin.getHistoryTracker().getCompensatedMinDistance(eyeLocation, victim, ping);
         } else {
-            com.example.argusac.compat.CompatBoundingBox box = com.example.argusac.compat.VersionAdapterFactory.getAdapter().getEntityBoundingBox(victim);
+            com.example.argusac.compat.CompatBoundingBox box = adapter.getEntityBoundingBox(victim);
             distanceToBox = box.distanceTo(eyeLocation);
         }
 
@@ -69,8 +78,9 @@ public class ReachCheck extends AbstractCheck {
                 : Math.min(maxReach + Math.min(0.40, (ping / 100.0) * 0.08), maxPingReach);
 
         if (distanceToBox > dynamicLimit) {
-            // 超距攻击直接取消本次伤害事件生效
+            // 超距攻击直接取消本次伤害事件生效并重置攻击冷却
             event.setCancelled(true);
+            adapter.resetAttackCooldown(attacker);
             flag(attacker, 1, String.format("dist=%.3f, limit=%.2f, ping=%d (Backtracked)", distanceToBox, dynamicLimit, ping));
         }
     }

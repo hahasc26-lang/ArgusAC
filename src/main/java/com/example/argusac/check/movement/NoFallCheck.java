@@ -6,7 +6,6 @@ import com.example.argusac.check.AbstractCheck;
 import com.example.argusac.data.PlayerData;
 import org.bukkit.GameMode;
 import org.bukkit.Location;
-import org.bukkit.Material;
 import org.bukkit.block.Block;
 import org.bukkit.entity.Player;
 import org.bukkit.event.player.PlayerMoveEvent;
@@ -69,14 +68,12 @@ public class NoFallCheck extends AbstractCheck {
 
     private boolean checkPhysicalGround(Location loc) {
         Location check = loc.clone().subtract(0, 0.15, 0);
+        com.example.argusac.compat.VersionAdapter adapter = com.example.argusac.compat.VersionAdapterFactory.getAdapter();
         // 采样脚下 3x3 范围
         for (double dx = -0.3; dx <= 0.3; dx += 0.3) {
             for (double dz = -0.3; dz <= 0.3; dz += 0.3) {
                 Block b = check.clone().add(dx, 0, dz).getBlock();
-                Material mat = b.getType();
-                String name = mat.name();
-                if (mat.isSolid() || name.contains("SLAB") || name.contains("STAIR")
-                        || name.contains("CARPET") || name.contains("SNOW") || name.contains("LILY")) {
+                if (adapter.isStandable(b)) {
                     return true;
                 }
             }
@@ -86,8 +83,7 @@ public class NoFallCheck extends AbstractCheck {
 
     private boolean isInLiquidOrClimbable(Location loc) {
         Block b = loc.getBlock();
-        Material mat = b.getType();
-        return b.isLiquid() || mat == Material.LADDER || mat == Material.VINE
-                || mat == Material.SCAFFOLDING || mat == Material.COBWEB || mat.name().contains("VINE");
+        com.example.argusac.compat.VersionAdapter adapter = com.example.argusac.compat.VersionAdapterFactory.getAdapter();
+        return adapter.isLiquid(b) || adapter.isClimbable(b);
     }
 }

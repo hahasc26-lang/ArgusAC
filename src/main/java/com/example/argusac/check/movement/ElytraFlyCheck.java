@@ -662,15 +662,17 @@ public class ElytraFlyCheck extends AbstractCheck {
         if (b.isLiquid()) {
             return true;
         }
-        Material m = b.getType();
-        if (m == Material.LADDER || m == Material.VINE || m == Material.SCAFFOLDING
-                || m == Material.COBWEB || m == Material.BUBBLE_COLUMN || m == Material.POWDER_SNOW
-                || m.name().contains("VINE") || m.name().contains("BERRY")) {
+        com.example.argusac.compat.VersionAdapter adapter = com.example.argusac.compat.VersionAdapterFactory.getAdapter();
+        if (adapter.isClimbable(b)) {
             return true;
         }
-        // 检查脚下方块是否为实心支撑 (避免落脚在栅栏、台阶、地毯上误判悬停)
+        String mName = b.getType().name();
+        if (mName.contains("VINE") || mName.contains("BERRY") || mName.contains("BUBBLE") || mName.contains("POWDER_SNOW")) {
+            return true;
+        }
+        // 检查脚下方块是否为支撑方块 (避免落脚在栅栏、台阶、地毯上误判悬停)
         Block feet = loc.clone().subtract(0, 0.5, 0).getBlock();
-        if (feet.getType().isSolid()) {
+        if (adapter.isStandable(feet)) {
             return true;
         }
         for (double dx = -0.4; dx <= 0.4; dx += 0.8) {

@@ -277,6 +277,42 @@ public class ModernVersionAdapter implements VersionAdapter {
         return result != null && result.getHitBlock() != null && result.getHitBlock().getType().isOccluding();
     }
 
+    @Override
+    public void resetAttackCooldown(Player player) {
+        if (player != null) {
+            try {
+                player.resetCooldown();
+            } catch (Throwable ignored) {
+            }
+        }
+    }
+
+    @Override
+    public boolean isStandable(Block block) {
+        if (block == null) return false;
+        if (isSolidBlock(block)) return true;
+        String name = block.getType().name();
+        return name.endsWith("_CARPET") || name.equals("CARPET")
+                || name.contains("SNOW")
+                || name.contains("LILY_PAD") || name.contains("WATER_LILY")
+                || name.contains("SCAFFOLDING")
+                || name.contains("SLAB") || name.contains("STEP")
+                || name.contains("STAIRS")
+                || name.contains("TRAPDOOR")
+                || name.contains("FENCE")
+                || name.contains("WALL");
+    }
+
+    @Override
+    public float getBlockHardness(Block block) {
+        if (block == null) return 0.0f;
+        try {
+            return block.getType().getHardness();
+        } catch (Throwable e) {
+            return 1.0f;
+        }
+    }
+
     private PotionEffectType resolvePotionType(CompatPotionType type) {
         return POTION_TYPE_CACHE.get(type);
     }

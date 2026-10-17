@@ -71,6 +71,13 @@ public class PlayerData {
     private long lastClickTimestamp = 0L;
     private UUID lastAttackedTarget = null;
     private long lastAttackTime = 0L;
+    private long combatThrottledUntil = 0L;
+    private float lastLookYaw = 0.0f;
+    private float lastLookPitch = 0.0f;
+
+    // 移动平滑缓冲区与环境惯性追踪 (SpeedCheck)
+    private double speedBuffer = 0.0;
+    private int iceTicks = 0;
 
     // 方块破坏与放置追踪 (FastBreak, Nuker, Scaffold)
     private long lastBreakTick = -1L;
@@ -488,5 +495,54 @@ public class PlayerData {
         lastPunishedVl = 0;
         physicsState.reset(0.0, 0.0, 0.0, 0.0f, 0.0f);
         timerTracker.reset();
+        speedBuffer = 0.0;
+        combatThrottledUntil = 0L;
+        iceTicks = 0;
+    }
+
+    public boolean isCombatThrottled() {
+        return System.currentTimeMillis() < combatThrottledUntil;
+    }
+
+    public void setCombatThrottled(long durationMs) {
+        this.combatThrottledUntil = Math.max(this.combatThrottledUntil, System.currentTimeMillis() + durationMs);
+    }
+
+    public double getSpeedBuffer() {
+        return speedBuffer;
+    }
+
+    public void setSpeedBuffer(double speedBuffer) {
+        this.speedBuffer = Math.max(0.0, speedBuffer);
+    }
+
+    public int getIceTicks() {
+        return iceTicks;
+    }
+
+    public void setIceTicks(int iceTicks) {
+        this.iceTicks = iceTicks;
+    }
+
+    public void decrementIceTicks() {
+        if (this.iceTicks > 0) {
+            this.iceTicks--;
+        }
+    }
+
+    public float getLastLookYaw() {
+        return lastLookYaw;
+    }
+
+    public void setLastLookYaw(float lastLookYaw) {
+        this.lastLookYaw = lastLookYaw;
+    }
+
+    public float getLastLookPitch() {
+        return lastLookPitch;
+    }
+
+    public void setLastLookPitch(float lastLookPitch) {
+        this.lastLookPitch = lastLookPitch;
     }
 }
