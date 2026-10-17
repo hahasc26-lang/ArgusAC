@@ -26,7 +26,7 @@
 - **Deterministic Physics Simulation** — Evaluates player movement against vanilla kinematic equations, computing theoretical envelopes, residuals, and buffer accumulation to catch mini-speed and micro-hops.
 - **Lag-Compensated Entity Hitbox Backtracking** — Stores per-tick AABB hitboxes over a 1,000 ms sliding window, rewinding to the attacker's perspective to enforce the 3.00-block theoretical reach limit without false flags on knockback.
 - **Protocol-Level Clock-Drift & Timer Engine** — Enforces a 50 ms per-tick nanosecond balance at the network layer to eliminate 1.05x–2.0x timer speedups, packet floods, and fast item consumption.
-- **Zero External Dependencies** — PacketEvents 2.7.0 is shaded and relocated directly into the JAR; plug-and-play without ProtocolLib.
+- **Zero External Dependencies** — PacketEvents 2.7.0 is shaded and relocated directly into the JAR; plug-and-play out of the box.
 - **Dual Setbacks & Tamper-Evident Logs** — Smooth `SOFT` and authoritative `HARD` setbacks, paired with SHA-256 cryptographic audit logs and ASCII motion trace replays.
 
 ---
@@ -37,7 +37,7 @@
 
 - Minecraft server version: **1.12.2–1.21.x** (Spigot / Paper)
 - **Java 17** runtime
-- **Zero external dependencies** — PacketEvents is shaded into the JAR; no ProtocolLib required!
+- **Zero external dependencies** — Self-contained with shaded PacketEvents; plug-and-play!
 
 ### Quick Start
 
@@ -193,7 +193,7 @@ MIT License.
 - **确定性物理模拟预测 (Deterministic Kinematics)** — 拟合原版运动学微分方程（摩擦力、重力、阻力），以残差（Residual）与缓冲（Buffer）精准捕获微速（Mini-Speed）与慢速微跳。
 - **实体历史碰撞盒延迟补偿回溯 (Lag Backtracking)** — 维护 1000ms 碰撞盒快照，攻击时根据 Ping 回溯历史视野，消灭击退误报并将 Reach 严格锁定在 3.00 格物理极限。
 - **协议级 Timer 时钟平衡引擎 (Clock Drift Engine)** — 50ms/tick 纳秒时钟银行追踪发包时钟漂移，秒级拦截 1.05x ~ 2.0x 变速齿轮、快速进食与发包轰炸。
-- **开箱即用，零外部依赖** — PacketEvents 2.7.0 原生嵌入并包重定向（Shaded Relocation），彻底免除 ProtocolLib。
+- **开箱即用，零外部依赖** — PacketEvents 2.7.0 原生嵌入并包重定向（Shaded Relocation），无需额外安装任何前置插件。
 - **双模回退与防篡改审计** — `HARD`（瞬移）与 `SOFT`（平滑修正）自适应回退，辅以 SHA-256 密码学防篡改日志与 ASCII 轨迹回放。
 
 ---
@@ -204,7 +204,7 @@ MIT License.
 
 - Minecraft 服务端版本：**1.12.2–1.21.x** (Spigot / Paper)
 - **Java 17** 运行环境
-- **零外部前置依赖** — 网络协议引擎 PacketEvents 已内置打包，无需 ProtocolLib，开箱即用！
+- **零外部前置依赖** — 网络协议引擎 PacketEvents 已内置打包，开箱即用！
 
 ### 快速开始
 

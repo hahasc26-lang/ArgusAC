@@ -46,7 +46,7 @@ compatibility-matrix:
       fallback-player-height: 1.80
 
     bad-packets:
-      fallback-to-bukkit-events-without-protocollib: true
+      fallback-to-bukkit-events: true
 
   # Low-version performance tuning and TPS sampling strategy
   performance-tuning:
