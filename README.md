@@ -4,7 +4,8 @@
   <img src="https://img.shields.io/badge/Minecraft-1.12.2--1.21.x-brightgreen?style=flat-square&logo=minecraft" alt="Minecraft Version">
   <img src="https://img.shields.io/badge/Java-17-orange?style=flat-square&logo=openjdk" alt="Java 17">
   <img src="https://img.shields.io/badge/Build-Maven-blue?style=flat-square&logo=apachemaven" alt="Maven">
-  <img src="https://img.shields.io/badge/Platform-Spigot%20%7C%20Paper-purple?style=flat-square" alt="Platform">
+  <img src="https://img.shields.io/badge/Platform-Bukkit%20%7C%20Spigot%20%7C%20Paper-purple?style=flat-square" alt="Platform">
+  <img src="https://img.shields.io/badge/License-MIT-yellow?style=flat-square" alt="License">
 </p>
 
 ---
