@@ -114,7 +114,7 @@ public final class I18n {
     }
 
     /**
-     * 向所有拥有管理员权限 (aegis.admin) 的在线玩家广播消息
+     * 向所有拥有管理员权限 (argusac.admin) 的在线玩家广播消息
      */
     public static void broadcastStaff(String key, Object... args) {
         if (manager != null) {

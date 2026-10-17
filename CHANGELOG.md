@@ -14,6 +14,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Last-Known-Legitimate-Location Setbacks**: Added `HARD` and `SOFT` setback modes, per-check overrides, fallback locations, configurable immunity windows, and setback notifications.
 - **Violation Management and Alerts**: Added violation-level tracking and decay, configurable staff alerts, and punishment actions.
 - **Audit Logging and Investigation Tools**: Added asynchronous JSON Lines audit logging, log retention and compression, SHA-256 hash-chain verification, recent and historical log queries, player data export, and movement replay output.
-- **Cross-Version Compatibility Layer**: Added compatibility detection and graceful degradation for Bukkit/Spigot/Paper server versions targeted by the plugin, with runtime status available through `/aegis compat`.
+- **Cross-Version Compatibility Layer**: Added compatibility detection and graceful degradation for Bukkit/Spigot/Paper server versions targeted by the plugin, with runtime status available through `/argus compat`.
 - **Internationalization**: Added bundled English and Simplified Chinese language files with optional client-locale message selection.
-- **Administration Commands**: Added `/aegis` (alias `/ac`) commands for configuration reloads, check management, violation queries, log inspection, compatibility diagnostics, setback controls, and audit data management.
+- **Administration Commands**: Added `/argus` (alias `/ac`, `/argusac`) commands for configuration reloads, check management, violation queries, log inspection, compatibility diagnostics, setback controls, and audit data management.

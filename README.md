@@ -1,4 +1,4 @@
-# AegisAC
+# ArgusAC
 
 <p align="center">
   <img src="https://img.shields.io/badge/Minecraft-1.12.2--1.21.x-brightgreen?style=flat-square&logo=minecraft" alt="Minecraft Version">
@@ -33,9 +33,9 @@
 
 ---
 
-## Why AegisAC
+## Why ArgusAC
 
-AegisAC is designed to make enforcement practical for server operators, not just flag suspicious movement:
+ArgusAC is designed to make enforcement practical for server operators, not just flag suspicious movement:
 
 - **Predictable recovery** — Movement setbacks use the player's last validated location instead of searching nearby blocks for an improvised landing spot.
 - **Operator visibility** — Compatibility status, violation history, replay output, and log-integrity verification help staff understand what the plugin detected and how it responded.
@@ -55,11 +55,11 @@ AegisAC is designed to make enforcement practical for server operators, not just
 
 ### Install the plugin
 
-1. Download the latest `AegisAC` JAR from [Releases](../../releases).
+1. Download the latest `ArgusAC` JAR from [Releases](../../releases).
 2. Put the JAR in the server's `plugins/` directory.
-3. Start or restart the server. The plugin creates its default configuration under `plugins/AegisAC/`.
-4. Review `plugins/AegisAC/config.yml`, then use `/aegis reload` to reload the configuration when needed.
-5. Run `/aegis compat` to inspect the active compatibility status of checks on your server.
+3. Start or restart the server. The plugin creates its default configuration under `plugins/ArgusAC/`.
+4. Review `plugins/ArgusAC/config.yml`, then use `/argus reload` to reload the configuration when needed.
+5. Run `/argus compat` to inspect the active compatibility status of checks on your server.
 
 ---
 
@@ -81,13 +81,13 @@ AegisAC is designed to make enforcement practical for server operators, not just
 | `Scaffold` | World | Suspicious automatic block placement patterns |
 | `BadPackets` | Packet | Invalid or suspicious movement packet data |
 
-Check behavior and available compatibility features can vary by server version. Use `/aegis compat` for the runtime status and see [`config.yml`](src/main/resources/config.yml) for defaults and tuning options.
+Check behavior and available compatibility features can vary by server version. Use `/argus compat` for the runtime status and see [`config.yml`](src/main/resources/config.yml) for defaults and tuning options.
 
 ---
 
 ## Setback system
 
-AegisAC records a player's last known legitimate location after movement passes the configured checks. When a setback is triggered, the plugin can apply one of two modes:
+ArgusAC records a player's last known legitimate location after movement passes the configured checks. When a setback is triggered, the plugin can apply one of two modes:
 
 - **`HARD`** — Teleports the player to the recorded location on the main thread and clears velocity and fall distance.
 - **`SOFT`** — Corrects the movement destination in the move event for a less abrupt correction.
@@ -103,27 +103,27 @@ Setbacks can be enabled globally, configured per check, and adjusted with minimu
 
 <br>
 
-The main command is **`/aegis`** (alias: **`/ac`**).
+The main command is **`/argus`** (alias: **`/ac`**, **`/argusac`**).
 
 | Command | Description | Permission |
 |---------|-------------|------------|
-| `/aegis help` | Show the command list | Everyone |
-| `/aegis reload` | Reload configuration and checks | `aegisac.admin` |
-| `/aegis vl <player>` | View an online player's violation levels | `aegisac.admin` |
-| `/aegis logs <player> [options]` | Query recent logs; supports `--check`, `--since`, `--setback`, and `--page` | `aegisac.admin` |
-| `/aegis history <player> <days> [options]` | Search historical log files; supports `--check`, `--setback`, and `--page` | `aegisac.admin` |
-| `/aegis replay <player> [--side]` | Render a lightweight movement trace | `aegisac.admin` |
-| `/aegis export <player>` | Export a player's audit data as a ZIP | `aegisac.admin` |
-| `/aegis top [--since <1h\|24h\|7d>]` | Show the top 10 violation counts | `aegisac.admin` |
-| `/aegis status` | Show audit queue and log status | `aegisac.admin` |
-| `/aegis verify` | Verify the global log hash chain | `aegisac.admin` |
-| `/aegis debug <check>` | Toggle debug logging for a check | `aegisac.admin` |
-| `/aegis compat` | Show check compatibility and degradation status | `aegisac.admin` |
-| `/aegis toggle <check>` | Toggle a check at runtime | `aegisac.admin` |
-| `/aegis setback <player\|global> <disable\|soft\|hard\|default\|now\|info>` | Manage or inspect setbacks | `aegisac.admin` |
-| `/aegis alerts [on\|off\|status]` | Mute or restore your staff alert messages for this login session | `aegisac.alert` |
-| `/aegis my-data` | View the data-retention summary | Everyone |
-| `/aegis purge <player>` | Delete a player's stored records and create an audit entry | `aegisac.admin` |
+| `/argus help` | Show the command list | Everyone |
+| `/argus reload` | Reload configuration and checks | `argusac.admin` |
+| `/argus vl <player>` | View an online player's violation levels | `argusac.admin` |
+| `/argus logs <player> [options]` | Query recent logs; supports `--check`, `--since`, `--setback`, and `--page` | `argusac.admin` |
+| `/argus history <player> <days> [options]` | Search historical log files; supports `--check`, `--setback`, and `--page` | `argusac.admin` |
+| `/argus replay <player> [--side]` | Render a lightweight movement trace | `argusac.admin` |
+| `/argus export <player>` | Export a player's audit data as a ZIP | `argusac.admin` |
+| `/argus top [--since <1h\|24h\|7d>]` | Show the top 10 violation counts | `argusac.admin` |
+| `/argus status` | Show audit queue and log status | `argusac.admin` |
+| `/argus verify` | Verify the global log hash chain | `argusac.admin` |
+| `/argus debug <check>` | Toggle debug logging for a check | `argusac.admin` |
+| `/argus compat` | Show check compatibility and degradation status | `argusac.admin` |
+| `/argus toggle <check>` | Toggle a check at runtime | `argusac.admin` |
+| `/argus setback <player\|global> <disable\|soft\|hard\|default\|now\|info>` | Manage or inspect setbacks | `argusac.admin` |
+| `/argus alerts [on\|off\|status]` | Mute or restore your staff alert messages for this login session | `argusac.alert` |
+| `/argus my-data` | View the data-retention summary | Everyone |
+| `/argus purge <player>` | Delete a player's stored records and create an audit entry | `argusac.admin` |
 
 </details>
 
@@ -138,9 +138,9 @@ The main command is **`/aegis`** (alias: **`/ac`**).
 
 | Permission | Default | Description |
 |------------|---------|-------------|
-| `aegisac.admin` | Operators | Use `/aegis` administration commands |
-| `aegisac.alert` | Operators | Receive violation and setback alerts; `/aegis alerts` changes personal alert delivery until logout |
-| `aegisac.bypass` | Nobody | Bypass checks and setbacks |
+| `argusac.admin` | Operators | Use `/argus` administration commands |
+| `argusac.alert` | Operators | Receive violation and setback alerts; `/argus alerts` changes personal alert delivery until logout |
+| `argusac.bypass` | Nobody | Bypass checks and setbacks |
 
 </details>
 
@@ -148,9 +148,9 @@ The main command is **`/aegis`** (alias: **`/ac`**).
 
 ## Configuration and audit logs
 
-The default configuration is created at `plugins/AegisAC/config.yml`. It includes language selection, version compatibility behavior, check thresholds, alerts, setback settings, log retention, and privacy options.
+The default configuration is created at `plugins/ArgusAC/config.yml`. It includes language selection, version compatibility behavior, check thresholds, alerts, setback settings, log retention, and privacy options.
 
-By default, setback audit records are written as JSON Lines under `plugins/AegisAC/logs/setbacks.jsonl`. Audit retention, compression, and privacy settings can be adjusted in the configuration. Review the privacy options and applicable data-retention requirements before enabling or changing player-data logging.
+By default, setback audit records are written as JSON Lines under `plugins/ArgusAC/logs/setbacks.jsonl`. Audit retention, compression, and privacy settings can be adjusted in the configuration. Review the privacy options and applicable data-retention requirements before enabling or changing player-data logging.
 
 ---
 
@@ -183,9 +183,9 @@ MIT License.
 
 ---
 
-## 为什么选择 AegisAC
+## 为什么选择 ArgusAC
 
-AegisAC 不只标记可疑行为，也注重让服务器管理者能够理解和维护反作弊措施：
+ArgusAC 不只标记可疑行为，也注重让服务器管理者能够理解和维护反作弊措施：
 
 - **回退行为可预测** — 违规移动会回到最后验证通过的位置，而不是临时搜索附近方块作为落点。
 - **检测过程可追溯** — 兼容性状态、违规历史、轨迹回放和日志完整性校验，帮助管理员了解检测结果及后续处理。
@@ -205,11 +205,11 @@ AegisAC 不只标记可疑行为，也注重让服务器管理者能够理解和
 
 ### 安装插件
 
-1. 从 [Releases](../../releases) 下载最新的 `AegisAC` JAR。
+1. 从 [Releases](../../releases) 下载最新的 `ArgusAC` JAR。
 2. 将 JAR 放入服务端的 `plugins/` 目录。
-3. 启动或重启服务端；插件会在 `plugins/AegisAC/` 下生成默认配置。
-4. 检查 `plugins/AegisAC/config.yml`，之后可使用 `/aegis reload` 重载配置。
-5. 使用 `/aegis compat` 查看当前服务端上的检测兼容状态。
+3. 启动或重启服务端；插件会在 `plugins/ArgusAC/` 下生成默认配置。
+4. 检查 `plugins/ArgusAC/config.yml`，之后可使用 `/argus reload` 重载配置。
+5. 使用 `/argus compat` 查看当前服务端上的检测兼容状态。
 
 ---
 
@@ -231,13 +231,13 @@ AegisAC 不只标记可疑行为，也注重让服务器管理者能够理解和
 | `Scaffold` | 方块 | 可疑的自动搭方块行为 |
 | `BadPackets` | 数据包 | 非法或可疑的移动数据包 |
 
-检测行为与兼容能力可能因服务端版本而异。可使用 `/aegis compat` 查看运行状态，并在 [`config.yml`](src/main/resources/config.yml) 查看默认值和可调整参数。
+检测行为与兼容能力可能因服务端版本而异。可使用 `/argus compat` 查看运行状态，并在 [`config.yml`](src/main/resources/config.yml) 查看默认值和可调整参数。
 
 ---
 
 ## 状态回退系统
 
-AegisAC 会在玩家移动通过配置的检测后记录其最后合法位置。触发回退时支持以下模式：
+ArgusAC 会在玩家移动通过配置的检测后记录其最后合法位置。触发回退时支持以下模式：
 
 - **`HARD`** — 在主线程将玩家传送回已记录位置，并清空速度与坠落距离。
 - **`SOFT`** — 在移动事件中修正移动终点，减少突兀的回弹感。
@@ -253,27 +253,27 @@ AegisAC 会在玩家移动通过配置的检测后记录其最后合法位置。
 
 <br>
 
-主命令为 **`/aegis`**（别名：**`/ac`**）。
+主命令为 **`/argus`**（别名：**`/ac`**、**`/argusac`**）。
 
 | 命令 | 说明 | 权限 |
 |------|------|------|
-| `/aegis help` | 显示命令列表 | 所有人 |
-| `/aegis reload` | 重载配置与检测模块 | `aegisac.admin` |
-| `/aegis vl <玩家>` | 查看在线玩家的违规等级 | `aegisac.admin` |
-| `/aegis logs <玩家> [选项]` | 查询近期记录；支持 `--check`、`--since`、`--setback`、`--page` | `aegisac.admin` |
-| `/aegis history <玩家> <天数> [选项]` | 检索历史日志；支持 `--check`、`--setback`、`--page` | `aegisac.admin` |
-| `/aegis replay <玩家> [--side]` | 输出轻量移动轨迹 | `aegisac.admin` |
-| `/aegis export <玩家>` | 将玩家审计数据导出为 ZIP | `aegisac.admin` |
-| `/aegis top [--since <1h\|24h\|7d>]` | 显示违规次数前十名 | `aegisac.admin` |
-| `/aegis status` | 查看审计队列与日志状态 | `aegisac.admin` |
-| `/aegis verify` | 校验全局日志哈希链 | `aegisac.admin` |
-| `/aegis debug <检测项>` | 开关指定检测项的调试日志 | `aegisac.admin` |
-| `/aegis compat` | 查看检测项兼容与降级状态 | `aegisac.admin` |
-| `/aegis toggle <检测项>` | 运行时开关检测项 | `aegisac.admin` |
-| `/aegis setback <玩家\|global> <disable\|soft\|hard\|default\|now\|info>` | 管理或查看状态回退 | `aegisac.admin` |
-| `/aegis alerts [on\|off\|status]` | 本次登录期间关闭、恢复或查看个人管理员告警提示 | `aegisac.alert` |
-| `/aegis my-data` | 查看数据保留策略摘要 | 所有人 |
-| `/aegis purge <玩家>` | 删除玩家存储记录并生成审计记录 | `aegisac.admin` |
+| `/argus help` | 显示命令列表 | 所有人 |
+| `/argus reload` | 重载配置与检测模块 | `argusac.admin` |
+| `/argus vl <玩家>` | 查看在线玩家的违规等级 | `argusac.admin` |
+| `/argus logs <玩家> [选项]` | 查询近期记录；支持 `--check`、`--since`、`--setback`、`--page` | `argusac.admin` |
+| `/argus history <玩家> <天数> [选项]` | 检索历史日志；支持 `--check`、`--setback`、`--page` | `argusac.admin` |
+| `/argus replay <玩家> [--side]` | 输出轻量移动轨迹 | `argusac.admin` |
+| `/argus export <玩家>` | 将玩家审计数据导出为 ZIP | `argusac.admin` |
+| `/argus top [--since <1h\|24h\|7d>]` | 显示违规次数前十名 | `argusac.admin` |
+| `/argus status` | 查看审计队列与日志状态 | `argusac.admin` |
+| `/argus verify` | 校验全局日志哈希链 | `argusac.admin` |
+| `/argus debug <检测项>` | 开关指定检测项的调试日志 | `argusac.admin` |
+| `/argus compat` | 查看检测项兼容与降级状态 | `argusac.admin` |
+| `/argus toggle <检测项>` | 运行时开关检测项 | `argusac.admin` |
+| `/argus setback <玩家\|global> <disable\|soft\|hard\|default\|now\|info>` | 管理或查看状态回退 | `argusac.admin` |
+| `/argus alerts [on\|off\|status]` | 本次登录期间关闭、恢复或查看个人管理员告警提示 | `argusac.alert` |
+| `/argus my-data` | 查看数据保留策略摘要 | 所有人 |
+| `/argus purge <玩家>` | 删除玩家存储记录并生成审计记录 | `argusac.admin` |
 
 </details>
 
@@ -288,9 +288,9 @@ AegisAC 会在玩家移动通过配置的检测后记录其最后合法位置。
 
 | 权限 | 默认 | 说明 |
 |------|------|------|
-| `aegisac.admin` | OP | 执行 `/aegis` 管理命令 |
-| `aegisac.alert` | OP | 接收违规与回退告警；`/aegis alerts` 可关闭本次登录期间的个人提示 |
-| `aegisac.bypass` | 无人 | 豁免检测与状态回退 |
+| `argusac.admin` | OP | 执行 `/argus` 管理命令 |
+| `argusac.alert` | OP | 接收违规与回退告警；`/argus alerts` 可关闭本次登录期间的个人提示 |
+| `argusac.bypass` | 无人 | 豁免检测与状态回退 |
 
 </details>
 
@@ -298,9 +298,9 @@ AegisAC 会在玩家移动通过配置的检测后记录其最后合法位置。
 
 ## 配置与审计日志
 
-默认配置文件会生成在 `plugins/AegisAC/config.yml`，包含语言、版本兼容策略、检测参数、告警、状态回退、日志保留和隐私选项。
+默认配置文件会生成在 `plugins/ArgusAC/config.yml`，包含语言、版本兼容策略、检测参数、告警、状态回退、日志保留和隐私选项。
 
-默认的回退审计记录以 JSON Lines 格式写入 `plugins/AegisAC/logs/setbacks.jsonl`。日志保留、压缩和隐私选项均可在配置中调整。启用或修改玩家数据记录前，请确认相关隐私设置及数据保留要求。
+默认的回退审计记录以 JSON Lines 格式写入 `plugins/ArgusAC/logs/setbacks.jsonl`。日志保留、压缩和隐私选项均可在配置中调整。启用或修改玩家数据记录前，请确认相关隐私设置及数据保留要求。
 
 ---
 

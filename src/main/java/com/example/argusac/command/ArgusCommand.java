@@ -25,7 +25,7 @@ import java.util.Map;
 import java.util.UUID;
 
 /**
- * ArgusAC 主命令处理器 (/aegis, /ac)
+ * ArgusAC 主命令处理器 (/argus, /ac, /argusac)
  * 全面接入 i18n 国际化多语言系统，支持根据操作者客户端语言自适应呈现
  */
 public class ArgusCommand implements CommandExecutor {
@@ -292,7 +292,7 @@ public class ArgusCommand implements CommandExecutor {
 
         com.example.argusac.compat.CompatibilityManager compatMgr = plugin.getCompatibilityManager();
         if (compatMgr.hasDegradedModules()) {
-            adapter.sendMessage(sender, "&7版本降级状态: &e存在降级/挂起模块 &8(输入 &f/aegis compat &8查看)");
+            adapter.sendMessage(sender, "&7版本降级状态: &e存在降级/挂起模块 &8(输入 &f/argus compat &8查看)");
         } else {
             adapter.sendMessage(sender, "&7版本降级状态: &a全模块完整原生支持 (Full Performance)");
         }

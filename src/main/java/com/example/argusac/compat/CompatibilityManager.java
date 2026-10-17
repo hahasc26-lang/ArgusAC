@@ -100,7 +100,7 @@ public class CompatibilityManager {
         Bukkit.getLogger().info(" 适配器通道: " + VersionAdapterFactory.getAdapter().getClass().getSimpleName());
         Bukkit.getLogger().info(" 模块能力矩阵: " + checkStatusMap.size() + " 个检测项已分配运行等级");
         if (hasDegradedModules()) {
-            Bukkit.getLogger().info(" [提示] 检测到部分模块运行在降级兼容模式，使用 /aegis compat 可查看详情。");
+            Bukkit.getLogger().info(" [提示] 检测到部分模块运行在降级兼容模式，使用 /argus compat 可查看详情。");
         }
         Bukkit.getLogger().info("==================================================");
     }

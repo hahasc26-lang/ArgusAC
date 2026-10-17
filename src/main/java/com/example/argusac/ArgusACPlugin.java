@@ -15,7 +15,7 @@ import org.bukkit.plugin.java.JavaPlugin;
 
 
 /**
- * ArgusAC (神盾反作弊) 主插件类
+ * ArgusAC 主插件类
  * 专为 Paper 1.20.4+ 服务端优化，采用模块化结构与原生状态回退机制
  */
 public class ArgusACPlugin extends JavaPlugin {
@@ -176,12 +176,12 @@ public class ArgusACPlugin extends JavaPlugin {
     @SuppressWarnings("deprecation")
     private void printBanner() {
         getLogger().info("==================================================");
-        getLogger().info("   ___             _        _   ___  ");
-        getLogger().info("  / _ \\ ___  __ _ (_)___   / \\ / _ \\ ");
-        getLogger().info(" / /_\\// _ \\/ _` || / __| / _ \\ | | |");
-        getLogger().info("/ /_\\\\|  __/ (_| || \\__ \\/ ___ \\| |_| |");
-        getLogger().info("\\____/ \\___|\\__, ||_|___/_/   \\_\\\\___/ ");
-        getLogger().info("            |___/   神盾反作弊 v" + this.getDescription().getVersion());
+        getLogger().info("    _                               _     ____  ");
+        getLogger().info("   / \\   _ __ __ _ _   _ ___       / \\   / ___| ");
+        getLogger().info("  / _ \\ | '__/ _` | | | / __|     / _ \\ | |     ");
+        getLogger().info(" / ___ \\| | | (_| | |_| \\__ \\    / ___ \\| |___  ");
+        getLogger().info("/_/   \\_\\_|  \\__, |\\__,_|___/   /_/   \\_\\\\____| ");
+        getLogger().info("             |___/    ArgusAC 反作弊 v" + this.getDescription().getVersion());
         getLogger().info(" 目标平台: Spigot / Paper 1.12.2 ~ 1.21.x | 运行环境: Java 17");
         getLogger().info(" 已装载检测项: " + checkManager.getAllChecks().size() + " 个独立检测模块");
         getLogger().info(" 核心回退 (Setback): " + (setbackManager.isGlobalEnabled() ? "全局已启用" : "已就绪 (保守待命)"));
