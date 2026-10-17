@@ -7,7 +7,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 
 ### Fixed
 
-- **Mid-air Hovering Exploit Fix**: Overhauled setback target resolution and event cancellation to enforce ground-only targets and gravity preservation, completely eliminating mid-air freezing.
+- **GrimAC-Style Direct In-Event Cancellation**: Completely abolished setback immunity windows; movement violations are cancelled instantly within the move event, immediately pulling airborne cheaters to solid ground and arresting ground moves without rubberbands.
 - **AutoClicker False Positives**: Added continuous mining state tracking to exempt block breaking from combat CPS calculations.
 - **Jesus False Positives**: Refined water surface tracking to only accumulate on unsubmerged surface floating, preventing false flags during normal swimming and wading.
 - **Scaffold False Positives**: Added horizontal footprint bounding checks to avoid false flags when placing blocks ahead or sideways at Y-1.

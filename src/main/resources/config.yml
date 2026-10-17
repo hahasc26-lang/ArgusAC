@@ -119,9 +119,10 @@ setback:
   global-enabled: true
 
   # Default setback execution mode:
+  # CANCEL: GrimAC-style direct in-event cancellation, zero latency, no immunity windows, instant lock
   # SOFT: Smoothly overrides movement destination inside PlayerMoveEvent without jarring rubberbands
   # HARD: Schedules synchronous teleport on main thread, canceling velocity and fall distance
-  default-mode: "HARD"
+  default-mode: "CANCEL"
 
   # Cooldown between setbacks (ms) to prevent high-frequency jitter or network overload
   cooldown-ms: 350

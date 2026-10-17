@@ -90,32 +90,17 @@ public class ViolationManager {
         String logMode = "LOG_ONLY";
 
         if (check.getType() == com.example.argusac.api.CheckType.MOVEMENT) {
-            if (plugin.getSetbackManager().shouldSetback(player, check, currentVl)) {
-                defaultPunishmentTriggered = plugin.getSetbackManager().mitigate(
+            if (moveEvent != null) {
+                // 对齐 GrimAC 架构：只要触发移动违规，当帧立即直接取消本次移动！
+                // 不受冷却期或高 VL 门槛延宕，零延迟直接阻断非法位移，空中悬停外挂当场拉回地面
+                defaultPunishmentTriggered = plugin.getSetbackManager().directCancel(
                         player, check, currentVl, details, moveEvent
                 );
-            } else if (plugin.getSetbackManager().isCheckOnCooldown(player.getUniqueId(), check.getName())) {
-                // P2 改法：处于回退冷却期间连续违规，若存在移动事件，优先锁定至最后合法落点，防止作弊者借冷却缝隙位移
-                // 【P0 修复空中悬浮】：优先拉回最后合法地面落脚点，严禁将玩家持续锁死在半空中形成悬浮
-                if (moveEvent != null) {
-                    com.example.argusac.model.LegitimateLocation lastGround = plugin.getSetbackManager().getLastGroundLocation(player.getUniqueId());
-                    org.bukkit.Location groundLoc = (lastGround != null) ? lastGround.toLocation() : null;
-                    if (groundLoc == null && moveEvent.getFrom() != null) {
-                        groundLoc = plugin.getSetbackManager().findSafeGroundBelow(moveEvent.getFrom());
-                    }
-
-                    if (groundLoc != null) {
-                        moveEvent.setTo(groundLoc);
-                    } else if (moveEvent.getFrom() != null && plugin.getSetbackManager().isGrounded(player, moveEvent.getFrom())) {
-                        moveEvent.setTo(moveEvent.getFrom());
-                    } else {
-                        plugin.getSetbackManager().applySafeAirCancellation(moveEvent);
-                    }
-                    defaultPunishmentTriggered = true;
-                    logMode = "COOLDOWN_CANCEL";
-                } else {
-                    logMode = "COOLDOWN_SKIP";
-                }
+                logMode = "DIRECT_CANCEL";
+            } else if (plugin.getSetbackManager().shouldSetback(player, check, currentVl)) {
+                defaultPunishmentTriggered = plugin.getSetbackManager().mitigate(
+                        player, check, currentVl, details, null
+                );
             }
         } else {
             // 战斗、方块及数据包类违规，处置方式为取消非法交互并记录日志

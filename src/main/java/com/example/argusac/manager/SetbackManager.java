@@ -61,10 +61,8 @@ public class SetbackManager implements Listener {
     private long maxSnapshotAgeMs;
     private int maxSnapshotCapacity;
 
-    // 网络校正与自免疫参数
+    // 网络校正参数
     private long correctionTimeoutMs;
-    private long minImmunityMs;
-    private long immunityExtraMs;
 
     // 提示通知参数
     private String notifyPlayerChannel; // "ACTIONBAR", "CHAT", "NONE"
@@ -87,7 +85,7 @@ public class SetbackManager implements Listener {
         FileConfiguration config = plugin.getConfig();
 
         this.globalEnabled = config.getBoolean("setback.global-enabled", true);
-        this.defaultMode = config.getString("setback.default-mode", "HARD").toUpperCase();
+        this.defaultMode = config.getString("setback.default-mode", "CANCEL").toUpperCase();
         this.cooldownMs = config.getLong("setback.cooldown-ms", 350L);
         this.globalMinVl = config.getInt("setback.default-min-vl", 1);
         this.kickWhenBothBlocked = config.getBoolean("setback.boundary.kick-when-both-blocked", false);
@@ -104,8 +102,6 @@ public class SetbackManager implements Listener {
         this.maxSnapshotCapacity = config.getInt("setback.snapshot.max-capacity", 30);
 
         this.correctionTimeoutMs = config.getLong("setback.correction.timeout-ms", 600L);
-        this.minImmunityMs = config.getLong("setback.immunity.min-duration-ms", 400L);
-        this.immunityExtraMs = config.getLong("setback.immunity.extra-buffer-ms", 150L);
 
         this.notifyPlayerChannel = config.getString("setback.notifications.player.channel", "ACTIONBAR").toUpperCase();
         this.notifyPlayerCooldownMs = config.getLong("setback.notifications.player.cooldown-ms", 1000L);
@@ -324,6 +320,98 @@ public class SetbackManager implements Listener {
         return context.matchesCorrection(from) && context.matchesCorrection(to);
     }
 
+    private String formatLoc(Location loc) {
+        if (loc == null) return "null";
+        return String.format("%.2f,%.2f,%.2f", loc.getX(), loc.getY(), loc.getZ());
+    }
+
+    /**
+     * 对齐 GrimAC 核心机制：零延迟即时直接取消 (Direct In-Event Cancellation)
+     * 一旦检测模块判定非法移动，当帧立即在事件内直接取消/重写移动终点，杜绝任何位移偷跑与空中滞空
+     *
+     * @param player 违规玩家
+     * @param check 触发检测项
+     * @param currentVl 当前违规值
+     * @param reason 违规详情
+     * @param moveEvent 移动事件
+     * @return 是否成功取消
+     */
+    public boolean directCancel(Player player, Check check, int currentVl, String reason, PlayerMoveEvent moveEvent) {
+        if (player == null || check == null || moveEvent == null) {
+            return false;
+        }
+
+        PlayerSetbackContext context = getContext(player.getUniqueId());
+        com.example.argusac.data.PlayerData data = plugin.getPlayerManager().getPlayerData(player);
+        Location from = moveEvent.getFrom();
+        Location to = moveEvent.getTo();
+        if (from == null) {
+            return false;
+        }
+
+        long now = System.currentTimeMillis();
+        context.setLastSetbackTimestamp(check.getName(), now);
+
+        // 判断是否属于空中/滞空异常位移 (Fly, Hover, Jesus 等)
+        boolean isAirborne = (data != null && !data.isOnGround()) || !isGrounded(player, from);
+        String checkLower = check.getName().toLowerCase();
+        boolean isFlightOrWaterCheck = checkLower.contains("fly")
+                || checkLower.contains("hover")
+                || checkLower.contains("jesus");
+
+        Location cancelTarget;
+
+        if (isAirborne || isFlightOrWaterCheck) {
+            // 【核心防悬停对齐 GrimAC】：空中/滞空作弊，绝不在空中定格，优先就近垂直压回脚下坚实地面！
+            Location safeGround = findSafeGroundBelow(from);
+
+            // 若正下方未探测到坚实陆地 (例如超高空或深渊)，拉回起跳前的最后合法稳固地面
+            if (safeGround == null) {
+                LegitimateLocation groundSnap = context.getLastGroundLocation();
+                if (groundSnap != null && groundSnap.getWorldUid() != null
+                        && groundSnap.getWorldUid().equals(from.getWorld().getUID())
+                        && groundSnap.isPassable()) {
+                    safeGround = groundSnap.toLocation();
+                }
+            }
+
+            if (safeGround != null) {
+                cancelTarget = safeGround.clone();
+            } else {
+                // 极端虚空环境：锁定水平位移并施加自然重力下坠衰减
+                applySafeAirCancellation(moveEvent);
+                if (data != null && data.getPhysicsState() != null) {
+                    data.getPhysicsState().reset(moveEvent.getTo());
+                }
+                postSetbackSuccess(player, context, check.getName(), currentVl, reason, "GRIM_AIR_CANCEL",
+                        formatLoc(from), formatLoc(moveEvent.getTo()), true, null);
+                return true;
+            }
+        } else {
+            // 地面常规移动违规 (Speed, Step, InventoryMove 等)：原位直接取消本次位移
+            cancelTarget = from.clone();
+        }
+
+        // 严格保留玩家当前朝向 (Yaw/Pitch)，杜绝视角扭转眩晕
+        if (to != null) {
+            cancelTarget.setYaw(to.getYaw());
+            cancelTarget.setPitch(to.getPitch());
+        }
+
+        // 像 GrimAC 一样直接重写事件目标点，当帧物理截断
+        moveEvent.setTo(cancelTarget);
+
+        // 物理状态重置，防止下一帧因残差继承产生误报
+        if (data != null && data.getPhysicsState() != null) {
+            data.getPhysicsState().reset(cancelTarget);
+        }
+
+        postSetbackSuccess(player, context, check.getName(), currentVl, reason, "DIRECT_CANCEL",
+                formatLoc(from), formatLoc(cancelTarget), false,
+                LegitimateLocation.from(cancelTarget, null, isGrounded(player, cancelTarget), false, null));
+        return true;
+    }
+
     /**
      * 默认反作弊惩戒统一执行入口 (Mitigate / Setback)
      *
@@ -344,28 +432,21 @@ public class SetbackManager implements Listener {
             return false;
         }
 
+        // 核心架构升级对齐 GrimAC：凡存在移动事件上下文的移动作弊，当帧直接就地执行零延迟直接取消 (Direct Cancellation)！
+        if (moveEvent != null) {
+            return directCancel(player, check, currentVl, reason, moveEvent);
+        }
+
         // 若非主线程调用且无移动事件，安全调度回主线程执行
-        if (!Bukkit.isPrimaryThread() && moveEvent == null) {
+        if (!Bukkit.isPrimaryThread()) {
             Bukkit.getScheduler().runTask(plugin, () -> mitigate(player, check, currentVl, reason, null));
             return true;
         }
 
         PlayerSetbackContext context = getContext(player.getUniqueId());
         Location curLoc = player.getLocation();
-        String fromLocStr = String.format("%.2f,%.2f,%.2f", curLoc.getX(), curLoc.getY(), curLoc.getZ());
+        String fromLocStr = formatLoc(curLoc);
         long now = System.currentTimeMillis();
-
-        // P0 改法：InventoryMove 等优先原地取消本次移动，不进行远距离传送
-        if ("InventoryMove".equalsIgnoreCase(check.getName()) && moveEvent != null) {
-            if (isGrounded(player, curLoc)) {
-                moveEvent.setTo(moveEvent.getFrom());
-            } else {
-                applySafeAirCancellation(moveEvent);
-            }
-            context.setLastSetbackTimestamp(check.getName(), now);
-            postSetbackSuccess(player, context, check.getName(), currentVl, reason, "CANCEL_MOVE", fromLocStr, fromLocStr, false);
-            return true;
-        }
 
         // P1 改法：在短时间窗口内检索同世界、未超时且距离有界的稳固地面快照
         UUID curWorldUid = (curLoc.getWorld() != null) ? curLoc.getWorld().getUID() : null;
@@ -393,19 +474,7 @@ public class SetbackManager implements Listener {
             }
 
             if (target == null) {
-                // 降级 1: 若当前存在移动事件，执行安全位移拦截 (空中强制自然重力下坠，绝不锁定 ΔY=0)
-                if (moveEvent != null && moveEvent.getFrom() != null) {
-                    if (isGrounded(player, curLoc)) {
-                        moveEvent.setTo(moveEvent.getFrom());
-                    } else {
-                        applySafeAirCancellation(moveEvent);
-                    }
-                    context.setLastSetbackTimestamp(check.getName(), now);
-                    postSetbackSuccess(player, context, check.getName(), currentVl, reason, "SAFE_FALLBACK_CANCEL", fromLocStr, fromLocStr, true, null);
-                    return true;
-                }
-
-                // 降级 2: 无移动事件时，在同世界尝试寻找距离最近的可通行快照 (放宽至 2 倍最大距离)
+                // 无移动事件时，在同世界尝试寻找距离最近的可通行快照 (放宽至 2 倍最大距离)
                 LegitimateLocation relaxedTarget = context.findNearestPassableLocation(curWorldUid, curLoc, maxSetbackDistance * 2.0);
                 if (relaxedTarget != null) {
                     target = relaxedTarget;
@@ -426,20 +495,14 @@ public class SetbackManager implements Listener {
             return false;
         }
 
-        // 对齐 Grim 等主流反作弊核心机制：严格保留玩家当前的水平与垂直朝向 (Yaw/Pitch)
-        // 彻底杜绝回退时由于恢复历史朝向导致的视角瞬间扭转 (Snap View / 视角扯头眩晕)
-        float currentYaw = (moveEvent != null && moveEvent.getTo() != null) ? moveEvent.getTo().getYaw() : curLoc.getYaw();
-        float currentPitch = (moveEvent != null && moveEvent.getTo() != null) ? moveEvent.getTo().getPitch() : curLoc.getPitch();
-        targetLocation.setYaw(currentYaw);
-        targetLocation.setPitch(currentPitch);
+        // 严格保留玩家当前的水平与垂直朝向 (Yaw/Pitch)
+        targetLocation.setYaw(curLoc.getYaw());
+        targetLocation.setPitch(curLoc.getPitch());
 
-        // 确定执行模式
-        String effectiveMode = determineEffectiveMode(context.getOverride(), check.getSetbackMode());
-        String toLocStr = String.format("%.2f,%.2f,%.2f", targetLocation.getX(), targetLocation.getY(), targetLocation.getZ());
+        String toLocStr = formatLoc(targetLocation);
 
-        // 记录预期网络校正目标与时效
         int ping = Math.max(0, com.example.argusac.compat.VersionAdapterFactory.getAdapter().getPing(player));
-        long correctionTimeout = Math.min(correctionTimeoutMs, 2L * ping + immunityExtraMs);
+        long correctionTimeout = Math.min(correctionTimeoutMs, 2L * ping + 150L);
         context.setPendingCorrection(new PendingCorrection(
                 targetLocation.getX(), targetLocation.getY(), targetLocation.getZ(),
                 targetLocation.getWorld().getUID(),
@@ -447,32 +510,18 @@ public class SetbackManager implements Listener {
         ));
         context.setLastSetbackTimestamp(check.getName(), now);
 
-        // 执行具体模式 (若玩家在载具中，必须走 HARD 模式脱离载具传送)
         final LegitimateLocation finalTarget = target;
         final boolean finalUsedFallback = usedFallback;
 
-        // 核心加固：无论 SOFT 还是 HARD 模式，若存在 moveEvent，必须在事件内立即强行修正目标点为 targetLocation！
-        // 杜绝 Spigot 底层在当帧继续采纳非法目标点，彻底阻断飞行/瞬移等非法位移偷跑
-        if (moveEvent != null && !player.isInsideVehicle()) {
-            moveEvent.setTo(targetLocation);
-        }
-
-        if ("SOFT".equalsIgnoreCase(effectiveMode) && moveEvent != null && !player.isInsideVehicle()) {
-            // SOFT 模式：直接在事件内修正终点
-            context.setLastLegitimateLocation(finalTarget);
-            postSetbackSuccess(player, context, check.getName(), currentVl, reason, "SOFT", fromLocStr, toLocStr, finalUsedFallback, finalTarget);
-            return true;
+        // 无事件上下文的降级兜底：主线程执行安全传送与动量清空
+        if (!Bukkit.isPrimaryThread()) {
+            Bukkit.getScheduler().runTask(plugin, () ->
+                    executeHardSetbackOnMainThread(player, context, targetLocation, finalTarget, check.getName(), currentVl, reason, fromLocStr, toLocStr, finalUsedFallback)
+            );
         } else {
-            // HARD 模式：主线程执行强制传送与动量清空
-            if (!Bukkit.isPrimaryThread()) {
-                Bukkit.getScheduler().runTask(plugin, () ->
-                        executeHardSetbackOnMainThread(player, context, targetLocation, finalTarget, check.getName(), currentVl, reason, fromLocStr, toLocStr, finalUsedFallback)
-                );
-            } else {
-                executeHardSetbackOnMainThread(player, context, targetLocation, finalTarget, check.getName(), currentVl, reason, fromLocStr, toLocStr, finalUsedFallback);
-            }
-            return true;
+            executeHardSetbackOnMainThread(player, context, targetLocation, finalTarget, check.getName(), currentVl, reason, fromLocStr, toLocStr, finalUsedFallback);
         }
+        return true;
     }
 
     public boolean execute(Player player, com.example.argusac.data.PlayerData data, Check check,
@@ -605,20 +654,14 @@ public class SetbackManager implements Listener {
     /**
      * 回退成功后的统一后续处理
      */
-    private void postSetbackSuccess(Player player, PlayerSetbackContext context, String checkName, int currentVl,
-                                    String details, String mode, String fromLocStr, String toLocStr, boolean usedFallback) {
-        postSetbackSuccess(player, context, checkName, currentVl, details, mode, fromLocStr, toLocStr, usedFallback, null);
-    }
 
     private void postSetbackSuccess(Player player, PlayerSetbackContext context, String checkName, int currentVl,
                                     String details, String mode, String fromLocStr, String toLocStr, boolean usedFallback,
                                     LegitimateLocation target) {
         long now = System.currentTimeMillis();
 
-        // 1. 写入收窄后的自免疫截止时间戳 (P1: 由 1500ms 大幅收窄为与 ping 自适应的短时间窗口)
-        int ping = Math.max(0, com.example.argusac.compat.VersionAdapterFactory.getAdapter().getPing(player));
-        long immunityDuration = Math.max(minImmunityMs, 2L * ping + immunityExtraMs);
-        context.setImmunityUntil(now + immunityDuration);
+        // 1. 对齐 GrimAC：直接取消机制彻底清除自免疫期，作弊移动被阻断后不给任何保护时间
+        context.setImmunityUntil(0L);
         context.setLastSetbackTimestamp(now);
 
         // 2. 玩家端提示 (带独立冷却，走 i18n 多语言)
@@ -1063,7 +1106,8 @@ public class SetbackManager implements Listener {
         }
 
         public boolean isImmune() {
-            return System.currentTimeMillis() < immunityUntil;
+            // 对齐 GrimAC：彻底禁用移动自免疫免检，作弊被阻断后下一帧若继续作弊当场继续拦截
+            return false;
         }
 
         public LegitimateLocation getLastLegitimateLocation() {

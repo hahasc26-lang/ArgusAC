@@ -196,7 +196,7 @@ public class FlyCheck extends AbstractCheck {
         };
         for (double[] p : points) {
             Location checkLoc = loc.clone().add(p[0], 0, p[1]);
-            for (double yOffset = -0.05; yOffset >= -0.35; yOffset -= 0.1) {
+            for (double yOffset = -0.05; yOffset >= -0.15; yOffset -= 0.1) {
                 Block b = checkLoc.clone().add(0, yOffset, 0).getBlock();
                 if (adapter.isStandable(b)) {
                     return true;
