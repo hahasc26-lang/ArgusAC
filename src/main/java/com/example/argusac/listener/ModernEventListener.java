@@ -8,9 +8,11 @@ import org.bukkit.event.EventPriority;
 import org.bukkit.event.Listener;
 import org.bukkit.event.player.PlayerRiptideEvent;
 
+import org.bukkit.event.player.PlayerLocaleChangeEvent;
+
 /**
  * 现代版本 (1.13+) 专属事件监听器
- * 仅在当前运行环境 >= 1.13 时动态注册，杜绝 1.12.2 等低版本在类加载时因缺少 PlayerRiptideEvent 抛出 NoClassDefFoundError
+ * 仅在当前运行环境 >= 1.13 时动态注册，杜绝 1.12.2 等低版本在类加载时因缺少现代专有事件类抛出 NoClassDefFoundError
  */
 public class ModernEventListener implements Listener {
 
@@ -27,6 +29,13 @@ public class ModernEventListener implements Listener {
             // 激流三叉戟赋予合法高机动豁免
             data.grantLegalVelocity(VelocitySourceType.RIPTIDE, 2000L);
             data.getElytraData().setLastRiptideTime(System.currentTimeMillis());
+        }
+    }
+
+    @EventHandler(priority = EventPriority.MONITOR)
+    public void onLocaleChange(PlayerLocaleChangeEvent event) {
+        if (plugin.getLanguageManager() != null) {
+            plugin.getLanguageManager().invalidateCache(event.getPlayer().getUniqueId());
         }
     }
 }

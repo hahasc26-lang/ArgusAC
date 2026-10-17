@@ -67,9 +67,9 @@ public class ArgusCommand implements CommandExecutor {
             return true;
         }
 
-        // 以下管理命令必须持有 ArgusAC.admin
-        if (!sender.hasPermission("ArgusAC.admin")) {
-            I18n.sendPrefixed(sender, "system.no-permission", "permission", "ArgusAC.admin");
+        // 以下管理命令必须持有 argusac.admin (兼顾大小写兼容)
+        if (!sender.hasPermission("argusac.admin") && !sender.hasPermission("ArgusAC.admin")) {
+            I18n.sendPrefixed(sender, "system.no-permission", "permission", "argusac.admin");
             return true;
         }
 
@@ -105,8 +105,8 @@ public class ArgusCommand implements CommandExecutor {
             I18n.sendPrefixed(sender, "system.only-player");
             return;
         }
-        if (!player.hasPermission("ArgusAC.alert")) {
-            I18n.sendPrefixed(sender, "system.no-permission", "permission", "ArgusAC.alert");
+        if (!player.hasPermission("argusac.alert") && !player.hasPermission("ArgusAC.alert")) {
+            I18n.sendPrefixed(sender, "system.no-permission", "permission", "argusac.alert");
             return;
         }
         if (args.length > 2) {
@@ -135,12 +135,12 @@ public class ArgusCommand implements CommandExecutor {
     private void handleCompat(CommandSender sender) {
         var adapter = com.example.argusac.compat.VersionAdapterFactory.getAdapter();
         I18n.send(sender, "command.compat.header");
-        adapter.sendMessage(sender, String.format("&7当前服务器环境: &b%s &8(编码: &f%d&8) | 核心: &3%s",
-                com.example.argusac.compat.ServerVersion.get().getFriendlyName(),
-                com.example.argusac.compat.ServerVersion.getCode(),
-                com.example.argusac.compat.ServerVersion.isPaper() ? "Paper" : "Spigot"));
-        adapter.sendMessage(sender, "&7当前适配器实现: &f" + adapter.getClass().getSimpleName());
-        adapter.sendMessage(sender, "&8--------------------------------------------------");
+        I18n.send(sender, "command.compat.env",
+                "env", com.example.argusac.compat.ServerVersion.get().getFriendlyName(),
+                "code", com.example.argusac.compat.ServerVersion.getCode(),
+                "core", com.example.argusac.compat.ServerVersion.isPaper() ? "Paper" : "Spigot");
+        I18n.send(sender, "command.compat.adapter", "adapter", adapter.getClass().getSimpleName());
+        I18n.send(sender, "command.compat.divider");
 
         com.example.argusac.compat.CompatibilityManager compatMgr = plugin.getCompatibilityManager();
         compatMgr.getAllStatus().forEach((checkName, status) -> {
@@ -149,13 +149,13 @@ public class ArgusCommand implements CommandExecutor {
                     checkName, status.getDisplay(), reason));
         });
 
-        adapter.sendMessage(sender, "&8--------------------------------------------------");
-        adapter.sendMessage(sender, "&aFULL: 满血防护  &eDEGRADED: 几何/旧版平替  &cDISABLED: 机制缺失静默挂起");
+        I18n.send(sender, "command.compat.divider");
+        I18n.send(sender, "command.compat.legend");
     }
 
     private void handleVl(CommandSender sender, String label, String[] args) {
         if (args.length < 2) {
-            sender.sendMessage(ColorUtil.toComponent("&c用法: /" + label + " vl <玩家名>"));
+            I18n.send(sender, "command.vl.usage", "label", label);
             return;
         }
         Player target = Bukkit.getPlayer(args[1]);
@@ -250,7 +250,7 @@ public class ArgusCommand implements CommandExecutor {
                 I18n.sendPrefixed(sender, "command.export.success", "path", file.getAbsolutePath(), "count", file.length());
                 recordAdminAction(sender, "EXPORT", targetName, "SUCCESS");
             } else {
-                sender.sendMessage(ColorUtil.toComponent("&c导出日志失败，请查看控制台。"));
+                I18n.sendPrefixed(sender, "command.export.failed");
                 recordAdminAction(sender, "EXPORT", targetName, "FAILED");
             }
         });
@@ -268,10 +268,12 @@ public class ArgusCommand implements CommandExecutor {
             }
             int rank = 1;
             for (LogQueryService.TopRecord rec : list) {
-                sender.sendMessage(ColorUtil.toComponent(String.format(
-                        " &8[&6#%d&8] &b%-16s &7主要检测: &e%-10s &7总VL: &c%-4d &7回退拦截: &6%d 次",
-                        rank++, rec.player(), rec.mainCheck(), rec.totalVl(), rec.setbackCount()
-                )));
+                I18n.send(sender, "command.top.entry",
+                        "rank", rank++,
+                        "player", rec.player(),
+                        "check", rec.mainCheck(),
+                        "total_vl", rec.totalVl(),
+                        "setbacks", rec.setbackCount());
             }
         });
     }
@@ -287,20 +289,23 @@ public class ArgusCommand implements CommandExecutor {
         String flushTime = new SimpleDateFormat("HH:mm:ss").format(new Date(logMgr.getLastFlushTime()));
 
         I18n.send(sender, "command.status.header");
-        adapter.sendMessage(sender, "&7运行内核环境: &b" + com.example.argusac.compat.ServerVersion.get().getFriendlyName() + " &8(" + (com.example.argusac.compat.ServerVersion.isPaper() ? "Paper" : "Spigot") + ")");
-        adapter.sendMessage(sender, "&7活跃适配实现: &f" + adapter.getClass().getSimpleName());
+        I18n.send(sender, "command.status.env",
+                "env", com.example.argusac.compat.ServerVersion.get().getFriendlyName(),
+                "core", com.example.argusac.compat.ServerVersion.isPaper() ? "Paper" : "Spigot");
+        I18n.send(sender, "command.status.adapter", "adapter", adapter.getClass().getSimpleName());
 
         com.example.argusac.compat.CompatibilityManager compatMgr = plugin.getCompatibilityManager();
         if (compatMgr.hasDegradedModules()) {
-            adapter.sendMessage(sender, "&7版本降级状态: &e存在降级/挂起模块 &8(输入 &f/argus compat &8查看)");
+            I18n.send(sender, "command.status.degraded");
         } else {
-            adapter.sendMessage(sender, "&7版本降级状态: &a全模块完整原生支持 (Full Performance)");
+            I18n.send(sender, "command.status.full");
         }
 
         I18n.send(sender, "command.status.queue", "queue_size", backlog, "capacity", cap, "memory_count", (backlog > cap * 0.5 ? "偏高" : "健康"));
         I18n.send(sender, "command.status.chain", "chain_index", dropped, "hash", (hash != null ? hash.substring(0, Math.min(hash.length(), 16)) + "..." : "None"));
         I18n.send(sender, "command.status.archive", "archive_count", 0, "size", (size / 1024) + " KB");
-        adapter.sendMessage(sender, "&7最近落盘时间: &f" + flushTime + (dropped > 0 ? " &8(&c丢弃: " + dropped + "&8)" : ""));
+        String droppedHint = dropped > 0 ? " &8(&c丢弃: " + dropped + "&8)" : "";
+        I18n.send(sender, "command.status.flush-time", "time", flushTime, "dropped", droppedHint);
     }
 
     private void handleVerify(CommandSender sender) {
@@ -317,18 +322,19 @@ public class ArgusCommand implements CommandExecutor {
 
     private void handleDebug(CommandSender sender, String label, String[] args) {
         if (args.length < 2) {
-            sender.sendMessage(ColorUtil.toComponent("&c用法: /" + label + " debug <检测模块名>"));
+            I18n.send(sender, "command.debug.usage", "label", label);
             return;
         }
         String check = args[1];
         boolean active = plugin.getCheckDebugLogger().toggle(check);
-        sender.sendMessage(ColorUtil.toComponent("&7检测项 &b" + check + " &7独立调试日志: " + (active ? "&a已开启" : "&c已关闭")));
+        String statusStr = active ? "<green>ON</green>" : "<red>OFF</red>";
+        I18n.sendPrefixed(sender, "command.debug.result", "check", check, "status", statusStr);
         recordAdminAction(sender, "DEBUG_TOGGLE", check, active ? "ENABLED" : "DISABLED");
     }
 
     private void handleReplay(CommandSender sender, String label, String[] args) {
         if (args.length < 2) {
-            sender.sendMessage(ColorUtil.toComponent("&c用法: /" + label + " replay <玩家名> [--side]"));
+            I18n.send(sender, "command.replay.usage", "label", label);
             return;
         }
         String targetName = args[1];
@@ -338,7 +344,7 @@ public class ArgusCommand implements CommandExecutor {
 
         List<LogEntry> logs = plugin.getLogQueryService().queryMemoryLogs(uuid, null, 60_000L, false);
         if (logs.isEmpty()) {
-            sender.sendMessage(ColorUtil.toComponent("&c该玩家近期 60 秒内无可用移动轨迹数据。"));
+            I18n.sendPrefixed(sender, "command.replay.empty");
             return;
         }
 
@@ -403,7 +409,7 @@ public class ArgusCommand implements CommandExecutor {
                 I18n.sendPrefixed(sender, "command.setback.global-toggle", "status", "<red>OFF</red>");
                 recordAdminAction(sender, "SETBACK_GLOBAL", "global", "OFF");
             } else {
-                sender.sendMessage(ColorUtil.toComponent("&c参数错误，请使用 on 或 off"));
+                I18n.send(sender, "command.setback.param-error");
             }
             return;
         }
@@ -416,7 +422,7 @@ public class ArgusCommand implements CommandExecutor {
 
         PlayerData data = plugin.getPlayerManager().getPlayerData(target);
         if (data == null) {
-            sender.sendMessage(ColorUtil.toComponent("&c无法获取该玩家运行时数据。"));
+            I18n.send(sender, "command.setback.data-error");
             return;
         }
 
@@ -462,7 +468,7 @@ public class ArgusCommand implements CommandExecutor {
                     I18n.sendPrefixed(sender, "command.setback.triggered", "player", target.getName());
                     recordAdminAction(sender, "SETBACK_FORCE", target.getName(), "SUCCESS");
                 } else {
-                    sender.sendMessage(ColorUtil.toComponent("&c回退失败，该玩家暂无可用合法位置或目标已被阻挡。"));
+                    I18n.send(sender, "command.setback.fail-blocked");
                     recordAdminAction(sender, "SETBACK_FORCE", target.getName(), "FAILED");
                 }
             }

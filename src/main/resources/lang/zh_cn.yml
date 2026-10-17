@@ -1,4 +1,4 @@
-﻿# ==============================================================================
+# ==============================================================================
 # ArgusAC - Simplified Chinese Language File (zh_cn.yml)
 # Supports MiniMessage formatting (e.g. <red>, <bold>, <gradient:#55cdfc:#f7a8b8>)
 # as well as legacy color codes (e.g. &a, &c, &e, &#RRGGBB)
@@ -54,6 +54,7 @@ help:
 # Detailed command feedback messages
 command:
   vl:
+    usage: "<red>用法: /{label} vl <玩家名></red>"
     header: "<gradient:#00C9FF:#92FE9D>=== 玩家 {player} 当前违规信息 ===</gradient>"
     summary: "<gray>延迟 (Ping): <white>{ping}ms</white> <dark_gray>|</dark_gray> 总 VL: <red>{total_vl}</red>"
     clean: "<green>当前没有任何违规记录，状态良好！</green>"
@@ -70,15 +71,33 @@ command:
     usage: "<red>用法: /{label} export <玩家名></red>"
     exporting: "<gray>正在打包玩家 <yellow>{player}</yellow> 的审计历史数据...</gray>"
     success: "<green>导出完成！数据包已生成: <yellow>{path}</yellow> (共 {count} 条记录)</green>"
+    failed: "<red>导出日志失败，请查看控制台！</red>"
   top:
     header: "<gradient:#00C9FF:#92FE9D>=== 近期违规次数 TOP 10 榜单 ===</gradient>"
     empty: "<green>在此统计时间窗口内没有产生任何严重作弊违规记录！</green>"
-    entry: " <gold>#{rank}</gold> <yellow>{player}</yellow> <dark_gray>-</dark_gray> <red>{violations}</red> 次违规 <dark_gray>(</dark_gray><gray>峰值VL: <red>{peak_vl}</red></gray><dark_gray>)</dark_gray>"
+    entry: " <gold>#{rank}</gold> <yellow>{player}</yellow> <dark_gray>-</dark_gray> <gray>主要检测: <yellow>{check}</yellow></gray> <dark_gray>|</dark_gray> <gray>总VL: <red>{total_vl}</red></gray> <dark_gray>|</dark_gray> <gray>回退拦截: <gold>{setbacks} 次</gold></gray>"
   status:
     header: "<gradient:#00C9FF:#92FE9D>=== ArgusAC 统一审计与运行时健康指标 ===</gradient>"
+    env: "<gray>运行内核环境: <aqua>{env}</aqua> <dark_gray>({core})</dark_gray></gray>"
+    adapter: "<gray>活跃适配实现: <white>{adapter}</white></gray>"
+    degraded: "<gray>版本降级状态: <yellow>存在降级/挂起模块</yellow> <dark_gray>(输入 <white>/argus compat</white> 查看)</dark_gray></gray>"
+    full: "<gray>版本降级状态: <green>全模块完整原生支持 (Full Performance)</green></gray>"
     queue: "<gray>日志队列积压: <yellow>{queue_size}</yellow> / {capacity} <dark_gray>|</dark_gray> 内存违规条目: <yellow>{memory_count}</yellow></gray>"
     chain: "<gray>哈希链高度: <white>#{chain_index}</white> <dark_gray>|</dark_gray> 根哈希: <aqua>{hash}</aqua></gray>"
     archive: "<gray>历史归档文件数: <white>{archive_count}</white> <dark_gray>|</dark_gray> 存储占用: <white>{size}</white></gray>"
+    flush-time: "<gray>最近落盘时间: <white>{time}</white>{dropped}</gray>"
+  compat:
+    header: "<gradient:#00C9FF:#92FE9D>=== ArgusAC 跨版本运行兼容矩阵 ===</gradient>"
+    env: "<gray>当前服务器环境: <aqua>{env}</aqua> <dark_gray>(编码: <white>{code}</white>) | 核心: <dark_aqua>{core}</dark_aqua></gray>"
+    adapter: "<gray>当前适配器实现: <white>{adapter}</white></gray>"
+    divider: "<dark_gray>--------------------------------------------------</dark_gray>"
+    legend: "<green>FULL: 满血防护</green>  <yellow>DEGRADED: 几何/旧版平替</yellow>  <red>DISABLED: 机制缺失静默挂起</red>"
+  debug:
+    usage: "<red>用法: /{label} debug <检测模块名></red>"
+    result: "<gray>检测项 <aqua>{check}</aqua> 独立调试日志: {status}</gray>"
+  replay:
+    usage: "<red>用法: /{label} replay <玩家名> [--side]</red>"
+    empty: "<red>该玩家近期 60 秒内无可用移动轨迹数据。</red>"
   verify:
     running: "<yellow>正在后台多线程验证审计日志 SHA-256 哈希链签名，请稍候...</yellow>"
     success: "<green>哈希链审计验证通过！所有日志数据完整且未经任何外部篡改。</green>"
@@ -89,6 +108,9 @@ command:
     result: "<green>检测模块 <yellow>{check}</yellow> 状态已更新为: {status}</green>"
   setback:
     usage: "<red>用法: /{label} setback <玩家名|global> <disable|soft|hard|default|now|info></red>"
+    param-error: "<red>参数错误，请使用 on 或 off</red>"
+    data-error: "<red>无法获取该玩家运行时数据。</red>"
+    fail-blocked: "<red>回退失败，该玩家暂无可用合法位置或目标已被阻挡。</red>"
     info-header: "<gradient:#00C9FF:#92FE9D>=== 玩家 {player} 回退上下文诊断 ===</gradient>"
     info-detail: "<gray>单人覆写: <yellow>{override}</yellow> <dark_gray>|</dark_gray> 免疫剩余: <aqua>{immunity}ms</aqua> <dark_gray>|</dark_gray> 独立冷却: <yellow>{cooldown}</yellow></gray>"
     info-last: "<gray>最新有界合法点: <green>{last_loc}</green></gray>"

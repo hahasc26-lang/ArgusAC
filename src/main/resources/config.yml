@@ -1,4 +1,4 @@
-﻿# ==============================================================================
+# ==============================================================================
 # ArgusAC - Core Configuration File
 # Supports Spigot / Paper 1.12.2 ~ 1.21.x Multi-Version Architecture, Powered by Java 17
 # ==============================================================================
@@ -12,7 +12,7 @@ language:
   server-language: "en_us"
 
   # Client fallback language:
-  # Used when a player's client locale cannot be detected, or when their language file is missing (e.g. en_us).
+  # Used when a player's client locale cannot be detected, or when their language file is missing (e.g. en_us, zh_cn).
   client-default-language: "en_us"
 
   # Whether to automatically adapt messages based on each player's client language (true / false).

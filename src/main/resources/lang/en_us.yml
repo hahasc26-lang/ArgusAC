@@ -1,4 +1,4 @@
-﻿# ==============================================================================
+# ==============================================================================
 # ArgusAC - English Language File (en_us.yml)
 # Supports MiniMessage formatting (e.g. <red>, <bold>, <gradient:#55cdfc:#f7a8b8>)
 # as well as legacy color codes (e.g. &a, &c, &e, &#RRGGBB)
@@ -54,6 +54,7 @@ help:
 # Detailed command feedback messages
 command:
   vl:
+    usage: "<red>Usage: /{label} vl <player></red>"
     header: "<gradient:#00C9FF:#92FE9D>=== Violations for {player} ===</gradient>"
     summary: "<gray>Latency (Ping): <white>{ping}ms</white> <dark_gray>|</dark_gray> Total VL: <red>{total_vl}</red>"
     clean: "<green>No active violations recorded. Clean player!</green>"
@@ -70,15 +71,33 @@ command:
     usage: "<red>Usage: /{label} export <player></red>"
     exporting: "<gray>Packing audit data archive for <yellow>{player}</yellow>...</gray>"
     success: "<green>Export complete! Archive generated: <yellow>{path}</yellow> ({count} entries)</green>"
+    failed: "<red>Failed to export audit logs! Check console for details.</red>"
   top:
     header: "<gradient:#00C9FF:#92FE9D>=== Recent Top 10 Violations ===</gradient>"
     empty: "<green>No severe violation records generated within this time window!</green>"
-    entry: " <gold>#{rank}</gold> <yellow>{player}</yellow> <dark_gray>-</dark_gray> <red>{violations}</red> violations <dark_gray>(</dark_gray><gray>Peak VL: <red>{peak_vl}</red></gray><dark_gray>)</dark_gray>"
+    entry: " <gold>#{rank}</gold> <yellow>{player}</yellow> <dark_gray>-</dark_gray> <gray>Main: <yellow>{check}</yellow></gray> <dark_gray>|</dark_gray> <gray>Total VL: <red>{total_vl}</red></gray> <dark_gray>|</dark_gray> <gray>Setbacks: <gold>{setbacks}</gold></gray>"
   status:
     header: "<gradient:#00C9FF:#92FE9D>=== ArgusAC Audit & Runtime Health Status ===</gradient>"
+    env: "<gray>Server Runtime: <aqua>{env}</aqua> <dark_gray>({core})</dark_gray></gray>"
+    adapter: "<gray>Active Adapter: <white>{adapter}</white></gray>"
+    degraded: "<gray>Degradation Status: <yellow>Degraded / Suspended Modules Active</yellow> <dark_gray>(run <white>/argus compat</white> to view)</dark_gray></gray>"
+    full: "<gray>Degradation Status: <green>Full Performance Native Support</green></gray>"
     queue: "<gray>Audit queue backlog: <yellow>{queue_size}</yellow> / {capacity} <dark_gray>|</dark_gray> In-memory entries: <yellow>{memory_count}</yellow></gray>"
     chain: "<gray>Hash chain height: <white>#{chain_index}</white> <dark_gray>|</dark_gray> Root hash: <aqua>{hash}</aqua></gray>"
     archive: "<gray>Archived log files: <white>{archive_count}</white> <dark_gray>|</dark_gray> Storage footprint: <white>{size}</white></gray>"
+    flush-time: "<gray>Last Flush: <white>{time}</white>{dropped}</gray>"
+  compat:
+    header: "<gradient:#00C9FF:#92FE9D>=== ArgusAC Cross-Version Compatibility Matrix ===</gradient>"
+    env: "<gray>Environment: <aqua>{env}</aqua> <dark_gray>(Code: <white>{code}</white>) | Core: <dark_aqua>{core}</dark_aqua></gray>"
+    adapter: "<gray>Adapter Implementation: <white>{adapter}</white></gray>"
+    divider: "<dark_gray>--------------------------------------------------</dark_gray>"
+    legend: "<green>FULL: Native Protection</green>  <yellow>DEGRADED: Geometric / Legacy Fallback</yellow>  <red>DISABLED: Suspended</red>"
+  debug:
+    usage: "<red>Usage: /{label} debug <check_name></red>"
+    result: "<gray>Check <aqua>{check}</aqua> debug telemetry: {status}</gray>"
+  replay:
+    usage: "<red>Usage: /{label} replay <player> [--side]</red>"
+    empty: "<red>No trajectory data available in the last 60 seconds for this player.</red>"
   verify:
     running: "<yellow>Verifying audit log SHA-256 hash chain signatures in background, please wait...</yellow>"
     success: "<green>Hash chain audit passed! All log entries are intact with zero tampering.</green>"
@@ -89,6 +108,9 @@ command:
     result: "<green>Check module <yellow>{check}</yellow> state updated to: {status}</green>"
   setback:
     usage: "<red>Usage: /{label} setback <player|global> <disable|soft|hard|default|now|info></red>"
+    param-error: "<red>Invalid parameter! Please use on or off.</red>"
+    data-error: "<red>Cannot retrieve runtime data for this player.</red>"
+    fail-blocked: "<red>Setback failed: no valid location available or destination is obstructed.</red>"
     info-header: "<gradient:#00C9FF:#92FE9D>=== Setback Diagnostics for {player} ===</gradient>"
     info-detail: "<gray>Override: <yellow>{override}</yellow> <dark_gray>|</dark_gray> Remaining immunity: <aqua>{immunity}ms</aqua> <dark_gray>|</dark_gray> Cooldown: <yellow>{cooldown}</yellow></gray>"
     info-last: "<gray>Latest bounded valid location: <green>{last_loc}</green></gray>"

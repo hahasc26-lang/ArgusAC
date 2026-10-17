@@ -79,7 +79,7 @@ public class AlertManager {
         String checkType = (checkObj != null) ? checkObj.getType().name() : "OTHER";
 
         for (Player admin : Bukkit.getOnlinePlayers()) {
-            if (admin.hasPermission("ArgusAC.alert") && !isMuted(admin)) {
+            if ((admin.hasPermission("argusac.alert") || admin.hasPermission("ArgusAC.alert")) && !isMuted(admin)) {
                 // 基于每个管理员的客户端语言偏好渲染警报文本
                 Component baseComponent = I18n.component(admin, "alert.format",
                         "player", cheater.getName(),
@@ -126,7 +126,7 @@ public class AlertManager {
     public void broadcastAdmin(String message) {
         Component comp = ColorUtil.toComponent(message);
         for (Player admin : Bukkit.getOnlinePlayers()) {
-            if (admin.hasPermission("ArgusAC.alert") && !isMuted(admin)) {
+            if ((admin.hasPermission("argusac.alert") || admin.hasPermission("ArgusAC.alert")) && !isMuted(admin)) {
                 admin.sendMessage(comp);
             }
         }

@@ -202,7 +202,7 @@ public class ArgusACPlugin extends JavaPlugin {
         if (player == null) {
             return true;
         }
-        if (player.hasPermission("ArgusAC.bypass")) {
+        if (player.hasPermission("argusac.bypass") || player.hasPermission("ArgusAC.bypass")) {
             return true;
         }
         boolean bypassCreative = getConfig().getBoolean("settings.bypass-creative", true);

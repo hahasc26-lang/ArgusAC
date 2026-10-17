@@ -262,7 +262,7 @@ public class AuditLogManager {
             String msg = String.format("§c[ArgusAC 警告] 审计日志队列积压已达 %d/%d (%.1f%%)！请注意磁盘 I/O！",
                     size, queueCapacity, (size * 100.0 / queueCapacity));
             Bukkit.getOnlinePlayers().stream()
-                    .filter(p -> p.hasPermission("ArgusAC.alert"))
+                    .filter(p -> p.hasPermission("argusac.alert") || p.hasPermission("ArgusAC.alert"))
                     .filter(p -> !plugin.getAlertManager().isMuted(p))
                     .forEach(p -> p.sendMessage(msg));
             plugin.getLogger().warning(msg);

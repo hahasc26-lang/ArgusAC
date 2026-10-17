@@ -34,17 +34,20 @@ public class ArgusTabCompleter implements TabCompleter {
 
     @Override
     public List<String> onTabComplete(CommandSender sender, Command command, String alias, String[] args) {
-        if (!sender.hasPermission("ArgusAC.admin")) {
+        boolean hasAdmin = sender.hasPermission("argusac.admin") || sender.hasPermission("ArgusAC.admin");
+        boolean hasAlert = sender.hasPermission("argusac.alert") || sender.hasPermission("ArgusAC.alert");
+
+        if (!hasAdmin) {
             if (args.length == 1) {
                 List<String> available = new ArrayList<>(Arrays.asList("help", "my-data"));
-                if (sender.hasPermission("ArgusAC.alert")) {
+                if (hasAlert) {
                     available.add("alerts");
                 }
                 return available.stream()
                         .filter(sub -> sub.startsWith(args[0].toLowerCase()))
                         .collect(Collectors.toList());
             }
-            if (sender.hasPermission("ArgusAC.alert") && args.length == 2
+            if (hasAlert && args.length == 2
                     && "alerts".equalsIgnoreCase(args[0])) {
                 return Arrays.asList("on", "off", "status").stream()
                         .filter(action -> action.startsWith(args[1].toLowerCase()))

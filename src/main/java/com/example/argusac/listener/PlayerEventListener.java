@@ -96,6 +96,9 @@ public class PlayerEventListener implements Listener {
 
         plugin.getPlayerManager().removePlayerData(player.getUniqueId());
         plugin.getAlertManager().clearSessionState(player);
+        if (plugin.getLanguageManager() != null) {
+            plugin.getLanguageManager().invalidateCache(player.getUniqueId());
+        }
     }
 
     @EventHandler(priority = EventPriority.MONITOR)

@@ -54,6 +54,8 @@ public class LanguageManager {
     private final Map<String, FileConfiguration> languageConfigs = new ConcurrentHashMap<>();
     // Jar 内置语言默认配置缓存 (用于 key 级热补全回退)
     private final Map<String, FileConfiguration> defaultConfigs = new ConcurrentHashMap<>();
+    // 玩家 UUID -> 解析后语言代码缓存
+    private final Map<UUID, String> playerLocaleCache = new ConcurrentHashMap<>();
 
     // 传统 Hex 颜色匹配正则: &#RRGGBB 或 &#rrggbb
     private static final Pattern HEX_COLOR_PATTERN = Pattern.compile("&#([0-9a-fA-F]{6})");
@@ -98,6 +100,7 @@ public class LanguageManager {
     public synchronized void reload() {
         this.languageConfigs.clear();
         this.defaultConfigs.clear();
+        this.playerLocaleCache.clear();
 
         // 1. 读取主配置文件 config.yml 中的 i18n 设定
         FileConfiguration config = plugin.getConfig();
@@ -240,12 +243,18 @@ public class LanguageManager {
     }
 
     /**
-     * 查询玩家客户端设置的语言代码并标准化
+     * 查询玩家客户端设置的语言代码并标准化 (带本地缓存，提高高频调用吞吐量)
      * 支持 Paper 原生 Adventure API，跨版本向下兼容 Spigot
      */
     public String getPlayerLocale(Player player) {
         if (player == null) {
             return clientDefaultLanguage;
+        }
+
+        UUID uuid = player.getUniqueId();
+        String cached = playerLocaleCache.get(uuid);
+        if (cached != null) {
+            return cached;
         }
 
         String rawLocale = null;
@@ -279,24 +288,37 @@ public class LanguageManager {
         }
 
         String normalized = normalizeLanguageCode(rawLocale);
+        String resolved = null;
 
         // 精确匹配 (例如 zh_cn)
         if (languageConfigs.containsKey(normalized)) {
-            return normalized;
-        }
-
-        // 模糊前缀降级：如玩家客户端是 zh_tw 或 zh_hk，匹配首个 zh 开头的语言包
-        if (normalized.contains("_")) {
+            resolved = normalized;
+        } else if (normalized.contains("_")) {
+            // 模糊前缀降级：如玩家客户端是 zh_tw 或 zh_hk，匹配首个 zh 开头的语言包
             String prefix = normalized.substring(0, normalized.indexOf('_'));
             for (String code : languageConfigs.keySet()) {
                 if (code.startsWith(prefix)) {
-                    return code;
+                    resolved = code;
+                    break;
                 }
             }
         }
 
-        // 最终返回客户端回退语言
-        return languageConfigs.containsKey(clientDefaultLanguage) ? clientDefaultLanguage : serverLanguage;
+        if (resolved == null) {
+            resolved = languageConfigs.containsKey(clientDefaultLanguage) ? clientDefaultLanguage : serverLanguage;
+        }
+
+        playerLocaleCache.put(uuid, resolved);
+        return resolved;
+    }
+
+    /**
+     * 清理指定玩家的语言缓存 (在玩家切换客户端语言或退出时调用)
+     */
+    public void invalidateCache(UUID uuid) {
+        if (uuid != null) {
+            playerLocaleCache.remove(uuid);
+        }
     }
 
     /**
