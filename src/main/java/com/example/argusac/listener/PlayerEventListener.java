@@ -249,6 +249,7 @@ public class PlayerEventListener implements Listener {
         }
     }
 
+    @SuppressWarnings("deprecation")
     @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = true)
     public void onPlayerMove(PlayerMoveEvent event) {
         Player player = event.getPlayer();
@@ -282,6 +283,10 @@ public class PlayerEventListener implements Listener {
 
         // 鲁棒多点与方块材质物理碰撞接地判定 (消除地毯、雪片、台阶、方块边缘悬空误判)
         boolean onGround = isGrounded(player, to);
+        // 如果客户端声明离地且正在垂直向上起跳/升空，决不可标记为接地状态
+        if (!player.isOnGround() && (to.getY() - from.getY()) > 0.05) {
+            onGround = false;
+        }
         data.setOnGround(onGround);
 
         // 冰面与粘液块滑行惯性追踪 (离开冰面后维持 25 tick 惯性记忆，彻底消除跳出冰面误报 Speed)
@@ -304,7 +309,7 @@ public class PlayerEventListener implements Listener {
         // 1. 数据包完整性与异常角度检测 (即使仅原地旋转视角也必须拦截非法 Pitch/NaN)
         checkManager.getBadPacketsCheck().handleMove(player, data, event);
         if (event.isCancelled() || hasSetbackOccurred(originalTo, event.getTo())) {
-            data.setToLocation(event.getTo());
+            handleSetbackOrCancellation(data, event.isCancelled() ? from : event.getTo());
             return;
         }
 
@@ -318,28 +323,28 @@ public class PlayerEventListener implements Listener {
             // 滑翔状态由 ElytraFly 集中全面接管 (包含 ElytraSpeed, ElytraAscend, ElytraHover, ElytraTimer 等)
             checkManager.getElytraFlyCheck().handleMove(player, data, event);
             if (event.isCancelled() || hasSetbackOccurred(originalTo, event.getTo())) {
-                data.setToLocation(event.getTo());
+                handleSetbackOrCancellation(data, event.isCancelled() ? from : event.getTo());
                 return;
             }
         } else {
             // 2. 移动速度检测
             checkManager.getSpeedCheck().handleMove(player, data, event);
             if (event.isCancelled() || hasSetbackOccurred(originalTo, event.getTo())) {
-                data.setToLocation(event.getTo());
+                handleSetbackOrCancellation(data, event.isCancelled() ? from : event.getTo());
                 return;
             }
 
             // 3. 飞行与非法滞空检测
             checkManager.getFlyCheck().handleMove(player, data, event);
             if (event.isCancelled() || hasSetbackOccurred(originalTo, event.getTo())) {
-                data.setToLocation(event.getTo());
+                handleSetbackOrCancellation(data, event.isCancelled() ? from : event.getTo());
                 return;
             }
 
             // 4. 虚假落地检测
             checkManager.getNoFallCheck().handleMove(player, data, event);
             if (event.isCancelled() || hasSetbackOccurred(originalTo, event.getTo())) {
-                data.setToLocation(event.getTo());
+                handleSetbackOrCancellation(data, event.isCancelled() ? from : event.getTo());
                 return;
             }
         }
@@ -347,12 +352,21 @@ public class PlayerEventListener implements Listener {
         // 5. 背包移动检测
         checkManager.getInventoryMoveCheck().handleMove(player, data, event);
         if (event.isCancelled() || hasSetbackOccurred(originalTo, event.getTo())) {
-            data.setToLocation(event.getTo());
+            handleSetbackOrCancellation(data, event.isCancelled() ? from : event.getTo());
             return;
         }
 
         // 6. 击退位移追踪
         checkManager.getVelocityCheck().handleMove(player, data, event);
+    }
+
+    private void handleSetbackOrCancellation(PlayerData data, Location finalLoc) {
+        if (finalLoc != null) {
+            data.setToLocation(finalLoc);
+            if (data.getPhysicsState() != null) {
+                data.getPhysicsState().reset(finalLoc);
+            }
+        }
     }
 
     private boolean hasSetbackOccurred(Location origTo, Location currentTo) {
@@ -482,14 +496,15 @@ public class PlayerEventListener implements Listener {
         };
 
         for (double[] p : points) {
-            Location checkLoc = new Location(world, x + p[0], y - 0.1, z + p[1]);
+            Location checkLoc = new Location(world, x + p[0], y - 0.05, z + p[1]);
             Block b = checkLoc.getBlock();
             if (adapter.isStandable(b)) {
                 return true;
             }
-            // 稍深一层容差 (针对下半砖、雪片堆叠及下坡)
-            Block under = checkLoc.clone().subtract(0, 0.45, 0).getBlock();
-            if (adapter.isStandable(under)) {
+            // 针对栅栏 (Fence) 与石墙 (Wall)：碰撞箱高 1.5 格，脚下方块在 y - 0.6 处
+            Block fenceBlock = checkLoc.clone().subtract(0, 0.55, 0).getBlock();
+            String name = fenceBlock.getType().name();
+            if (name.contains("FENCE") || name.contains("WALL") || name.contains("BAMBOO")) {
                 return true;
             }
         }

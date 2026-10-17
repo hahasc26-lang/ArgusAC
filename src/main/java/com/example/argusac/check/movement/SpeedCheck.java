@@ -124,6 +124,11 @@ public class SpeedCheck extends AbstractCheck {
             allowedLimit *= 1.35;
         }
 
+        // 疾跑跳跃与起跳瞬时冲量宽容：原版疾跑跳跃在起跳瞬间及斜向下坡机动时瞬时水平分量可达到 0.65+
+        if (player.isSprinting() || !data.isOnGround() || (to.getY() - from.getY()) > 0.05) {
+            allowedLimit *= 1.15;
+        }
+
         // 3. 空中加速度反常检测 (Mid-Air Acceleration / BHop)
         // 关键修复：排除疾跑跳跃起跳初期 (airTicks <= 5) 原版跳跃给予的合法 0.2 水平冲量加速区间，
         // 以及冰面滑行起跳后的长程惯性

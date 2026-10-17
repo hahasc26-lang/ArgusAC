@@ -297,7 +297,7 @@ checks:
     # Speed potion bonus multiplier per potion amplifier level
     speed-potion-multiplier: 0.20
     # Violation buffer capacity to absorb single-tick packet jitters and network burst
-    speed-buffer-max: 0.25
+    speed-buffer-max: 0.35
     # Buffer decay per legitimate tick
     speed-buffer-decay: 0.05
 

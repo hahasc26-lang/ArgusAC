@@ -95,9 +95,11 @@ public class ViolationManager {
                         player, check, currentVl, details, moveEvent
                 );
             } else if (plugin.getSetbackManager().isCheckOnCooldown(player.getUniqueId(), check.getName())) {
-                // P2 改法：处于回退冷却期间连续违规，若存在移动事件，优先取消当前非法移动，防止作弊者借冷却缝隙位移
-                if (moveEvent != null && moveEvent.getFrom() != null) {
-                    moveEvent.setTo(moveEvent.getFrom());
+                // P2 改法：处于回退冷却期间连续违规，若存在移动事件，优先锁定至最后合法落点，防止作弊者借冷却缝隙位移
+                if (moveEvent != null) {
+                    com.example.argusac.model.LegitimateLocation lastLegit = plugin.getSetbackManager().getLastLocation(player.getUniqueId());
+                    org.bukkit.Location cancelLoc = (lastLegit != null && lastLegit.toLocation() != null) ? lastLegit.toLocation() : moveEvent.getFrom();
+                    moveEvent.setTo(cancelLoc);
                     defaultPunishmentTriggered = true;
                     logMode = "COOLDOWN_CANCEL";
                 } else {

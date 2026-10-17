@@ -67,7 +67,7 @@ public class FlyCheck extends AbstractCheck {
         double deltaY = to.getY() - from.getY();
 
         // 检查是否接触爬梯、藤蔓、脚手架、蜘蛛网、水等缓冲方块
-        if (isInClimbableOrLiquid(player, adapter)) {
+        if (isInClimbableOrLiquid(player, adapter, from, to)) {
             data.setAirTicks(0);
             return;
         }
@@ -83,8 +83,8 @@ public class FlyCheck extends AbstractCheck {
             }
         }
 
-        // 检查脚下及周围是否有可支撑方块
-        boolean hasGroundNear = hasBlockBelow(from, adapter);
+        // 检查脚下及周围是否有物理支撑面
+        boolean hasGroundNear = data.isOnGround() || hasBlockBelow(from, adapter) || hasBlockBelow(to, adapter);
 
         if (!hasGroundNear) {
             data.incrementAirTicks();
@@ -99,29 +99,54 @@ public class FlyCheck extends AbstractCheck {
                 return;
             }
 
-            // 2. 长时间悬空滞空检测 (Hover)
-            if (airTicks > maxAirTicks && Math.abs(deltaY) < 0.08) {
-                flag(player, 1, String.format("Hover airTicks=%d, deltaY=%.3f", airTicks, deltaY), event);
+            // 2. 长时间悬空滞空检测 (Hover) - 原版跳跃在最高点滞留通常 <= 2 tick，悬空滞留达到阈值 (默认 <= 6 tick) 判定为浮空
+            int hoverThreshold = Math.min(maxAirTicks, 6);
+            if (airTicks > hoverThreshold && Math.abs(deltaY) < 0.08
+                    && !adapter.hasPotionEffect(player, CompatPotionType.SLOW_FALLING)
+                    && !adapter.hasPotionEffect(player, CompatPotionType.LEVITATION)) {
+                flag(player, 2, String.format("Hover airTicks=%d, deltaY=%.3f", airTicks, deltaY), event);
+                return;
             }
 
-            // 3. 凌空踩空气行走 (AirWalk / 平飞外挂)：滞空且无缓降药水下，垂直位移完全为 0
-            if (airTicks > 8 && Math.abs(deltaY) < 0.005 && !adapter.hasPotionEffect(player, CompatPotionType.SLOW_FALLING)) {
+            // 3. 凌空踩空气行走 (AirWalk / 平飞外挂)：滞空且无缓降药水下，垂直位移接近 0
+            if (airTicks > 3 && Math.abs(deltaY) < 0.005
+                    && !adapter.hasPotionEffect(player, CompatPotionType.SLOW_FALLING)
+                    && !adapter.hasPotionEffect(player, CompatPotionType.LEVITATION)) {
                 flag(player, 2, String.format("AirWalk airTicks=%d, deltaY=%.4f", airTicks, deltaY), event);
+                return;
+            }
+
+            // 4. 空中快速水平飞行检测 (Fast Fly)：无激流/飘浮下，滞空中水平高速位移且不发生正常重力下坠
+            double hDist = com.example.argusac.util.MathUtil.getHorizontalDistance(from, to);
+            if (airTicks > 3 && deltaY >= -0.05 && hDist > 0.35
+                    && !adapter.isRiptiding(player)
+                    && !adapter.hasPotionEffect(player, CompatPotionType.LEVITATION)) {
+                flag(player, 2, String.format("FastFly airTicks=%d, deltaY=%.3f, hDist=%.3f", airTicks, deltaY, hDist), event);
+                return;
             }
         } else {
             data.setAirTicks(0);
         }
     }
 
-    private boolean isInClimbableOrLiquid(Player player, VersionAdapter adapter) {
-        Location loc = player.getLocation();
-        Block b = loc.getBlock();
-        return adapter.isClimbable(b) || adapter.isLiquid(b);
+    private boolean isInClimbableOrLiquid(Player player, VersionAdapter adapter, Location from, Location to) {
+        Location[] locs = {player.getLocation(), from, to};
+        for (Location l : locs) {
+            if (l != null && l.getWorld() != null) {
+                Block feet = l.getBlock();
+                Block head = l.clone().add(0, 1.0, 0).getBlock();
+                if (adapter.isClimbable(feet) || adapter.isLiquid(feet)
+                        || adapter.isClimbable(head) || adapter.isLiquid(head)) {
+                    return true;
+                }
+            }
+        }
+        return false;
     }
 
     private boolean hasBlockBelow(Location loc, VersionAdapter adapter) {
         Location checkLoc = loc.clone();
-        for (double yOffset = -0.1; yOffset >= -1.0; yOffset -= 0.3) {
+        for (double yOffset = -0.05; yOffset >= -0.25; yOffset -= 0.1) {
             Block b = checkLoc.clone().add(0, yOffset, 0).getBlock();
             if (adapter.isStandable(b)) {
                 return true;

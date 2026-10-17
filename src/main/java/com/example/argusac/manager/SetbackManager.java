@@ -410,9 +410,14 @@ public class SetbackManager implements Listener {
         final LegitimateLocation finalTarget = target;
         final boolean finalUsedFallback = usedFallback;
 
+        // 核心加固：无论 SOFT 还是 HARD 模式，若存在 moveEvent，必须在事件内立即强行修正目标点为 targetLocation！
+        // 杜绝 Spigot 底层在当帧继续采纳非法目标点，彻底阻断飞行/瞬移等非法位移偷跑
+        if (moveEvent != null && !player.isInsideVehicle()) {
+            moveEvent.setTo(targetLocation);
+        }
+
         if ("SOFT".equalsIgnoreCase(effectiveMode) && moveEvent != null && !player.isInsideVehicle()) {
             // SOFT 模式：直接在事件内修正终点
-            moveEvent.setTo(targetLocation);
             context.setLastLegitimateLocation(finalTarget);
             postSetbackSuccess(player, context, check.getName(), currentVl, reason, "SOFT", fromLocStr, toLocStr, finalUsedFallback);
             return true;

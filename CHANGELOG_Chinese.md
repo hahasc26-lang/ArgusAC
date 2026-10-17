@@ -5,6 +5,24 @@
 格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.0.0/)，
 并遵循 [语义化版本规范](https://semver.org/lang/zh-CN/)。
 
+## [1.1.2] - 2026-10-17
+
+### 修复与增强 (边跳边走与连续跳跃 Speed 误报根治)
+
+- **边跳边走与疾跑跳跃物理预测引擎误报根治**：
+  - 修复 `PlayerEventListener.isGrounded` 物理底面深层向下探测容差过大 (`y - 0.55`)，导致玩家起跳上升期 (`deltaY > 0.05`) 依然被误判为“处于地面”的根本缺陷。该误判导致 `DeterministicMovePredictor` 丢失原版疾跑起跳必须赋予的 `0.20` 水平视角冲量，从而引发极大的水平拟合残差，导致连续跳跃时持续触发 `Speed` 误报回退。
+  - 针对栅栏 (Fence)、石墙 (Wall) 与竹子等 1.5 格高方块设立专属识别判定，常规地面方块物理检测严格收敛在脚底 `0.05` 格内。
+  - 在 `DeterministicMovePredictor` 中引入起跳瞬时动量衰减连贯性机制：起跳后的首个空中 Tick (`jumpedLastTick`) 保留地面摩擦力 (`blockFriction * 0.91`) 候选计算，严格契合 Minecraft 原版 `travel()` 运动方程的物理结算时序。
+  - 垂直运动预测中增加落地即跳跃 (连续跳跃 Bunny Hop) 的起跳初始垂直速度候选，杜绝连跳落地帧残差累积。
+  - 引入移动取消与回退后的物理状态机重锚定机制 (`handleSetbackOrCancellation`)，彻底消除 SOFT 模式取消移动或同位置回退后，下一帧产生的巨大幽灵位移残差。
+  - 动态适配自定义 `walkSpeed` 与 `GENERIC_MOVEMENT_SPEED` 属性，消除非默认移动速度玩家被错误判定为微速作弊的缺陷。
+  - 爬梯、藤蔓与蜘蛛网由单点脚底探测升级为脚底+上半身双层空间探测，彻底杜绝头部接触蜘蛛网或挂梯时因判定未接触引发的误报。
+- **飞行短时快速位移拦截与回退零延迟生效 (Zero-Tick Mitigation)**：
+  - 根治 HARD 模式回退仅下发 `player.teleport` 却遗漏当帧同步重写 `moveEvent.setTo(targetLocation)` 的致命延迟漏洞。此漏洞曾导致 Spigot 底层在当帧依然采纳作弊非法终点，致使作弊者可偷跑 5~10 格位移。现已实现当帧物理位移立即归零阻断。
+  - 回退冷却期间如果作弊者继续强行发包移动，由原本重定向至已被污染的 `from` 升级为强行锁定至 `lastLegitimateLocation`，彻底封死冷却期位移缝隙。
+  - 修复 `FlyCheck.hasBlockBelow` 向下过度深探 (1.0 格) 导致贴地 0.5~0.8 格平飞时 `airTicks` 被恶意清零的漏洞，探测深度收紧至真实落足支撑层。
+  - 浮空与平飞检测时效大幅收紧 (Hover 由 25 tick 缩至 6 tick，AirWalk 由 8 tick 缩至 3 tick)，并新增滞空快速水平平飞检测 (`FastFly`)，将飞行作弊响应拦截时间由 1.25 秒压缩至 0.15 秒 (3 tick 毫秒级秒锁)。
+
 ## [1.1.1] - 2026-10-17
 
 ### 修复与增强 (战斗防御响应强化与移动误报彻底消灭)

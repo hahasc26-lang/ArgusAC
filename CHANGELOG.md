@@ -5,6 +5,24 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.1.2] - 2026-10-17
+
+### Fixed & Enhanced (Jump-Walk & Bunny-Hop Speed False-Positive Fix)
+
+- **Jump-walk & Sprint-jump physics prediction false-positive fix**:
+  - Fixed an issue in `PlayerEventListener.isGrounded` where deep sampling (`y - 0.55`) falsely marked players as grounded during the ascent phase of a jump (`deltaY > 0.05`), which deprived `DeterministicMovePredictor` of vanilla jump impulse (`0.20`), causing massive residual breaches and repeated false flags on `Speed`.
+  - Added specialized height detection for fences, walls, and bamboo (`1.5` block height), while restricting standard ground sampling to within `0.05` blocks below feet.
+  - Implemented jump-momentum friction continuity in `DeterministicMovePredictor`: preserved ground friction (`blockFriction * 0.91`) on the first tick following a takeoff (`jumpedLastTick`), accurately aligning with vanilla Minecraft's momentum decay equations.
+  - Added continuous jumping (bunny-hop) takeoff candidate support in vertical prediction on landing frames.
+  - Implemented physics state machine re-anchoring on move cancellation and setback (`handleSetbackOrCancellation`), completely eliminating massive phantom displacement residuals on the subsequent tick after in-place cancellations or soft setbacks.
+  - Dynamically resolved custom `walkSpeed` and `GENERIC_MOVEMENT_SPEED` attributes, ensuring non-default player walk speeds are properly recognized.
+  - Upgraded cobweb, ladder, and vine collision sampling to cover both feet and upper-body spaces across `from` and `to` locations.
+- **Flight fast-travel interception & zero-tick setback mitigation**:
+  - Eliminated a fatal delay vulnerability in HARD setback mode where only `player.teleport` was dispatched without synchronously rewriting `moveEvent.setTo(targetLocation)` in the active event tick. This previously allowed Spigot's underlying pipeline to accept illegal movement targets on the event frame, giving cheaters a 5–10 block burst travel window before network packets landed. Displacement is now physically zeroed within the exact same frame.
+  - Hardened setback cooldown enforcement: during active cooldown periods, any continuous illegal movement packets are now forced to anchor to `lastLegitimateLocation` instead of the tainted `from` location, completely closing movement slip gaps.
+  - Fixed an excessive downward depth scan (`1.0` blocks) in `FlyCheck.hasBlockBelow` that falsely zeroed `airTicks` during low-altitude glide cheats (`0.5–0.8` blocks above ground), narrowing physical ground checks strictly to the actual supporting layer.
+  - Sharpened float detection windows (Hover threshold compressed from 25 ticks to 6 ticks, AirWalk compressed from 8 ticks to 3 ticks), and introduced a dedicated `FastFly` check to intercept horizontal flight without gravity drop, compressing flight response time from 1.25s down to 0.15s (sub-second instant lock).
+
 ## [1.1.1] - 2026-10-17
 
 ### Fixed & Enhanced (Combat & Movement False-Positive Elimination)

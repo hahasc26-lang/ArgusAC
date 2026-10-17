@@ -139,8 +139,9 @@ public class DeterministicMovePredictor {
         boolean inLiquid = adapter.isInWater(player);
         boolean inWeb = isBlockInWeb(currentLoc);
 
-        // 2. 计算玩家的基础速度与药水修饰符
-        double baseSpeed = 0.10;
+        // 2. 计算玩家的基础速度与药水修饰符 (动态支持属性加成与 walkSpeed 技能/指令修改)
+        double defaultWalkSpeedFactor = player.getWalkSpeed() / 0.20;
+        double baseSpeed = adapter.getAttributeValue(player, com.example.argusac.compat.CompatAttribute.GENERIC_MOVEMENT_SPEED, 0.10) * defaultWalkSpeedFactor;
         int speedAmp = adapter.getPotionAmplifier(player, CompatPotionType.SPEED);
         if (speedAmp >= 0) {
             baseSpeed *= (1.0 + 0.20 * (speedAmp + 1));
@@ -172,7 +173,17 @@ public class DeterministicMovePredictor {
         double prevVz = state.getPrevVz();
 
         // 地面摩擦因子与空中阻力因子
-        double frictionH = state.wasOnGround() ? (blockFriction * 0.91) : 0.91;
+        // 关键物理：若上一 tick 处于地面或发生起跳，上一 tick 末尾结算时乘算的是地面摩擦力 (blockFriction * 0.91)，
+        // 故在空中第 1 tick 推进时须包含地面摩擦力候选，消除起跳后首个空中帧误报残差
+        double groundFriction = blockFriction * 0.91;
+        double[] candidateFrictions;
+        if (state.wasOnGround() || state.isJumpedLastTick()) {
+            candidateFrictions = new double[]{groundFriction, 0.91};
+        } else {
+            candidateFrictions = new double[]{0.91};
+        }
+
+        boolean isJumpTick = state.wasOnGround() && !clientOnGround && deltaY > 0.05;
 
         // 枚举水平按键与机动状态空间
         for (double[] input : INPUT_VECTORS) {
@@ -181,59 +192,59 @@ public class DeterministicMovePredictor {
 
             for (boolean sprint : sprintStates) {
                 for (boolean sneak : sneakStates) {
-                    double currentMoveSpeed = baseSpeed;
-                    if (sprint) {
-                        currentMoveSpeed *= 1.30;
-                    }
-                    if (sneak) {
-                        currentMoveSpeed *= 0.30;
-                    }
-
-                    // 计算加速度
-                    double accH;
-                    if (state.wasOnGround()) {
-                        accH = currentMoveSpeed * (0.16277136 / (frictionH * frictionH * frictionH));
-                    } else {
-                        accH = sprint ? 0.026 : 0.020;
-                    }
-
-                    double strafeAcc = strafe;
-                    double forwardAcc = forward;
-                    double distInput = Math.sqrt(strafe * strafe + forward * forward);
-                    if (distInput >= 0.01) {
-                        strafeAcc = (strafe / distInput) * accH;
-                        forwardAcc = (forward / distInput) * accH;
-                    }
-
-                    // 投影至世界坐标
-                    double ax = strafeAcc * cosYaw - forwardAcc * sinYaw;
-                    double az = forwardAcc * cosYaw + strafeAcc * sinYaw;
-
-                    // 若从地面起跳，疾跑起跳额外获得沿视角的冲量
-                    double jumpBonusX = 0.0;
-                    double jumpBonusZ = 0.0;
-                    if (state.wasOnGround() && !clientOnGround && deltaY > 0.1) {
+                    for (double frictionH : candidateFrictions) {
+                        double currentMoveSpeed = baseSpeed;
                         if (sprint) {
+                            currentMoveSpeed *= 1.30;
+                        }
+                        if (sneak) {
+                            currentMoveSpeed *= 0.30;
+                        }
+
+                        // 计算加速度
+                        double accH;
+                        if (state.wasOnGround()) {
+                            accH = currentMoveSpeed * (0.16277136 / (frictionH * frictionH * frictionH));
+                        } else {
+                            accH = sprint ? 0.026 : 0.020;
+                        }
+
+                        double strafeAcc = strafe;
+                        double forwardAcc = forward;
+                        double distInput = Math.sqrt(strafe * strafe + forward * forward);
+                        if (distInput >= 0.01) {
+                            strafeAcc = (strafe / distInput) * accH;
+                            forwardAcc = (forward / distInput) * accH;
+                        }
+
+                        // 投影至世界坐标
+                        double ax = strafeAcc * cosYaw - forwardAcc * sinYaw;
+                        double az = forwardAcc * cosYaw + strafeAcc * sinYaw;
+
+                        // 若从地面起跳，疾跑起跳额外获得沿视角的冲量 (0.2)
+                        double jumpBonusX = 0.0;
+                        double jumpBonusZ = 0.0;
+                        if (isJumpTick && sprint) {
                             jumpBonusX = -sinYaw * 0.2;
                             jumpBonusZ = cosYaw * 0.2;
                         }
-                    }
 
-                    double candVx = prevVx * frictionH + ax + jumpBonusX;
-                    double candVz = prevVz * frictionH + az + jumpBonusZ;
+                        double candVx = prevVx * frictionH + ax + jumpBonusX;
+                        double candVz = prevVz * frictionH + az + jumpBonusZ;
 
-                    // 蜘蛛网极大阻尼
-                    if (inWeb) {
-                        candVx *= 0.25;
-                        candVz *= 0.25;
-                    }
+                        // 蜘蛛网极大阻尼
+                        if (inWeb) {
+                            candVx *= 0.25;
+                            candVz *= 0.25;
+                        }
 
-                    // 候选基础向量
-                    candidateVelocities.add(new Vector(candVx, 0.0, candVz));
+                        // 候选基础向量
+                        candidateVelocities.add(new Vector(candVx, 0.0, candVz));
 
-                    // 叠加待处理击退
-                    for (PendingVelocity pv : state.getPendingVelocities()) {
-                        candidateVelocities.add(new Vector(candVx + pv.getX(), 0.0, candVz + pv.getZ()));
+                        // 叠加待处理击退
+                        for (PendingVelocity pv : state.getPendingVelocities()) {
+                            candidateVelocities.add(new Vector(candVx + pv.getX(), 0.0, candVz + pv.getZ()));
+                        }
                     }
                 }
             }
@@ -256,17 +267,17 @@ public class DeterministicMovePredictor {
         // 5. 垂直方向理论运动推算与残差计算 (Vertical Residual)
         List<Double> candidateVy = new ArrayList<>();
         double prevVy = state.getPrevVy();
+        int jumpBoostAmp = adapter.getPotionAmplifier(player, CompatPotionType.JUMP_BOOST);
+        double jumpInitialVy = 0.42;
+        if (jumpBoostAmp >= 0) {
+            jumpInitialVy += 0.1 * (jumpBoostAmp + 1);
+        }
 
         if (state.wasOnGround()) {
             // 情况 A: 保持在地面上 (微小坡度或水平移动)
             candidateVy.add(0.0);
             candidateVy.add(-0.0784); // 沿斜坡/台阶轻微下切
             // 情况 B: 起跳
-            int jumpBoostAmp = adapter.getPotionAmplifier(player, CompatPotionType.JUMP_BOOST);
-            double jumpInitialVy = 0.42;
-            if (jumpBoostAmp >= 0) {
-                jumpInitialVy += 0.1 * (jumpBoostAmp + 1);
-            }
             candidateVy.add(jumpInitialVy);
             // 蜂蜜块无法起跳，若在蜂蜜块上移除起跳候选
             if (adapter.isHoney(underBlock)) {
@@ -280,9 +291,10 @@ public class DeterministicMovePredictor {
             }
             candidateVy.add(gravityVy);
 
-            // 落地瞬间 (碰撞地面垂直速度归零)
+            // 落地瞬间 (碰撞地面垂直速度归零，或落地瞬间立即再次起跳 - 连续跳跃 Bunny Hop)
             if (clientOnGround) {
                 candidateVy.add(0.0);
+                candidateVy.add(jumpInitialVy);
             }
         }
 
@@ -292,9 +304,10 @@ public class DeterministicMovePredictor {
             candidateVy.add(0.04); // 液体中向上游动
         }
 
-        // 爬梯或藤蔓
+        // 爬梯或藤蔓 (脚底或上半身接触均具备攀爬能力)
         Block currentBlock = currentLoc.getBlock();
-        if (adapter.isClimbable(currentBlock)) {
+        Block upperBlock = currentLoc.clone().add(0, 1.0, 0).getBlock();
+        if (adapter.isClimbable(currentBlock) || adapter.isClimbable(upperBlock)) {
             candidateVy.add(0.20);  // 向上攀爬
             candidateVy.add(-0.15); // 向下滑动
             candidateVy.add(0.0);   // 滞留
@@ -348,6 +361,7 @@ public class DeterministicMovePredictor {
         state.setPrevVy(deltaY);
         state.setPrevVz(deltaZ);
         state.setWasOnGround(clientOnGround);
+        state.setJumpedLastTick(isJumpTick);
 
         boolean hInvalid = (hBuffer > maxBuffer);
         boolean vInvalid = (vBuffer > maxBuffer);
@@ -389,7 +403,10 @@ public class DeterministicMovePredictor {
     }
 
     private boolean isBlockInWeb(Location loc) {
-        Block b = loc.getBlock();
-        return b != null && b.getType().name().contains("WEB");
+        if (loc == null || loc.getWorld() == null) return false;
+        Block feet = loc.getBlock();
+        if (feet != null && feet.getType().name().contains("WEB")) return true;
+        Block body = loc.clone().add(0, 1.0, 0).getBlock();
+        return body != null && body.getType().name().contains("WEB");
     }
 }
