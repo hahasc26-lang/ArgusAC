@@ -1,4 +1,6 @@
-package com.example.argusac.data;
+package com.example.argusac.manager;
+
+import com.example.argusac.data.PlayerData;
 
 import org.bukkit.entity.Player;
 

@@ -1,4 +1,4 @@
-package com.example.argusac.check;
+package com.example.argusac.manager;
 
 import com.example.argusac.ArgusACPlugin;
 import com.example.argusac.api.Check;

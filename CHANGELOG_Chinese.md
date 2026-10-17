@@ -3,6 +3,17 @@
 本文件记录本项目所有重要变更。
 格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.0.0/)，并遵循 [语义化版本规范](https://semver.org/lang/zh-CN/)。
 
+## [1.1.5] - 2026-10-17
+
+### Enhanced
+
+- **回退系统全维度深度重构与体验优化**：
+  1. **拟合原版物理的重力曲线衰减**：在空中拦截（`applySafeAirCancellation`）与主动重力监管（`ActiveGravityTask`）中，根据玩家滞空时间动态仿真 Minecraft 原版自由落体加速度曲线（$v_Y = (v_{Y,prev} - 0.08) \times 0.98$），彻底消除空中匀速慢下落的人工感，视觉上 100% 契合原版自由下坠。
+  2. **精细化半方块/特殊地形贴地修正**：重构 `findSafeGroundNear` 与 `findSafeGroundBelow` 地面算子，调用方块真实碰撞箱获取上表面绝对高度（Top-Y），精准贴合半砖/台阶（0.5 格）、雪层（0.125*N 格）、楼梯与地毯，彻底消除回退后的 0.5 格空中微掉落抖动。
+  3. **载具/坐骑与移动回退同步**：在事件内直接取消与主线程强制回退中，支持玩家与载具（船、矿车、马匹）同步截断速度向量并同车传送，杜绝违规时生硬踢下载具掉入虚空或熔岩。
+  4. **客户端传送序列号确认（Sequence Ack）**：为 `PendingCorrection` 引入单调递增的原子序列号（`SequenceId`），防范高延迟玩家在回退网络空窗期因旧坐标发包产生的连续二次回退（Feedback Loop）。
+  5. **低 VL 网络抖动智能容忍与平滑矢量截断**：在 `SpeedCheck` 中对微量超出（diff < 0.08）且未达违规门槛的抖动包实施等比矢量截断（Vector Projection Clamp），允许合法高 Ping 玩家以极速顺畅前行，消除贴墙/拐角急停拉扯感。
+
 ## [1.1.4] - 2026-10-17
 
 ### Fixed

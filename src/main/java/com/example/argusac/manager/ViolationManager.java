@@ -3,7 +3,7 @@ package com.example.argusac.manager;
 import com.example.argusac.ArgusACPlugin;
 import com.example.argusac.api.Check;
 import com.example.argusac.data.PlayerData;
-import com.example.argusac.model.ViolationLog;
+import com.example.argusac.log.model.ViolationLog;
 import org.bukkit.Bukkit;
 import org.bukkit.entity.Player;
 import org.bukkit.event.player.PlayerMoveEvent;

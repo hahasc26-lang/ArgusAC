@@ -1,4 +1,4 @@
-package com.example.argusac.model;
+package com.example.argusac.log.model;
 
 import java.text.SimpleDateFormat;
 import java.util.Date;

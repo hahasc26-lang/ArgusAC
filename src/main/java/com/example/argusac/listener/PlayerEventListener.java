@@ -1,7 +1,7 @@
 package com.example.argusac.listener;
 
 import com.example.argusac.ArgusACPlugin;
-import com.example.argusac.check.CheckManager;
+import com.example.argusac.manager.CheckManager;
 import com.example.argusac.data.PlayerData;
 
 import com.example.argusac.compat.VersionAdapter;

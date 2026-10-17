@@ -1,10 +1,10 @@
 package com.example.argusac.data;
 
+import com.example.argusac.log.model.SetbackFailureLog;
+import com.example.argusac.log.model.ViolationLog;
 import com.example.argusac.model.LegitimateLocation;
-import com.example.argusac.model.SetbackFailureLog;
 import com.example.argusac.model.SetbackOverride;
 import com.example.argusac.model.VelocitySourceType;
-import com.example.argusac.model.ViolationLog;
 import com.example.argusac.prediction.PlayerPhysicsState;
 import org.bukkit.Location;
 import org.bukkit.entity.Player;

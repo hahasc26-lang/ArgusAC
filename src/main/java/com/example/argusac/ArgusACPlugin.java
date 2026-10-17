@@ -2,8 +2,8 @@ package com.example.argusac;
 
 import com.example.argusac.command.ArgusCommand;
 import com.example.argusac.command.ArgusTabCompleter;
-import com.example.argusac.check.CheckManager;
-import com.example.argusac.data.PlayerManager;
+import com.example.argusac.manager.CheckManager;
+import com.example.argusac.manager.PlayerManager;
 import com.example.argusac.listener.PlayerEventListener;
 import com.example.argusac.manager.AlertManager;
 import com.example.argusac.manager.PunishmentManager;

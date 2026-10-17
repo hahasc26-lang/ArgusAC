@@ -190,7 +190,22 @@ public class SpeedCheck extends AbstractCheck {
             double previousBuffer = data.getSpeedBuffer();
             double currentBuffer = previousBuffer + diff;
 
-            // 像 GrimAC 一样，一旦检测到非法超速位移，当帧立即在事件内直接取消/修正！
+            // 优化：低 VL 与轻微网络抖动平滑过渡 (Ping-Adaptive Jitter Smoothing)
+            // 当超出量极小且未达到处罚阈值时，不强制原地急刹，而是将位移矢量等比截断至合法极值，保持前行顺畅！
+            if (diff < 0.08 && currentBuffer < speedBufferMax) {
+                double ratio = allowedLimit / distance;
+                Location clampedTo = from.clone();
+                clampedTo.setX(from.getX() + (to.getX() - from.getX()) * ratio);
+                clampedTo.setZ(from.getZ() + (to.getZ() - from.getZ()) * ratio);
+                clampedTo.setY(to.getY());
+                clampedTo.setYaw(to.getYaw());
+                clampedTo.setPitch(to.getPitch());
+                event.setTo(clampedTo);
+                data.setSpeedBuffer(currentBuffer);
+                return;
+            }
+
+            // 像 GrimAC 一样，一旦检测到蓄意超速或达到阈值，当帧立即在事件内直接取消！
             event.setCancelled(true);
 
             if (currentBuffer > speedBufferMax) {

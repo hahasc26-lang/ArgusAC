@@ -3,10 +3,10 @@ package com.example.argusac.manager;
 import com.example.argusac.ArgusACPlugin;
 import com.example.argusac.api.Check;
 import com.example.argusac.api.CheckType;
+import com.example.argusac.log.model.SetbackFailureLog;
+import com.example.argusac.log.model.ViolationLog;
 import com.example.argusac.model.LegitimateLocation;
-import com.example.argusac.model.SetbackFailureLog;
 import com.example.argusac.model.SetbackOverride;
-import com.example.argusac.model.ViolationLog;
 import com.example.argusac.util.ColorUtil;
 import com.example.argusac.util.MathUtil;
 import net.kyori.adventure.text.Component;
@@ -394,6 +394,15 @@ public class SetbackManager implements Listener {
             cancelTarget.setPitch(to.getPitch());
         }
 
+        // 若玩家坐在载具中 (船、矿车、坐骑等)：同步修正载具实体速度与位移，保持乘骑连续性
+        if (player.isInsideVehicle() && player.getVehicle() != null) {
+            org.bukkit.entity.Entity vehicle = player.getVehicle();
+            vehicle.setVelocity(new Vector(0, 0, 0));
+            if (!isAirborne) {
+                vehicle.teleport(cancelTarget);
+            }
+        }
+
         // 像 GrimAC 一样直接重写事件目标点，当帧物理截断
         moveEvent.setTo(cancelTarget);
 
@@ -499,10 +508,13 @@ public class SetbackManager implements Listener {
 
         int ping = Math.max(0, com.example.argusac.compat.VersionAdapterFactory.getAdapter().getPing(player));
         long correctionTimeout = Math.min(correctionTimeoutMs, 2L * ping + 150L);
+        long seq = context.getNextSequenceId();
+        context.setActiveSequenceId(seq);
         context.setPendingCorrection(new PendingCorrection(
                 targetLocation.getX(), targetLocation.getY(), targetLocation.getZ(),
                 targetLocation.getWorld().getUID(),
-                now + correctionTimeout
+                now + correctionTimeout,
+                seq
         ));
         context.setLastSetbackTimestamp(check.getName(), now);
 
@@ -541,11 +553,29 @@ public class SetbackManager implements Listener {
     }
 
     /**
+     * 拟合 Minecraft 原版自由落体加速度曲线：
+     * v_Y = (v_{Y,prev} - 0.08) * 0.98，最大终端速度 -3.92
+     */
+    public static double computeVanillaGravityFall(int airTicks) {
+        if (airTicks <= 0) return -0.08;
+        double v = 0.0;
+        int ticks = Math.min(60, airTicks);
+        for (int i = 0; i < ticks; i++) {
+            v = (v - 0.08) * 0.98;
+            if (v < -3.92) {
+                v = -3.92;
+                break;
+            }
+        }
+        return Math.max(-3.92, v);
+    }
+
+    /**
      * 对空中移动进行安全拦截与重力保全：
      * 1. 严格锁定 X、Z 水平位移至起点 from，阻止非法平移飞行；
      * 2. 垂直 Y 轴严禁锁定为恒定值 (杜绝空中悬停)，并防范微量下落慢速悬浮 (Slow-Fall Bypass)；
-     *    若玩家在空中试图向上浮升或静止悬停或微量下坠 (deltaY > -0.08)，在无缓降药水时强制压低 Y 轴 (from.getY() - 0.08)，
-     *    确保其遵循自然重力加速度坚决下坠！
+     *    根据玩家滞空时间动态计算原版自由落体期望加速度 (Vanilla Fall Curve)，
+     *    若试图反重力上升、静止悬停或慢飘伪装，强制施加自然重力加速度衰减！
      */
     public void applySafeAirCancellation(PlayerMoveEvent moveEvent) {
         if (moveEvent == null || moveEvent.getFrom() == null) return;
@@ -572,35 +602,45 @@ public class SetbackManager implements Listener {
                 safeTo.setY(from.getY() - 0.02);
             }
         } else {
-            // 无缓降药水：正常原版最低重力下落速度为 0.08。
-            // 若试图反重力上升、静止悬停或微量下坠伪装悬浮 (deltaY > -0.08)，强制至少下坠 0.08
-            if (deltaY <= -0.08) {
+            // 无缓降药水：根据已滞空 airTicks 计算当 tick 应当承受的原版自由落体加速度
+            com.example.argusac.data.PlayerData data = (player != null && plugin.getPlayerManager() != null)
+                    ? plugin.getPlayerManager().getPlayerData(player) : null;
+            int airTicks = (data != null) ? data.getAirTicks() : 1;
+            double expectedFall = computeVanillaGravityFall(airTicks);
+
+            // 若原本自然下落且下落位移符合或超出重力加速度 (deltaY <= expectedFall)，保留其自然下落
+            // 若试图反重力上升、静止悬停或微量下坠伪装悬浮 (deltaY > expectedFall)，强制以原版重力加速度下坠！
+            if (deltaY <= expectedFall) {
                 safeTo.setY(to.getY());
             } else {
-                safeTo.setY(from.getY() - 0.08);
+                safeTo.setY(from.getY() + expectedFall);
             }
         }
         moveEvent.setTo(safeTo);
     }
 
     /**
-     * 在限定垂直距离内向下探测坚实地面 (仅用于低空贴地修正，杜绝深渊瞬移)
+     * 在限定垂直距离内向下探测坚实地面 (支持半方块/台阶/雪层等精细碰撞箱 Top-Y 贴合，杜绝二次下落抖动)
      */
     public Location findSafeGroundNear(Location loc, double maxDistance) {
         if (loc == null || loc.getWorld() == null) return null;
         World world = loc.getWorld();
         int startY = loc.getBlockY();
         int lowestY = Math.max(world.getMinHeight(), (int) Math.floor(loc.getY() - maxDistance));
+        com.example.argusac.compat.VersionAdapter adapter = VersionAdapterFactory.getAdapter();
+
         for (int y = startY; y >= lowestY; y--) {
             Block block = world.getBlockAt(loc.getBlockX(), y, loc.getBlockZ());
-            if (block.getType().isSolid()) {
-                Location candidate = new Location(world, loc.getX(), y + 1.0, loc.getZ(), loc.getYaw(), loc.getPitch());
-                if (loc.getY() - candidate.getY() <= maxDistance) {
-                    CompatBoundingBox box = new CompatBoundingBox(
+            if (block.getType().isSolid() || adapter.isStandable(block)) {
+                CompatBoundingBox blockBox = adapter.getBlockBoundingBox(block);
+                double surfaceY = (blockBox != null && blockBox.maxY() >= y) ? blockBox.maxY() : (y + 1.0);
+                if (loc.getY() >= surfaceY - 0.15 && (loc.getY() - surfaceY) <= maxDistance) {
+                    Location candidate = new Location(world, loc.getX(), surfaceY, loc.getZ(), loc.getYaw(), loc.getPitch());
+                    CompatBoundingBox playerBox = new CompatBoundingBox(
                             candidate.getX() - 0.29, candidate.getY() + 0.01, candidate.getZ() - 0.29,
                             candidate.getX() + 0.29, candidate.getY() + 1.79, candidate.getZ() + 0.29
                     );
-                    if (VersionAdapterFactory.getAdapter().isSpacePassable(world, box)) {
+                    if (adapter.isSpacePassable(world, playerBox)) {
                         return candidate;
                     }
                 }
@@ -610,7 +650,7 @@ public class SetbackManager implements Listener {
     }
 
     /**
-     * 向下探测坚实地面方块，防止降级时将玩家悬空原地锁定 (搜索深度扩大至 64 格)
+     * 向下探测坚实地面方块 (支持台阶、楼梯与半砖精细表面判定，搜索深度扩大至 64 格)
      */
     public Location findSafeGroundBelow(Location loc) {
         if (loc == null || loc.getWorld() == null) return null;
@@ -618,15 +658,19 @@ public class SetbackManager implements Listener {
         int startY = loc.getBlockY();
         int minHeight = world.getMinHeight();
         int lowestY = Math.max(minHeight, startY - 64);
+        com.example.argusac.compat.VersionAdapter adapter = VersionAdapterFactory.getAdapter();
+
         for (int y = startY; y >= lowestY; y--) {
             Block block = world.getBlockAt(loc.getBlockX(), y, loc.getBlockZ());
-            if (block.getType().isSolid()) {
-                Location candidate = new Location(world, loc.getX(), y + 1.0, loc.getZ(), loc.getYaw(), loc.getPitch());
-                CompatBoundingBox box = new CompatBoundingBox(
+            if (block.getType().isSolid() || adapter.isStandable(block)) {
+                CompatBoundingBox blockBox = adapter.getBlockBoundingBox(block);
+                double surfaceY = (blockBox != null && blockBox.maxY() >= y) ? blockBox.maxY() : (y + 1.0);
+                Location candidate = new Location(world, loc.getX(), surfaceY, loc.getZ(), loc.getYaw(), loc.getPitch());
+                CompatBoundingBox playerBox = new CompatBoundingBox(
                         candidate.getX() - 0.29, candidate.getY() + 0.01, candidate.getZ() - 0.29,
                         candidate.getX() + 0.29, candidate.getY() + 1.79, candidate.getZ() + 0.29
                 );
-                if (VersionAdapterFactory.getAdapter().isSpacePassable(world, box)) {
+                if (adapter.isSpacePassable(world, playerBox)) {
                     return candidate;
                 }
             }
@@ -649,8 +693,13 @@ public class SetbackManager implements Listener {
         try {
             selfTeleportingPlayers.add(player.getUniqueId());
 
-            if (player.isInsideVehicle()) {
-                player.leaveVehicle();
+            if (player.isInsideVehicle() && player.getVehicle() != null) {
+                org.bukkit.entity.Entity vehicle = player.getVehicle();
+                vehicle.setVelocity(new Vector(0, 0, 0));
+                boolean vehicleSuccess = vehicle.teleport(targetLocation);
+                if (!vehicleSuccess) {
+                    player.leaveVehicle();
+                }
             }
 
             boolean teleportSuccess = player.teleport(targetLocation, PlayerTeleportEvent.TeleportCause.PLUGIN);
@@ -921,8 +970,9 @@ public class SetbackManager implements Listener {
                 selfTeleportingPlayers.add(player.getUniqueId());
                 try {
                     Location target = curLoc.clone();
-                    // 强制压低 Y 轴，施加自然重力下坠衰减 (2 ticks 自然下落位移约 0.16)
-                    target.setY(curLoc.getY() - 0.16);
+                    // 强制压低 Y 轴，根据滞空时间施加 2 ticks 原版自然重力下坠衰减
+                    double fallOffset = Math.min(-0.16, computeVanillaGravityFall(tracker.getAirTicks()) * 1.5);
+                    target.setY(curLoc.getY() + fallOffset);
                     player.teleport(target, PlayerTeleportEvent.TeleportCause.UNKNOWN);
 
                     if (data.getPhysicsState() != null) {
@@ -1045,13 +1095,19 @@ public class SetbackManager implements Listener {
         private final double targetZ;
         private final UUID worldUid;
         private final long expireTime;
+        private final long sequenceId;
 
-        public PendingCorrection(double targetX, double targetY, double targetZ, UUID worldUid, long expireTime) {
+        public PendingCorrection(double targetX, double targetY, double targetZ, UUID worldUid, long expireTime, long sequenceId) {
             this.targetX = targetX;
             this.targetY = targetY;
             this.targetZ = targetZ;
             this.worldUid = worldUid;
             this.expireTime = expireTime;
+            this.sequenceId = sequenceId;
+        }
+
+        public long getSequenceId() {
+            return sequenceId;
         }
 
         public boolean isExpired() {
@@ -1084,6 +1140,22 @@ public class SetbackManager implements Listener {
         private volatile long lastSetbackTimestamp = 0L;
         private volatile long immunityUntil = 0L;
         private volatile long lastNotifyTimestamp = 0L;
+
+        // 客户端传送序列确认追踪 (防高 Ping 连续回退风暴)
+        private final java.util.concurrent.atomic.AtomicLong sequenceCounter = new java.util.concurrent.atomic.AtomicLong(0);
+        private volatile long activeSequenceId = 0L;
+
+        public long getNextSequenceId() {
+            return sequenceCounter.incrementAndGet();
+        }
+
+        public long getActiveSequenceId() {
+            return activeSequenceId;
+        }
+
+        public void setActiveSequenceId(long id) {
+            this.activeSequenceId = id;
+        }
 
         // P1: 短时验证移动快照队列
         private final Deque<LegitimateLocation> snapshotHistory = new ConcurrentLinkedDeque<>();
