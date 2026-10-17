@@ -16,6 +16,8 @@ system:
   unknown-command: "<red>未知的子命令: <yellow>{subcommand}</yellow>。输入 <gray>/argus help</gray> 查看命令列表。</red>"
   target-not-found: "<red>未找到目标玩家: <yellow>{target}</yellow>（玩家不在线或不存在）</red>"
   audit-backlog: "<red>[ArgusAC 警告] 审计日志队列积压已达 {size}/{capacity} ({ratio}%)！请注意磁盘 I/O！</red>"
+  packet-pipeline-ready: "[PacketPipeline] PacketEvents 跨版本数据包引擎已挂载就绪 (PacketListener registered)"
+  packet-pipeline-failed: "[PacketPipeline] 挂载 PacketEvents 监听器失败"
 
 # Check category names
 check:
@@ -179,6 +181,7 @@ compat:
     fastbreak-full: "方块挖掘时序全版本支持"
     scaffold-full: "搭建朝向与视线交点全版本支持"
     inventorymove-full: "背包开启状态监听全版本支持"
+    jesus-full: "水上行走、水面虚假接地与水面平飞全版本支持"
   diag:
     ready: "多版本自适应环境自检就绪:"
     core: "识别内核: {core} ({type})"

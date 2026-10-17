@@ -96,10 +96,21 @@ public class ViolationManager {
                 );
             } else if (plugin.getSetbackManager().isCheckOnCooldown(player.getUniqueId(), check.getName())) {
                 // P2 改法：处于回退冷却期间连续违规，若存在移动事件，优先锁定至最后合法落点，防止作弊者借冷却缝隙位移
+                // 【P0 修复空中悬浮】：优先拉回最后合法地面落脚点，严禁将玩家持续锁死在半空中形成悬浮
                 if (moveEvent != null) {
-                    com.example.argusac.model.LegitimateLocation lastLegit = plugin.getSetbackManager().getLastLocation(player.getUniqueId());
-                    org.bukkit.Location cancelLoc = (lastLegit != null && lastLegit.toLocation() != null) ? lastLegit.toLocation() : moveEvent.getFrom();
-                    moveEvent.setTo(cancelLoc);
+                    com.example.argusac.model.LegitimateLocation lastGround = plugin.getSetbackManager().getLastGroundLocation(player.getUniqueId());
+                    org.bukkit.Location groundLoc = (lastGround != null) ? lastGround.toLocation() : null;
+                    if (groundLoc == null && moveEvent.getFrom() != null) {
+                        groundLoc = plugin.getSetbackManager().findSafeGroundBelow(moveEvent.getFrom());
+                    }
+
+                    if (groundLoc != null) {
+                        moveEvent.setTo(groundLoc);
+                    } else if (moveEvent.getFrom() != null && plugin.getSetbackManager().isGrounded(player, moveEvent.getFrom())) {
+                        moveEvent.setTo(moveEvent.getFrom());
+                    } else {
+                        plugin.getSetbackManager().applySafeAirCancellation(moveEvent);
+                    }
                     defaultPunishmentTriggered = true;
                     logMode = "COOLDOWN_CANCEL";
                 } else {

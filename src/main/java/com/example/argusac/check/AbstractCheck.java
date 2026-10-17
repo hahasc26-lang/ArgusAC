@@ -105,6 +105,9 @@ public abstract class AbstractCheck implements Check {
      * @param moveEvent 移动事件
      */
     protected void flag(Player player, int vl, String details, org.bukkit.event.player.PlayerMoveEvent moveEvent) {
+        // 根治空中悬停漏洞：禁止在 flag 阶段未审先判地强制设置 moveEvent.setTo(from)！
+        // 这一行为会导致空中触发违规时直接清零当 tick 的垂直位移 ΔY，破坏自然重力加速度并把玩家死死钉在半空。
+        // 一切位移拦截与回退处置，全权交由 ViolationManager 与 SetbackManager 依据 VL 阈值与地面物理守恒原则严格裁决。
         plugin.getViolationManager().handleViolation(player, this, vl, details, moveEvent);
     }
 }

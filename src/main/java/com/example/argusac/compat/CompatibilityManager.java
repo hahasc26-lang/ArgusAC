@@ -61,6 +61,7 @@ public class CompatibilityManager {
         markCheck("FastBreak", CheckCompatStatus.FULL, "compat.reason.fastbreak-full");
         markCheck("Scaffold", CheckCompatStatus.FULL, "compat.reason.scaffold-full");
         markCheck("InventoryMove", CheckCompatStatus.FULL, "compat.reason.inventorymove-full");
+        markCheck("Jesus", CheckCompatStatus.FULL, "compat.reason.jesus-full");
     }
 
     private void markCheck(String checkName, CheckCompatStatus status, String reasonKey) {

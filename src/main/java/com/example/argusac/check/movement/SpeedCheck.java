@@ -50,6 +50,13 @@ public class SpeedCheck extends AbstractCheck {
             return;
         }
 
+        long nowNanos = System.nanoTime();
+        long previousSpeedCheckNanos = data.updateSpeedCheckTime(nowNanos);
+        double elapsedTicks = previousSpeedCheckNanos == 0L
+                ? 1.0
+                : Math.max(1.0, Math.min(4.0,
+                        (nowNanos - previousSpeedCheckNanos) / 50_000_000.0));
+
         // 创造/旁观模式、正在飞行、坐在载具中豁免
         if (player.getGameMode() == GameMode.CREATIVE || player.getGameMode() == GameMode.SPECTATOR
                 || player.isFlying() || player.isInsideVehicle()) {
@@ -77,20 +84,40 @@ public class SpeedCheck extends AbstractCheck {
 
         VersionAdapter adapter = VersionAdapterFactory.getAdapter();
         double distance = MathUtil.getHorizontalDistance(from, to);
+        double verticalDistance = Math.abs(to.getY() - from.getY());
 
-        // 1. 确定性物理移动模拟预测 (Deterministic Prediction Simulation)
-        // 关键修复：仅根据水平方向是否违规 (isHorizontalInvalid) 判定，杜绝垂直方向台阶/下坡残差误导 Speed 判定
-        com.example.argusac.prediction.DeterministicMovePredictor predictor = plugin.getMovePredictor();
-        if (predictor != null && predictor.isEnabled()) {
-            com.example.argusac.prediction.PredictionResult result = predictor.predict(
-                    player, data, to.getX(), to.getY(), to.getZ(), to.getYaw(), to.getPitch(), data.isOnGround());
-            if (!result.isHorizontalValid() && result.getHorizontalResidual() > predictor.getHorizontalTolerance() * 2.0) {
-                flag(player, 1, "Predict: " + result.getReason(), event);
-            }
+        // Bukkit may coalesce movement over multiple server ticks during lag. Scale the
+        // per-tick limit by elapsed event time, with a bounded allowance for short stalls.
+        double allowedLimit = maxHorizontalSpeed;
+
+        boolean inLiquid = adapter.isInWater(player) || adapter.isSwimming(player);
+        Block fromBlock = from.getBlock();
+        Block toBlock = to.getBlock();
+        Block fromHead = from.clone().add(0, 1.0, 0).getBlock();
+        Block toHead = to.clone().add(0, 1.0, 0).getBlock();
+        if (!inLiquid && (adapter.isLiquid(fromBlock) || adapter.isLiquid(toBlock) || adapter.isLiquid(fromHead) || adapter.isLiquid(toHead))) {
+            inLiquid = true;
         }
 
-        // 2. 宏观物理阈值与环境判定 (第二道防线兜底)
-        double allowedLimit = maxHorizontalSpeed;
+        // 气泡柱 (Bubble Column) 剧烈垂直与紊流喷涌，豁免宏观速度阈值检测
+        if (isBubbleColumn(fromBlock) || isBubbleColumn(toBlock) || isBubbleColumn(fromHead) || isBubbleColumn(toHead)) {
+            data.setSpeedBuffer(0.0);
+            return;
+        }
+
+        // 水中物理环境：深海眷顾、游泳姿态及向上游泳/水面起跳跃升
+        if (inLiquid) {
+            int depthStrider = getDepthStriderLevel(player);
+            if (depthStrider > 0) {
+                allowedLimit += depthStrider * 0.08;
+            }
+            if (adapter.isSwimming(player)) {
+                allowedLimit *= 1.25;
+            }
+            if ((to.getY() - from.getY()) > 0.05) {
+                allowedLimit *= 1.20; // 向上游泳或冲出水面海豚跳
+            }
+        }
 
         // 速度药水加成
         int speedAmp = adapter.getPotionAmplifier(player, CompatPotionType.SPEED);
@@ -124,52 +151,58 @@ public class SpeedCheck extends AbstractCheck {
             allowedLimit *= 1.35;
         }
 
-        // 疾跑跳跃与起跳瞬时冲量宽容：原版疾跑跳跃在起跳瞬间及斜向下坡机动时瞬时水平分量可达到 0.65+
-        if (player.isSprinting() || !data.isOnGround() || (to.getY() - from.getY()) > 0.05) {
-            allowedLimit *= 1.15;
+        // Vertical collision/step transitions can produce short horizontal bursts even
+        // while the ground probe reports grounded. Give those moves a wider envelope.
+        if (verticalDistance > 0.01) {
+            allowedLimit *= 1.50;
+        } else if (player.isSprinting() || !data.isOnGround()) {
+            allowedLimit *= 1.30;
         }
+        allowedLimit *= elapsedTicks;
 
-        // 3. 空中加速度反常检测 (Mid-Air Acceleration / BHop)
-        // 关键修复：排除疾跑跳跃起跳初期 (airTicks <= 5) 原版跳跃给予的合法 0.2 水平冲量加速区间，
-        // 以及冰面滑行起跳后的长程惯性
-        double lastDistance = data.getLastHorizontalDistance();
-        if (data.getAirTicks() > 5 && data.getIceTicks() <= 0 && lastDistance > 0.15
-                && !adapter.isRiptiding(player)
-                && !adapter.isInWater(player)
-                && !adapter.hasPotionEffect(player, CompatPotionType.DOLPHINS_GRACE)) {
-            double maxAllowedAirSpeed = lastDistance * 0.985 + 0.08;
-            if (distance > maxAllowedAirSpeed && distance > 0.48) {
-                flag(player, 1, String.format("AirAccelerate dist=%.3f, prev=%.3f, limit=%.3f", distance, lastDistance, maxAllowedAirSpeed), event);
-            }
-        }
-        data.setLastHorizontalDistance(distance);
-
-        // 4. 速度阈值判定与平滑缓冲区 (Speed Violation Buffer)
+        // 速度阈值判定与平滑缓冲区 (Speed Violation Buffer)
         if (distance > allowedLimit) {
             double diff = distance - allowedLimit;
+            double previousBuffer = data.getSpeedBuffer();
+            double currentBuffer = previousBuffer + diff;
 
-            // 若单次严重超速 (远超阈值 0.35 以上，通常为超变速齿轮或大步瞬移)，立刻标记违规
-            if (diff > 0.35) {
-                int vlToAdd = diff > 0.6 ? 3 : 2;
-                String details = String.format("Burst dist=%.3f, max=%.3f (+%.3f)", distance, allowedLimit, diff);
-                flag(player, vlToAdd, details, event);
-                data.setSpeedBuffer(0.0);
+            // A single coalesced Bukkit move can be a lag/terrain outlier. Reject that
+            // move immediately, but require accumulated evidence before adding violation.
+            if (diff > 0.35 && previousBuffer < speedBufferMax * 0.6) {
+                event.setCancelled(true);
+                data.setSpeedBuffer(speedBufferMax * 0.6);
+                return;
+            }
+
+            if (currentBuffer > speedBufferMax) {
+                String details = String.format("dist=%.3f, max=%.3f, buf=%.3f, dy=%.3f, ticks=%.2f",
+                        distance, allowedLimit, currentBuffer, to.getY() - from.getY(), elapsedTicks);
+                event.setCancelled(true);
+                flag(player, 1, details, event);
+                // Reduce the buffer after a report to avoid one alert per move.
+                data.setSpeedBuffer(currentBuffer - (speedBufferMax * 0.6));
             } else {
-                // 微小超速先累加至缓冲区，防止丢包瞬时网络波动触发误报
-                double currentBuffer = data.getSpeedBuffer() + diff;
-                if (currentBuffer > speedBufferMax) {
-                    String details = String.format("dist=%.3f, max=%.3f, buf=%.3f", distance, allowedLimit, currentBuffer);
-                    flag(player, 1, details, event);
-                    // 扣减部分 buffer 防止连续一帧一报，维持平滑防作弊拦截
-                    data.setSpeedBuffer(currentBuffer - (speedBufferMax * 0.6));
-                } else {
-                    data.setSpeedBuffer(currentBuffer);
-                }
+                // Accumulate small excesses to tolerate isolated movement jitter.
+                data.setSpeedBuffer(currentBuffer);
             }
         } else {
             // 正常合法移动，平滑衰减速度缓冲区
             data.setSpeedBuffer(Math.max(0.0, data.getSpeedBuffer() - speedBufferDecay));
         }
     }
-}
 
+    private boolean isBubbleColumn(Block b) {
+        return b != null && b.getType().name().contains("BUBBLE_COLUMN");
+    }
+
+    private int getDepthStriderLevel(Player player) {
+        if (player == null) return 0;
+        try {
+            org.bukkit.inventory.ItemStack boots = player.getInventory().getBoots();
+            if (boots != null && boots.hasItemMeta()) {
+                return boots.getEnchantmentLevel(org.bukkit.enchantments.Enchantment.DEPTH_STRIDER);
+            }
+        } catch (Throwable ignored) {}
+        return 0;
+    }
+}

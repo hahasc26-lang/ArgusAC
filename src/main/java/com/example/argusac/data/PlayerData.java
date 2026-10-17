@@ -42,9 +42,13 @@ public class PlayerData {
     private Location fromLocation;
     private Location toLocation;
     private double lastHorizontalDistance = 0.0;
-    private int airTicks = 0;
+    private volatile int airTicks = 0;
+    private volatile long lastAirTickNanos = 0L;
+    private volatile boolean clientOnGround;
+    private int noFallSpoofPackets = 0;
+    private long lastNoFallSpoofNanos = 0L;
     private int groundTicks = 0;
-    private boolean onGround = true;
+    private volatile boolean onGround = true; // Also read by the packet listener off the main thread.
     private boolean lastOnGround = true;
 
     // 击退响应追踪 (Velocity Check)
@@ -77,7 +81,12 @@ public class PlayerData {
 
     // 移动平滑缓冲区与环境惯性追踪 (SpeedCheck)
     private double speedBuffer = 0.0;
+    private long lastSpeedCheckNanos = 0L;
     private int iceTicks = 0;
+
+    // 挖掘与方块交互状态 (AutoClicker 豁免与挖掘动画追踪)
+    private volatile boolean digging = false;
+    private volatile long lastDiggingTime = 0L;
 
     // 方块破坏与放置追踪 (FastBreak, Nuker, Scaffold)
     private long lastBreakTick = -1L;
@@ -107,6 +116,10 @@ public class PlayerData {
 
     public String getName() {
         return name;
+    }
+
+    public Player getPlayer() {
+        return org.bukkit.Bukkit.getPlayer(uuid);
     }
 
     // ==================== VL 相关方法 ====================
@@ -273,10 +286,46 @@ public class PlayerData {
 
     public void setAirTicks(int airTicks) {
         this.airTicks = airTicks;
+        if (airTicks <= 0) {
+            lastAirTickNanos = 0L;
+        }
     }
 
-    public void incrementAirTicks() {
-        this.airTicks++;
+    public double incrementAirTicks() {
+        long now = System.nanoTime();
+        long previous = lastAirTickNanos;
+        if (previous == 0L) {
+            airTicks++;
+            lastAirTickNanos = now;
+            return 1.0;
+        }
+
+        double elapsedTicks = (now - previous) / 50_000_000.0;
+        if (elapsedTicks < 1.0) {
+            return 0.0;
+        }
+
+        elapsedTicks = Math.min(4.0, elapsedTicks);
+        airTicks += Math.max(1, (int) elapsedTicks);
+        lastAirTickNanos = now;
+        return elapsedTicks;
+    }
+
+    public boolean recordNoFallSpoofPacket(boolean spoofed) {
+        if (!spoofed) {
+            noFallSpoofPackets = 0;
+            lastNoFallSpoofNanos = 0L;
+            return false;
+        }
+
+        long now = System.nanoTime();
+        if (lastNoFallSpoofNanos != 0L && now - lastNoFallSpoofNanos < 50_000_000L) {
+            return false;
+        }
+
+        lastNoFallSpoofNanos = now;
+        noFallSpoofPackets = (noFallSpoofPackets % 3) + 1;
+        return noFallSpoofPackets == 3;
     }
 
     public int getGroundTicks() {
@@ -383,6 +432,25 @@ public class PlayerData {
 
     public Deque<Long> getClickTimestamps() {
         return clickTimestamps;
+    }
+
+    public boolean isDigging() {
+        return digging || (System.currentTimeMillis() - lastDiggingTime < 350L);
+    }
+
+    public void setDigging(boolean digging) {
+        this.digging = digging;
+        if (digging) {
+            this.lastDiggingTime = System.currentTimeMillis();
+        }
+    }
+
+    public long getLastDiggingTime() {
+        return lastDiggingTime;
+    }
+
+    public void setLastDiggingTime(long lastDiggingTime) {
+        this.lastDiggingTime = lastDiggingTime;
     }
 
     public long getLastClickTimestamp() {
@@ -496,6 +564,7 @@ public class PlayerData {
         physicsState.reset(0.0, 0.0, 0.0, 0.0f, 0.0f);
         timerTracker.reset();
         speedBuffer = 0.0;
+        lastSpeedCheckNanos = 0L;
         combatThrottledUntil = 0L;
         iceTicks = 0;
     }
@@ -514,6 +583,17 @@ public class PlayerData {
 
     public void setSpeedBuffer(double speedBuffer) {
         this.speedBuffer = Math.max(0.0, speedBuffer);
+    }
+
+    public long updateSpeedCheckTime(long nowNanos) {
+        long previous = lastSpeedCheckNanos;
+        lastSpeedCheckNanos = nowNanos;
+        return previous;
+    }
+
+    public void resetSpeedTracking() {
+        speedBuffer = 0.0;
+        lastSpeedCheckNanos = System.nanoTime();
     }
 
     public int getIceTicks() {
@@ -544,5 +624,78 @@ public class PlayerData {
 
     public void setLastLookPitch(float lastLookPitch) {
         this.lastLookPitch = lastLookPitch;
+    }
+
+    // 水面平移与悬浮追踪 (JesusCheck)
+    private int waterHoverTicks = 0;
+    private long lastWaterHoverTickNanos = 0L;
+
+    // 水面持续停留累积追踪 (跨检测周期，仅离开水面/深潜时重置)
+    private int waterSurfaceTicks = 0;
+    private long lastWaterSurfaceTickNanos = 0L;
+
+    public int getWaterHoverTicks() {
+        return waterHoverTicks;
+    }
+
+    public void setWaterHoverTicks(int ticks) {
+        this.waterHoverTicks = ticks;
+    }
+
+    public boolean incrementWaterHoverTicks() {
+        long now = System.nanoTime();
+        if (lastWaterHoverTickNanos != 0L && now - lastWaterHoverTickNanos < 50_000_000L) {
+            return false;
+        }
+        lastWaterHoverTickNanos = now;
+        this.waterHoverTicks++;
+        return true;
+    }
+
+    public void resetWaterHoverTicks() {
+        this.waterHoverTicks = 0;
+        this.lastWaterHoverTickNanos = 0L;
+    }
+
+    public int getWaterSurfaceTicks() {
+        return waterSurfaceTicks;
+    }
+
+    /**
+     * 递增水面持续停留滴答数 (限速：至少间隔 50ms / 1 tick)
+     * @return 是否成功递增 (若调用过于频繁则返回 false)
+     */
+    public boolean incrementWaterSurfaceTicks() {
+        long now = System.nanoTime();
+        if (lastWaterSurfaceTickNanos != 0L && now - lastWaterSurfaceTickNanos < 50_000_000L) {
+            return false;
+        }
+        lastWaterSurfaceTickNanos = now;
+        this.waterSurfaceTicks++;
+        return true;
+    }
+
+    /**
+     * 完全重置水面停留累积计数 (仅在玩家真正离开水面时调用)
+     */
+    public void resetWaterSurfaceTicks() {
+        this.waterSurfaceTicks = 0;
+        this.lastWaterSurfaceTickNanos = 0L;
+    }
+
+    /**
+     * 设置水面停留累积计数 (用于惩罚后部分重置)
+     */
+    public void setWaterSurfaceTicks(int ticks) {
+        this.waterSurfaceTicks = Math.max(0, ticks);
+    }
+
+
+    public boolean isClientOnGround() {
+        return clientOnGround;
+    }
+
+    public void setClientOnGround(boolean clientOnGround) {
+        this.clientOnGround = clientOnGround;
     }
 }

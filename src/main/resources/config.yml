@@ -155,7 +155,8 @@ setback:
 
   # Post-setback temporary immunity window (tightened to prevent false flags while eliminating 1.5s blind spots)
   immunity:
-    # Base immunity duration in milliseconds (actual immunity = max(min-duration, 2 * ping + extra-buffer))
+    # Immunity is limited to the exact client acknowledgement at the setback target.
+    # Any other movement ends it immediately and is checked in the same move event.
     min-duration-ms: 400
     extra-buffer-ms: 150
 
@@ -204,6 +205,10 @@ setback:
     ElytraFly:
       enabled: true
       min-vl: 3
+      mode: "HARD"
+    Jesus:
+      enabled: true
+      min-vl: 1
       mode: "HARD"
 
     # --- Combat Checks (Interaction Cancellation Only, No Setback Teleport) ---
@@ -274,13 +279,13 @@ prediction:
   # Enable deterministic movement simulation against client packets and kinematics
   enabled: true
   # Horizontal residual tolerance in blocks/tick (small floating tolerance against network jitters)
-  horizontal-tolerance: 0.005
+  horizontal-tolerance: 0.012
   # Vertical residual tolerance in blocks/tick
-  vertical-tolerance: 0.005
+  vertical-tolerance: 0.015
   # Maximum buffer threshold before violation flag
-  max-buffer: 1.0
+  max-buffer: 2.0
   # Buffer decay amount per valid tick
-  buffer-decay: 0.05
+  buffer-decay: 0.10
 
 # ==============================================================================
 # Detection Module Threshold Configurations
@@ -290,16 +295,17 @@ checks:
   Speed:
     enabled: true
     max-vl: 15
-    # Maximum allowed horizontal distance per tick (sprinting/jumping is ~0.62, includes potion & ice tolerances)
+    # Base maximum horizontal distance per 50 ms movement tick; briefly coalesced events
+    # scale this limit by elapsed time (capped at four ticks).
     max-horizontal-speed: 0.65
     # Additional velocity multiplier for ice/packed ice friction
     ice-modifier: 1.45
     # Speed potion bonus multiplier per potion amplifier level
     speed-potion-multiplier: 0.20
     # Violation buffer capacity to absorb single-tick packet jitters and network burst
-    speed-buffer-max: 0.35
+    speed-buffer-max: 0.40
     # Buffer decay per legitimate tick
-    speed-buffer-decay: 0.05
+    speed-buffer-decay: 0.08
 
   # 2. Fly Check
   Fly:
@@ -391,8 +397,6 @@ checks:
     max-vl: 15
     # Minimum downward pitch angle when placing blocks beneath feet
     min-pitch: 70.0
-    # Tolerance delay (ms) for rapid consecutive downward backwards placement
-    fast-placement-delay-ms: 120
 
   # 11. InventoryMove Check
   InventoryMove:
@@ -512,3 +516,14 @@ checks:
       ground-proximity-distance: 1.8
       min-vl: 3
       setback-mode: "HARD"
+
+  # 14. Jesus Check (Water walk, ground spoof, and liquid hover exploitation)
+  Jesus:
+    enabled: true
+    max-vl: 12
+    # Flag water ground spoof immediately (0-tick setback)
+    detect-ground-spoof: true
+    # Maximum allowed horizontal speed on water surface (blocks/tick)
+    max-water-speed: 0.28
+    # Max ticks allowed with locked vertical zero displacement while moving on water
+    max-solid-hover-ticks: 4

@@ -67,7 +67,12 @@ public class ArgusACPlugin extends JavaPlugin {
     public void onEnable() {
         instance = this;
 
-        // 0. 初始化底层 PacketEvents 数据包管线
+        // 0. 初始化配置文件与多语言国际化系统 (i18n) 并注册全局门面
+        saveDefaultConfig();
+        this.languageManager = new com.example.argusac.i18n.LanguageManager(this);
+        com.example.argusac.i18n.I18n.init(this.languageManager);
+
+        // 1. 初始化底层 PacketEvents 数据包管线
         try {
             com.github.retrooper.packetevents.PacketEvents.getAPI().init();
             this.packetPipelineManager = new com.example.argusac.packet.PacketPipelineManager(this);
@@ -75,13 +80,6 @@ public class ArgusACPlugin extends JavaPlugin {
         } catch (Throwable t) {
             getLogger().log(java.util.logging.Level.SEVERE, "Failed to initialize PacketEvents pipeline", t);
         }
-
-        // 1. 初始化配置文件
-        saveDefaultConfig();
-
-        // 1.5 初始化多语言国际化系统 (i18n) 并注册全局门面
-        this.languageManager = new com.example.argusac.i18n.LanguageManager(this);
-        com.example.argusac.i18n.I18n.init(this.languageManager);
 
         // 2. 检查最低支持版本 (1.12.2)，过低版本安全挂起退出，不抛异常
         if (com.example.argusac.compat.ServerVersion.isOlderThan(com.example.argusac.compat.ServerVersion.V1_12_2)) {

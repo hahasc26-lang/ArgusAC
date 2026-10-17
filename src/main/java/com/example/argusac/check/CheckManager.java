@@ -9,6 +9,7 @@ import com.example.argusac.check.combat.VelocityCheck;
 import com.example.argusac.check.movement.ElytraFlyCheck;
 import com.example.argusac.check.movement.FlyCheck;
 import com.example.argusac.check.movement.InventoryMoveCheck;
+import com.example.argusac.check.movement.JesusCheck;
 import com.example.argusac.check.movement.NoFallCheck;
 import com.example.argusac.check.movement.SpeedCheck;
 import com.example.argusac.check.packet.BadPacketsCheck;
@@ -34,6 +35,7 @@ public class CheckManager {
     private NoFallCheck noFallCheck;
     private InventoryMoveCheck inventoryMoveCheck;
     private ElytraFlyCheck elytraFlyCheck;
+    private JesusCheck jesusCheck;
 
     private ReachCheck reachCheck;
     private AutoClickerCheck autoClickerCheck;
@@ -58,6 +60,7 @@ public class CheckManager {
         register(noFallCheck = new NoFallCheck(plugin));
         register(inventoryMoveCheck = new InventoryMoveCheck(plugin));
         register(elytraFlyCheck = new ElytraFlyCheck(plugin));
+        register(jesusCheck = new JesusCheck(plugin));
 
         // 战斗类
         register(reachCheck = new ReachCheck(plugin));
@@ -103,6 +106,7 @@ public class CheckManager {
     public NoFallCheck getNoFallCheck() { return noFallCheck; }
     public InventoryMoveCheck getInventoryMoveCheck() { return inventoryMoveCheck; }
     public ElytraFlyCheck getElytraFlyCheck() { return elytraFlyCheck; }
+    public JesusCheck getJesusCheck() { return jesusCheck; }
 
     public ReachCheck getReachCheck() { return reachCheck; }
     public AutoClickerCheck getAutoClickerCheck() { return autoClickerCheck; }

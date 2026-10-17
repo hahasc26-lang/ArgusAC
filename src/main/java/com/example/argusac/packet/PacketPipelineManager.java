@@ -2,6 +2,7 @@ package com.example.argusac.packet;
 
 import com.example.argusac.ArgusACPlugin;
 import com.example.argusac.data.PlayerData;
+import com.example.argusac.i18n.I18n;
 import com.github.retrooper.packetevents.PacketEvents;
 import com.github.retrooper.packetevents.event.PacketListenerAbstract;
 import com.github.retrooper.packetevents.event.PacketListenerPriority;
@@ -9,7 +10,6 @@ import com.github.retrooper.packetevents.event.PacketReceiveEvent;
 import com.github.retrooper.packetevents.event.PacketSendEvent;
 import com.github.retrooper.packetevents.protocol.packettype.PacketType;
 import com.github.retrooper.packetevents.protocol.player.User;
-import com.github.retrooper.packetevents.wrapper.play.client.WrapperPlayClientEntityAction;
 import com.github.retrooper.packetevents.wrapper.play.client.WrapperPlayClientPlayerFlying;
 import org.bukkit.entity.Player;
 
@@ -33,9 +33,9 @@ public class PacketPipelineManager extends PacketListenerAbstract {
         try {
             PacketEvents.getAPI().getEventManager().registerListener(this);
             this.active = true;
-            plugin.getLogger().info("[PacketPipeline] PacketEvents 跨版本数据包引擎已挂载就绪 (PacketListener registered)");
+            plugin.getLogger().info(I18n.getServer("system.packet-pipeline-ready"));
         } catch (Exception e) {
-            plugin.getLogger().log(Level.SEVERE, "[PacketPipeline] 挂载 PacketEvents 监听器失败", e);
+            plugin.getLogger().log(Level.SEVERE, I18n.getServer("system.packet-pipeline-failed"), e);
         }
     }
 
@@ -79,10 +79,11 @@ public class PacketPipelineManager extends PacketListenerAbstract {
             handleIncomingInteractEntityPacket(player, data, event);
         }
 
-        // 4. 拦截客户端状态动作包 (Entity Action - Sneak / Sprint)
-        if (event.getPacketType() == PacketType.Play.Client.ENTITY_ACTION) {
-            handleIncomingEntityActionPacket(player, data, event);
+        // 4. 拦截客户端挖掘方块动作包 (Player Digging)
+        if (event.getPacketType() == PacketType.Play.Client.PLAYER_DIGGING) {
+            handleIncomingPlayerDiggingPacket(player, data, event);
         }
+
     }
 
     @Override
@@ -164,6 +165,15 @@ public class PacketPipelineManager extends PacketListenerAbstract {
             }
         }
 
+        data.setClientOnGround(flying.isOnGround());
+
+        // 创造/旁观、允许飞行、坐船/矿车等载具、或鞘翅滑翔完全豁免协议层 Timer 与 NoFall
+        if (player.getGameMode() == org.bukkit.GameMode.CREATIVE || player.getGameMode() == org.bukkit.GameMode.SPECTATOR
+                || player.isFlying() || player.getAllowFlight() || player.isInsideVehicle()
+                || plugin.getCheckManager().isGlidingExempt(player, data)) {
+            return;
+        }
+
         // 3. 协议层 Timer 变速时钟平衡检测 (Clock Drift Engine)
         if (!plugin.isPlayerExempt(player) && !data.isSetbackImmune() && !data.isInGracePeriod()) {
             if (data.getTimerTracker().onFlyingPacket()) {
@@ -174,8 +184,14 @@ public class PacketPipelineManager extends PacketListenerAbstract {
         }
 
         // 4. 虚假地面状态检测 (NoFall Ground Spoof)
-        if (flying.isOnGround() && data.getAirTicks() > 4 && !data.isOnGround()
-                && !data.isSetbackImmune() && !data.hasAnyLegalVelocity()) {
+        // 排除梯子/藤蔓等可攀爬物以及液体环境 (攀爬和涉水在原版协议中存在特殊的接地过渡)
+        org.bukkit.block.Block feet = player.getLocation().getBlock();
+        com.example.argusac.compat.VersionAdapter adapter = com.example.argusac.compat.VersionAdapterFactory.getAdapter();
+        boolean specialEnvironment = adapter.isLiquid(feet) || adapter.isClimbable(feet);
+
+        boolean groundSpoof = flying.isOnGround() && data.getAirTicks() > 4 && !data.isOnGround()
+                && !data.isSetbackImmune() && !data.hasAnyLegalVelocity() && !specialEnvironment;
+        if (data.recordNoFallSpoofPacket(groundSpoof)) {
             plugin.getViolationManager().flag(player, plugin.getCheckManager().getNoFallCheck(),
                     1, String.format("Packet GroundSpoof airTicks=%d", data.getAirTicks()));
         }
@@ -185,7 +201,7 @@ public class PacketPipelineManager extends PacketListenerAbstract {
      * 客户端手臂挥舞包 (Animation) 捕获，纳秒级打点消除主线程 Tick 合并造成的 CPS 失真
      */
     private void handleIncomingAnimationPacket(Player player, PlayerData data) {
-        if (!plugin.isPlayerExempt(player)) {
+        if (!plugin.isPlayerExempt(player) && !data.isDigging()) {
             plugin.getCheckManager().getAutoClickerCheck().handleClick(player);
         }
     }
@@ -198,17 +214,22 @@ public class PacketPipelineManager extends PacketListenerAbstract {
     }
 
     /**
-     * 客户端状态动作包 (Entity Action - 潜行/疾跑)
+     * 客户端方块挖掘状态追踪 (区分左键挥臂攻击与连续方块破坏，彻底根除挖矿时的 AutoClicker 误判)
      */
-    private void handleIncomingEntityActionPacket(Player player, PlayerData data, PacketReceiveEvent event) {
-        if (plugin.isPlayerExempt(player)) return;
+    private void handleIncomingPlayerDiggingPacket(Player player, PlayerData data, PacketReceiveEvent event) {
         try {
-            WrapperPlayClientEntityAction action = new WrapperPlayClientEntityAction(event);
-            if (action.getAction() == WrapperPlayClientEntityAction.Action.START_SPRINTING && player.isSneaking()) {
-                // 协议层发现冲突潜行疾跑状态
-                if (player.getEyeHeight() >= 1.4) {
-                    plugin.getViolationManager().flag(player, plugin.getCheckManager().getBadPacketsCheck(),
-                            1, "Conflicting Sneak-Sprint Packet Action");
+            com.github.retrooper.packetevents.wrapper.play.client.WrapperPlayClientPlayerDigging digWrapper =
+                    new com.github.retrooper.packetevents.wrapper.play.client.WrapperPlayClientPlayerDigging(event);
+            Object action = digWrapper.getAction();
+            if (action != null) {
+                String actionName = action.toString();
+                if (actionName.contains("START")) {
+                    data.setDigging(true);
+                    data.setLastDiggingTime(System.currentTimeMillis());
+                    data.getClickTimestamps().clear();
+                } else if (actionName.contains("CANCEL") || actionName.contains("FINISH") || actionName.contains("ABORT") || actionName.contains("STOP")) {
+                    data.setDigging(false);
+                    data.setLastDiggingTime(System.currentTimeMillis());
                 }
             }
         } catch (Throwable ignored) {}

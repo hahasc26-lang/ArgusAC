@@ -48,6 +48,13 @@ public class AutoClickerCheck extends AbstractCheck {
 
         long now = System.currentTimeMillis();
 
+        // 核心过滤：若玩家正在挖掘方块（或近期 400ms 内处于挖掘状态），
+        // 客户端长按左键每 tick 均会发出手臂挥舞包 (Animation)，严格豁免 Combat 连点检测并清空队列
+        if (data.isDigging() || (now - data.getLastDiggingTime() < 400L)) {
+            data.getClickTimestamps().clear();
+            return;
+        }
+
         // 过滤单次物理点击由 Bukkit 同时触发 Interact 与 Damage 事件导致的短时间 (<30ms) 重复计数
         if (now - data.getLastClickTimestamp() < 30L) {
             return;

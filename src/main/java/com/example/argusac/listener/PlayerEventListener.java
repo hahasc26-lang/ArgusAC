@@ -16,6 +16,7 @@ import org.bukkit.event.EventPriority;
 import org.bukkit.event.Listener;
 import org.bukkit.event.block.Action;
 import org.bukkit.event.block.BlockBreakEvent;
+import org.bukkit.event.block.BlockDamageEvent;
 import org.bukkit.event.block.BlockPlaceEvent;
 import org.bukkit.event.entity.EntityDamageByEntityEvent;
 import org.bukkit.event.entity.EntityDamageEvent;
@@ -26,8 +27,6 @@ import org.bukkit.event.inventory.InventoryOpenEvent;
 import org.bukkit.event.player.*;
 import org.bukkit.event.vehicle.VehicleEnterEvent;
 import org.bukkit.event.vehicle.VehicleExitEvent;
-
-
 
 /**
  * 玩家事件主监听器 (PlayerEventListener)
@@ -62,8 +61,7 @@ public class PlayerEventListener implements Listener {
         String ip = resolvePlayerIp(player);
         com.example.argusac.log.model.LogEntry sessionLog = new com.example.argusac.log.model.LogEntry.Builder(
                 com.example.argusac.log.model.LogType.SESSION,
-                plugin.getAuditLogManager().getServerId()
-        )
+                plugin.getAuditLogManager().getServerId())
                 .player(player.getName())
                 .uuid(player.getUniqueId())
                 .ip(ip)
@@ -88,8 +86,7 @@ public class PlayerEventListener implements Listener {
         // 记录统一会话 SESSION 退出日志
         com.example.argusac.log.model.LogEntry sessionLog = new com.example.argusac.log.model.LogEntry.Builder(
                 com.example.argusac.log.model.LogType.SESSION,
-                plugin.getAuditLogManager().getServerId()
-        )
+                plugin.getAuditLogManager().getServerId())
                 .player(player.getName())
                 .uuid(player.getUniqueId())
                 .sessionAction("QUIT")
@@ -137,8 +134,7 @@ public class PlayerEventListener implements Listener {
         // 记录跨世界 SESSION 日志
         com.example.argusac.log.model.LogEntry sessionLog = new com.example.argusac.log.model.LogEntry.Builder(
                 com.example.argusac.log.model.LogType.SESSION,
-                plugin.getAuditLogManager().getServerId()
-        )
+                plugin.getAuditLogManager().getServerId())
                 .player(player.getName())
                 .uuid(player.getUniqueId())
                 .sessionAction("WORLD_CHANGE")
@@ -151,7 +147,8 @@ public class PlayerEventListener implements Listener {
         if (!plugin.getConfig().getBoolean("audit.privacy.log-ip", false)) {
             return null;
         }
-        if (player.getAddress() == null) return null;
+        if (player.getAddress() == null)
+            return null;
         String raw = player.getAddress().getAddress().getHostAddress();
         if (plugin.getConfig().getBoolean("audit.privacy.hash-ip", true)) {
             String salt = plugin.getConfig().getString("audit.privacy.salt", "ArgusAC-Salt");
@@ -181,6 +178,9 @@ public class PlayerEventListener implements Listener {
         PlayerData data = plugin.getPlayerManager().getPlayerData(player);
         if (data != null) {
             data.setLastTeleportTime(System.currentTimeMillis());
+            data.setAirTicks(0);
+            data.setOnGround(false);
+            data.resetSpeedTracking();
             data.getElytraData().resetAll();
             if (event.getTo() != null) {
                 data.getPhysicsState().reset(event.getTo());
@@ -262,6 +262,13 @@ public class PlayerEventListener implements Listener {
             return;
         }
 
+        // PlayerTeleportEvent extends PlayerMoveEvent. Teleports have their own validation
+        // and lifecycle handling; never compare their destination against movement limits.
+        if (event instanceof PlayerTeleportEvent) {
+            data.resetSpeedTracking();
+            return;
+        }
+
         Location from = event.getFrom();
         Location to = event.getTo();
         if (to == null) {
@@ -276,6 +283,13 @@ public class PlayerEventListener implements Listener {
             return;
         }
 
+        // During setback immunity, allow only the client acknowledgement at the setback
+        // target. Any other movement ends immunity and is checked in this same event.
+        if (plugin.getSetbackManager().isImmune(player.getUniqueId())
+                && !plugin.getSetbackManager().isCorrectionMove(player, from, to)) {
+            plugin.getSetbackManager().clearImmunity(player.getUniqueId());
+        }
+
         data.setFromLocation(from);
         data.setToLocation(to);
         data.setLastLookYaw(to.getYaw());
@@ -283,14 +297,30 @@ public class PlayerEventListener implements Listener {
 
         // 鲁棒多点与方块材质物理碰撞接地判定 (消除地毯、雪片、台阶、方块边缘悬空误判)
         boolean onGround = isGrounded(player, to);
+        VersionAdapter adapter = VersionAdapterFactory.getAdapter();
+
+        // 双向接地校验：若多点探针处于微小接缝或台阶提升 (Step-Up) 处，只要客户端声明在地面且脚下 0.35 格内有物理承托面，均认定为接地
+        if (!onGround && player.isOnGround()) {
+            if (hasSupportingBlockBelow(to, adapter, 0.35)) {
+                onGround = true;
+            }
+        }
+
         // 如果客户端声明离地且正在垂直向上起跳/升空，决不可标记为接地状态
         if (!player.isOnGround() && (to.getY() - from.getY()) > 0.05) {
             onGround = false;
         }
         data.setOnGround(onGround);
 
+        // 【P0 修复】若在地面或真正深潜入水/游泳中，即刻重置空中滞空计时
+        // 水面行走（脚在水面但头在空中）不再重置 airTicks，让 FlyCheck 能够检测水面悬浮
+        boolean trulyInWater = adapter.isSwimming(player)
+                || (adapter.isLiquid(to.getBlock()) && adapter.isLiquid(to.clone().add(0, 1.0, 0).getBlock()));
+        if (onGround || trulyInWater) {
+            data.setAirTicks(0);
+        }
+
         // 冰面与粘液块滑行惯性追踪 (离开冰面后维持 25 tick 惯性记忆，彻底消除跳出冰面误报 Speed)
-        VersionAdapter adapter = VersionAdapterFactory.getAdapter();
         Block under = to.clone().subtract(0, 0.5, 0).getBlock();
         if (adapter.isIce(under) || adapter.isSlime(under)) {
             data.setIceTicks(25);
@@ -298,18 +328,12 @@ public class PlayerEventListener implements Listener {
             data.decrementIceTicks();
         }
 
-        // P1 改法：将“防止回退递归/网络校正误报”与“关闭所有检测”拆开
-        // 仅在当前移动为服务端回退的网络校正包时赋予短时校正速度豁免，检测流程继续正常运行，彻底消除 1.5 秒盲区
-        if (plugin.getSetbackManager().isCorrectionMove(player, from, to)) {
-            data.grantLegalVelocity(com.example.argusac.model.VelocitySourceType.SETBACK_CORRECTION, 300L);
-        }
-
         Location originalTo = to.clone();
 
         // 1. 数据包完整性与异常角度检测 (即使仅原地旋转视角也必须拦截非法 Pitch/NaN)
         checkManager.getBadPacketsCheck().handleMove(player, data, event);
         if (event.isCancelled() || hasSetbackOccurred(originalTo, event.getTo())) {
-            handleSetbackOrCancellation(data, event.isCancelled() ? from : event.getTo());
+            handleSetbackOrCancellation(player, data, event.isCancelled() ? from : event.getTo());
             return;
         }
 
@@ -320,39 +344,41 @@ public class PlayerEventListener implements Listener {
 
         // 鞘翅滑翔检测 (ElytraFly) 与传统陆地/悬空移动检测 (Speed, Fly, NoFall) 显式互斥
         if (checkManager.isGlidingExempt(player, data)) {
-            // 滑翔状态由 ElytraFly 集中全面接管 (包含 ElytraSpeed, ElytraAscend, ElytraHover, ElytraTimer 等)
+            // 滑翔状态由 ElytraFly 集中全面接管 (包含 ElytraSpeed, ElytraAscend, ElytraHover,
+            // ElytraTimer 等)
             checkManager.getElytraFlyCheck().handleMove(player, data, event);
             if (event.isCancelled() || hasSetbackOccurred(originalTo, event.getTo())) {
-                handleSetbackOrCancellation(data, event.isCancelled() ? from : event.getTo());
+                handleSetbackOrCancellation(player, data, event.isCancelled() ? from : event.getTo());
                 return;
             }
         } else {
             // 2. 移动速度检测
             checkManager.getSpeedCheck().handleMove(player, data, event);
             if (event.isCancelled() || hasSetbackOccurred(originalTo, event.getTo())) {
-                handleSetbackOrCancellation(data, event.isCancelled() ? from : event.getTo());
+                handleSetbackOrCancellation(player, data, event.isCancelled() ? from : event.getTo());
                 return;
             }
 
             // 3. 飞行与非法滞空检测
             checkManager.getFlyCheck().handleMove(player, data, event);
             if (event.isCancelled() || hasSetbackOccurred(originalTo, event.getTo())) {
-                handleSetbackOrCancellation(data, event.isCancelled() ? from : event.getTo());
+                handleSetbackOrCancellation(player, data, event.isCancelled() ? from : event.getTo());
                 return;
             }
 
-            // 4. 虚假落地检测
-            checkManager.getNoFallCheck().handleMove(player, data, event);
+            // 4. 水上行走与水面虚假悬浮检测 (JesusCheck)
+            checkManager.getJesusCheck().handleMove(player, data, event);
             if (event.isCancelled() || hasSetbackOccurred(originalTo, event.getTo())) {
-                handleSetbackOrCancellation(data, event.isCancelled() ? from : event.getTo());
+                handleSetbackOrCancellation(player, data, event.isCancelled() ? from : event.getTo());
                 return;
             }
+
         }
 
         // 5. 背包移动检测
         checkManager.getInventoryMoveCheck().handleMove(player, data, event);
         if (event.isCancelled() || hasSetbackOccurred(originalTo, event.getTo())) {
-            handleSetbackOrCancellation(data, event.isCancelled() ? from : event.getTo());
+            handleSetbackOrCancellation(player, data, event.isCancelled() ? from : event.getTo());
             return;
         }
 
@@ -360,7 +386,13 @@ public class PlayerEventListener implements Listener {
         checkManager.getVelocityCheck().handleMove(player, data, event);
     }
 
-    private void handleSetbackOrCancellation(PlayerData data, Location finalLoc) {
+    private void handleSetbackOrCancellation(Player player, PlayerData data, Location finalLoc) {
+        if (finalLoc != null && isGrounded(player, finalLoc)) {
+            data.setAirTicks(0);
+            data.setOnGround(true);
+        } else {
+            data.setOnGround(false);
+        }
         if (finalLoc != null) {
             data.setToLocation(finalLoc);
             if (data.getPhysicsState() != null) {
@@ -425,8 +457,24 @@ public class PlayerEventListener implements Listener {
             checkManager.getElytraFlyCheck().handleInteract(event.getPlayer(), data, event);
         }
         Action action = event.getAction();
-        if (action == Action.LEFT_CLICK_AIR || action == Action.LEFT_CLICK_BLOCK) {
+        if (action == Action.LEFT_CLICK_BLOCK) {
+            if (data != null) {
+                data.setDigging(true);
+                data.setLastDiggingTime(System.currentTimeMillis());
+                data.getClickTimestamps().clear();
+            }
+        } else if (action == Action.LEFT_CLICK_AIR) {
             recordClickIfFallback(event.getPlayer());
+        }
+    }
+
+    @EventHandler(priority = EventPriority.MONITOR, ignoreCancelled = true)
+    public void onBlockDamage(BlockDamageEvent event) {
+        PlayerData data = plugin.getPlayerManager().getPlayerData(event.getPlayer());
+        if (data != null) {
+            data.setDigging(true);
+            data.setLastDiggingTime(System.currentTimeMillis());
+            data.getClickTimestamps().clear();
         }
     }
 
@@ -435,6 +483,11 @@ public class PlayerEventListener implements Listener {
         Player player = event.getPlayer();
         if (plugin.isPlayerExempt(player)) {
             return;
+        }
+        PlayerData data = plugin.getPlayerManager().getPlayerData(player);
+        if (data != null) {
+            data.setLastDiggingTime(System.currentTimeMillis());
+            data.setDigging(false);
         }
         checkManager.getFastBreakCheck().handleBreak(player, event);
         if (event.isCancelled()) {
@@ -484,15 +537,16 @@ public class PlayerEventListener implements Listener {
         double y = loc.getY();
         double z = loc.getZ();
         org.bukkit.World world = loc.getWorld();
-        if (world == null) return false;
+        if (world == null)
+            return false;
 
         // 探测中心点及四个底角 (AABB 半径 0.28)
         double[][] points = {
-                {0, 0},
-                {-0.28, -0.28},
-                {0.28, -0.28},
-                {-0.28, 0.28},
-                {0.28, 0.28}
+                { 0, 0 },
+                { -0.28, -0.28 },
+                { 0.28, -0.28 },
+                { -0.28, 0.28 },
+                { 0.28, 0.28 }
         };
 
         for (double[] p : points) {
@@ -518,5 +572,17 @@ public class PlayerEventListener implements Listener {
         if (plugin.getPacketPipelineManager() == null || !plugin.getPacketPipelineManager().isActive()) {
             checkManager.getAutoClickerCheck().handleClick(player);
         }
+    }
+
+    private boolean hasSupportingBlockBelow(Location loc, VersionAdapter adapter, double maxDepth) {
+        if (loc == null || loc.getWorld() == null)
+            return false;
+        for (double d = 0.05; d <= maxDepth; d += 0.10) {
+            Block b = loc.clone().subtract(0, d, 0).getBlock();
+            if (adapter.isStandable(b)) {
+                return true;
+            }
+        }
+        return false;
     }
 }

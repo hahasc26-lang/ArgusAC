@@ -4,7 +4,6 @@ import com.example.argusac.ArgusACPlugin;
 import com.example.argusac.api.CheckType;
 import com.example.argusac.check.AbstractCheck;
 import com.example.argusac.data.PlayerData;
-import com.example.argusac.util.MathUtil;
 import org.bukkit.GameMode;
 import org.bukkit.Location;
 import org.bukkit.block.Block;
@@ -13,12 +12,11 @@ import org.bukkit.event.block.BlockPlaceEvent;
 
 /**
  * 自动搭桥检测 (ScaffoldCheck)
- * 检测玩家非法向脚下空中倒退自动铺路、无潜行疾跑搭桥与异常放置角度
+ * 检测异常放置距离与稳定接地状态下的异常放置角度
  */
 public class ScaffoldCheck extends AbstractCheck {
 
     private double minPitch;
-    private long fastPlacementDelayMs;
 
     public ScaffoldCheck(ArgusACPlugin plugin) {
         super(plugin, "Scaffold", CheckType.WORLD);
@@ -28,8 +26,7 @@ public class ScaffoldCheck extends AbstractCheck {
     public void reloadConfig() {
         super.reloadConfig();
         String path = "checks." + name + ".";
-        this.minPitch = plugin.getConfig().getDouble(path + "min-pitch", 70.0);
-        this.fastPlacementDelayMs = plugin.getConfig().getLong(path + "fast-placement-delay-ms", 120L);
+        this.minPitch = plugin.getConfig().getDouble(path + "min-pitch", 60.0);
     }
 
     public void handlePlace(Player player, BlockPlaceEvent event) {
@@ -59,28 +56,31 @@ public class ScaffoldCheck extends AbstractCheck {
             return;
         }
 
-        // 检查放置的方块是否位于玩家正脚下下方
-        boolean placedBelowFeet = (placed.getY() == playerLoc.getBlockY() - 1);
+        // 核心修复：检查放置的方块是否确实位于玩家正脚底下方
+        // 必须同时校验 Y 坐标与 X/Z 水平投影距离，避免玩家在脚下一层的前方/侧方合法放置方块时被误判 Scaffold
+        double dx = (placed.getX() + 0.5) - playerLoc.getX();
+        double dz = (placed.getZ() + 0.5) - playerLoc.getZ();
+        double hDistSq = dx * dx + dz * dz;
+        boolean placedDirectlyUnderFeet = (placed.getY() == playerLoc.getBlockY() - 1) && (hDistSq <= 0.65 * 0.65);
 
-        // 2. 异常放置角度 (平视甚至仰头但能放置正脚下方块)
-        if (placedBelowFeet && pitch < (float) minPitch) {
-            event.setCancelled(true);
-            flag(player, 2, String.format("Impossible pitch scaffold pitch=%.1f, min=%.1f", pitch, minPitch));
+        if (!placedDirectlyUnderFeet) {
             return;
         }
 
-        // 3. 疾跑状态下连续凌空向脚下铺路 (正常情况下疾跑向后搭桥极难不潜行)
-        long now = System.currentTimeMillis();
-        long lastPlace = data.getLastPlaceTime();
-        long interval = now - lastPlace;
-        data.setLastPlaceTime(now);
+        Location from = data.getFromLocation();
+        Location to = data.getToLocation();
+        boolean verticallyStable = from == null || to == null
+                || from.getWorld() != to.getWorld()
+                || Math.abs(to.getY() - from.getY()) <= 0.08;
 
-        double horizontalSpeed = MathUtil.getHorizontalDistance(data.getFromLocation(), data.getToLocation());
-        if (placedBelowFeet && player.isSprinting() && !player.isSneaking() && horizontalSpeed > 0.15) {
-            if (interval < fastPlacementDelayMs) {
-                event.setCancelled(true);
-                flag(player, 1, String.format("Sprinting Scaffold interval=%dms, pitch=%.1f", interval, pitch));
-            }
+        // 跳跃和台阶上升过程中经常需要在脚下搭方块
+        if (!data.isOnGround() || !verticallyStable) {
+            return;
+        }
+
+        // 2. 异常放置角度 (平视甚至仰头却能直接凭空在正脚底下放置方块)
+        if (pitch < (float) minPitch) {
+            flag(player, 2, String.format("Impossible pitch scaffold pitch=%.1f, min=%.1f", pitch, minPitch));
         }
     }
 }

@@ -12,6 +12,10 @@ import com.example.argusac.util.MathUtil;
 import net.kyori.adventure.text.Component;
 import org.bukkit.Bukkit;
 import org.bukkit.Location;
+import org.bukkit.World;
+import org.bukkit.block.Block;
+import com.example.argusac.compat.CompatBoundingBox;
+import com.example.argusac.compat.VersionAdapterFactory;
 import org.bukkit.configuration.file.FileConfiguration;
 import org.bukkit.entity.Player;
 import org.bukkit.event.EventHandler;
@@ -205,9 +209,14 @@ public class SetbackManager implements Listener {
 
         PlayerSetbackContext context = getContext(player.getUniqueId());
 
-        // 客户端坐标校正匹配消费
-        if (context.hasPendingCorrection() && context.matchesCorrection(to)) {
+        // Consume only a client correction move whose origin and destination both match
+        // the setback target. A violation event rewritten to that target must not count
+        // as the client's acknowledgement.
+        if (context.hasPendingCorrection()
+                && context.matchesCorrection(from)
+                && context.matchesCorrection(to)) {
             context.clearPendingCorrection();
+            context.setImmunityUntil(0L);
         }
 
         // 若处于自免疫期，不采样可能残留过渡抖动的坐标
@@ -218,16 +227,25 @@ public class SetbackManager implements Listener {
         UUID vehicleId = (player.isInsideVehicle() && player.getVehicle() != null)
                 ? player.getVehicle().getUniqueId() : null;
 
+        boolean onGround = to.clone().subtract(0, 0.1, 0).getBlock().getType().isSolid();
+        com.example.argusac.data.PlayerData pData = plugin.getPlayerManager().getPlayerData(player);
+        if (pData != null && pData.isOnGround()) {
+            onGround = true;
+        }
+
         LegitimateLocation verified = LegitimateLocation.from(
                 to,
                 player.getVelocity(),
-                to.clone().subtract(0, 0.1, 0).getBlock().getType().isSolid(),
+                onGround,
                 player.isInsideVehicle(),
                 vehicleId
         );
 
         if (verified != null) {
             context.update(verified, maxSnapshotCapacity, maxSnapshotAgeMs);
+            if (verified.isOnGround()) {
+                context.setLastGroundLocation(verified);
+            }
         }
     }
 
@@ -300,10 +318,10 @@ public class SetbackManager implements Listener {
      * 判断某次移动是否是由服务端回退引发的客户端网络坐标校正
      */
     public boolean isCorrectionMove(Player player, Location from, Location to) {
-        if (player == null || to == null) return false;
+        if (player == null || from == null || to == null) return false;
         PlayerSetbackContext context = contextMap.get(player.getUniqueId());
         if (context == null) return false;
-        return context.matchesCorrection(to);
+        return context.matchesCorrection(from) && context.matchesCorrection(to);
     }
 
     /**
@@ -339,13 +357,17 @@ public class SetbackManager implements Listener {
 
         // P0 改法：InventoryMove 等优先原地取消本次移动，不进行远距离传送
         if ("InventoryMove".equalsIgnoreCase(check.getName()) && moveEvent != null) {
-            moveEvent.setTo(moveEvent.getFrom());
+            if (isGrounded(player, curLoc)) {
+                moveEvent.setTo(moveEvent.getFrom());
+            } else {
+                applySafeAirCancellation(moveEvent);
+            }
             context.setLastSetbackTimestamp(check.getName(), now);
             postSetbackSuccess(player, context, check.getName(), currentVl, reason, "CANCEL_MOVE", fromLocStr, fromLocStr, false);
             return true;
         }
 
-        // P1 改法：在短时间窗口内检索同世界、未超时且距离有界的通行快照
+        // P1 改法：在短时间窗口内检索同世界、未超时且距离有界的稳固地面快照
         UUID curWorldUid = (curLoc.getWorld() != null) ? curLoc.getWorld().getUID() : null;
         LegitimateLocation target = context.findBoundedLegitimateLocation(
                 curWorldUid,
@@ -355,27 +377,46 @@ public class SetbackManager implements Listener {
         );
         boolean usedFallback = false;
 
-        // 若未找到符合有界且可通行的快照：执行安全降级策略
+        // 若未找到符合有界且可通行的地面快照：执行安全降级策略 (严格地面优先与防悬浮法则)
         if (target == null) {
-            // 降级 1: 若当前存在移动事件，直接将终点设为起点 from，安全取消本次位移，不盲目跨区大传送
-            if (moveEvent != null && moveEvent.getFrom() != null) {
-                moveEvent.setTo(moveEvent.getFrom());
-                context.setLastSetbackTimestamp(check.getName(), now);
-                postSetbackSuccess(player, context, check.getName(), currentVl, reason, "SAFE_FALLBACK_CANCEL", fromLocStr, fromLocStr, true);
-                return true;
-            }
-
-            // 降级 2: 无移动事件时，在同世界尝试寻找距离最近的可通行快照 (放宽至 2 倍最大距离)
-            LegitimateLocation relaxedTarget = context.findNearestPassableLocation(curWorldUid, curLoc, maxSetbackDistance * 2.0);
-            if (relaxedTarget != null) {
-                target = relaxedTarget;
+            // 【P0 修复空中悬浮漏洞】：优先使用历史稳固地面位置 (同世界即可拉回，彻底杜绝空中停滞)
+            if (context.getLastGroundLocation() != null && context.getLastGroundLocation().isPassable()) {
+                target = context.getLastGroundLocation();
                 usedFallback = true;
             } else {
-                recordFailure(player, context, check.getName(), "UNBOUNDED_OR_OCCLUDED", fromLocStr);
-                if (kickWhenBothBlocked) {
-                    dispatchKick(player, kickMessage);
+                // 尝试向下垂直探测寻找安全地面落脚点
+                Location safeGround = findSafeGroundBelow(curLoc);
+                if (safeGround != null) {
+                    target = LegitimateLocation.from(safeGround, null, true, false, null);
+                    usedFallback = true;
                 }
-                return false;
+            }
+
+            if (target == null) {
+                // 降级 1: 若当前存在移动事件，执行安全位移拦截 (空中强制自然重力下坠，绝不锁定 ΔY=0)
+                if (moveEvent != null && moveEvent.getFrom() != null) {
+                    if (isGrounded(player, curLoc)) {
+                        moveEvent.setTo(moveEvent.getFrom());
+                    } else {
+                        applySafeAirCancellation(moveEvent);
+                    }
+                    context.setLastSetbackTimestamp(check.getName(), now);
+                    postSetbackSuccess(player, context, check.getName(), currentVl, reason, "SAFE_FALLBACK_CANCEL", fromLocStr, fromLocStr, true, null);
+                    return true;
+                }
+
+                // 降级 2: 无移动事件时，在同世界尝试寻找距离最近的可通行快照 (放宽至 2 倍最大距离)
+                LegitimateLocation relaxedTarget = context.findNearestPassableLocation(curWorldUid, curLoc, maxSetbackDistance * 2.0);
+                if (relaxedTarget != null) {
+                    target = relaxedTarget;
+                    usedFallback = true;
+                } else {
+                    recordFailure(player, context, check.getName(), "UNBOUNDED_OR_OCCLUDED", fromLocStr);
+                    if (kickWhenBothBlocked) {
+                        dispatchKick(player, kickMessage);
+                    }
+                    return false;
+                }
             }
         }
 
@@ -419,7 +460,7 @@ public class SetbackManager implements Listener {
         if ("SOFT".equalsIgnoreCase(effectiveMode) && moveEvent != null && !player.isInsideVehicle()) {
             // SOFT 模式：直接在事件内修正终点
             context.setLastLegitimateLocation(finalTarget);
-            postSetbackSuccess(player, context, check.getName(), currentVl, reason, "SOFT", fromLocStr, toLocStr, finalUsedFallback);
+            postSetbackSuccess(player, context, check.getName(), currentVl, reason, "SOFT", fromLocStr, toLocStr, finalUsedFallback, finalTarget);
             return true;
         } else {
             // HARD 模式：主线程执行强制传送与动量清空
@@ -441,6 +482,73 @@ public class SetbackManager implements Listener {
 
     public boolean execute(Player player, Check check, int currentVl, String reason, PlayerMoveEvent moveEvent) {
         return mitigate(player, check, currentVl, reason, moveEvent);
+    }
+
+    /**
+     * 判断指定玩家与位置是否处于有效支持面或地面上
+     */
+    public boolean isGrounded(Player player, Location loc) {
+        if (loc == null || loc.getWorld() == null) return false;
+        com.example.argusac.data.PlayerData pData = plugin.getPlayerManager().getPlayerData(player);
+        if (pData != null && pData.isOnGround()) return true;
+        Block blockBelow = loc.clone().subtract(0, 0.1, 0).getBlock();
+        return blockBelow.getType().isSolid();
+    }
+
+    /**
+     * 对空中移动进行安全拦截与重力保全：
+     * 1. 严格锁定 X、Z 水平位移至起点 from，阻止非法平移；
+     * 2. 垂直 Y 轴绝不锁定为恒定值，若玩家原本正在自然下落 (to.getY() < from.getY()) 则予以保留；
+     *    若玩家在空中试图向上浮升或静止悬停 (to.getY() >= from.getY())，强制压低 Y 轴 (from.getY() - 0.08)，
+     *    彻底阻断反重力悬停，确保其始终遵循自然重力加速度下坠！
+     */
+    public void applySafeAirCancellation(PlayerMoveEvent moveEvent) {
+        if (moveEvent == null || moveEvent.getFrom() == null) return;
+        Location from = moveEvent.getFrom();
+        Location to = moveEvent.getTo();
+        if (to == null) {
+            moveEvent.setTo(from.clone());
+            return;
+        }
+
+        Location safeTo = from.clone();
+        safeTo.setYaw(to.getYaw());
+        safeTo.setPitch(to.getPitch());
+
+        // 垂直方向重力保全与强制下坠
+        if (to.getY() < from.getY()) {
+            // 原本正在下落，保留其自然下落 Y 坐标
+            safeTo.setY(to.getY());
+        } else {
+            // 试图反重力向上或悬浮，强制施加自然重力下坠衰减
+            safeTo.setY(from.getY() - 0.08);
+        }
+        moveEvent.setTo(safeTo);
+    }
+
+    /**
+     * 向下探测坚实地面方块，防止降级时将玩家悬空原地锁定 (搜索深度扩大至 64 格)
+     */
+    public Location findSafeGroundBelow(Location loc) {
+        if (loc == null || loc.getWorld() == null) return null;
+        World world = loc.getWorld();
+        int startY = loc.getBlockY();
+        int minHeight = world.getMinHeight();
+        int lowestY = Math.max(minHeight, startY - 64);
+        for (int y = startY; y >= lowestY; y--) {
+            Block block = world.getBlockAt(loc.getBlockX(), y, loc.getBlockZ());
+            if (block.getType().isSolid()) {
+                Location candidate = new Location(world, loc.getX(), y + 1.0, loc.getZ(), loc.getYaw(), loc.getPitch());
+                CompatBoundingBox box = new CompatBoundingBox(
+                        candidate.getX() - 0.29, candidate.getY() + 0.01, candidate.getZ() - 0.29,
+                        candidate.getX() + 0.29, candidate.getY() + 1.79, candidate.getZ() + 0.29
+                );
+                if (VersionAdapterFactory.getAdapter().isSpacePassable(world, box)) {
+                    return candidate;
+                }
+            }
+        }
+        return null;
     }
 
     /**
@@ -466,12 +574,14 @@ public class SetbackManager implements Listener {
 
             if (teleportSuccess) {
                 // P0 改法：清除异常动量与坠落距离，绝不重置 walkSpeed / flySpeed，保留服务器与技能配置
-                player.setVelocity(new Vector(0, 0, 0));
-                
-                // 对齐 Grim 等主流反作弊免摔保护策略：
-                // 若目标合法点在地面，安全重置坠落距离；若在空中，保留合理高度，防止作弊者利用回退当免摔刷伤害
+                // 对齐 Grim 等主流反作弊免摔保护与防浮空策略：
+                // 若目标合法点在地面，安全清零速度与坠落距离；
+                // 若在空中回退，施加自然下落初速度，严禁将其完全静止定在空中！
                 if (target != null && target.isOnGround()) {
+                    player.setVelocity(new Vector(0, 0, 0));
                     player.setFallDistance(0.0f);
+                } else {
+                    player.setVelocity(new Vector(0, -0.08, 0));
                 }
 
                 // 同步更新最后合法位置为回退落点
@@ -479,7 +589,7 @@ public class SetbackManager implements Listener {
                     context.setLastLegitimateLocation(target);
                 }
 
-                postSetbackSuccess(player, context, checkName, currentVl, reason, "HARD", fromLocStr, toLocStr, usedFallback);
+                postSetbackSuccess(player, context, checkName, currentVl, reason, "HARD", fromLocStr, toLocStr, usedFallback, target);
             } else {
                 recordFailure(player, context, checkName, "TELEPORT_CANCELLED", toLocStr);
             }
@@ -497,6 +607,12 @@ public class SetbackManager implements Listener {
      */
     private void postSetbackSuccess(Player player, PlayerSetbackContext context, String checkName, int currentVl,
                                     String details, String mode, String fromLocStr, String toLocStr, boolean usedFallback) {
+        postSetbackSuccess(player, context, checkName, currentVl, details, mode, fromLocStr, toLocStr, usedFallback, null);
+    }
+
+    private void postSetbackSuccess(Player player, PlayerSetbackContext context, String checkName, int currentVl,
+                                    String details, String mode, String fromLocStr, String toLocStr, boolean usedFallback,
+                                    LegitimateLocation target) {
         long now = System.currentTimeMillis();
 
         // 1. 写入收窄后的自免疫截止时间戳 (P1: 由 1500ms 大幅收窄为与 ping 自适应的短时间窗口)
@@ -539,6 +655,15 @@ public class SetbackManager implements Listener {
 
         com.example.argusac.data.PlayerData pData = plugin.getPlayerManager().getPlayerData(player);
         if (pData != null) {
+            // 【P0 修复空中悬浮漏洞】：仅当回退目标确处于地面时才重置滞空时间！
+            // 若回退至半空，必须保留空中滞空计数，绝不能让作弊者通过触发回退洗白 airTicks
+            if (target != null && target.isOnGround()) {
+                pData.setAirTicks(0);
+                pData.setOnGround(true);
+            } else {
+                pData.setOnGround(false);
+            }
+            pData.resetSpeedTracking();
             pData.addLog(log, maxLogs);
         }
 
@@ -658,6 +783,17 @@ public class SetbackManager implements Listener {
         return context != null && context.isImmune();
     }
 
+    /**
+     * End setback immunity when the player moves somewhere other than the pending correction target.
+     */
+    public void clearImmunity(UUID uuid) {
+        PlayerSetbackContext context = contextMap.get(uuid);
+        if (context != null) {
+            context.setImmunityUntil(0L);
+            context.clearPendingCorrection();
+        }
+    }
+
     public long getImmunityRemaining(UUID uuid) {
         PlayerSetbackContext context = contextMap.get(uuid);
         if (context == null) return 0L;
@@ -676,6 +812,11 @@ public class SetbackManager implements Listener {
     public LegitimateLocation getLastLocation(UUID uuid) {
         PlayerSetbackContext context = contextMap.get(uuid);
         return context != null ? context.getLastLegitimateLocation() : null;
+    }
+
+    public LegitimateLocation getLastGroundLocation(UUID uuid) {
+        PlayerSetbackContext context = contextMap.get(uuid);
+        return context != null ? context.getLastGroundLocation() : null;
     }
 
     public LegitimateLocation getPreviousLocation(UUID uuid) {
@@ -756,7 +897,7 @@ public class SetbackManager implements Listener {
             double dx = loc.getX() - targetX;
             double dy = loc.getY() - targetY;
             double dz = loc.getZ() - targetZ;
-            return (dx * dx + dy * dy + dz * dz) <= 0.25; // 距离落点在 0.5 格内视为校正到位
+            return (dx * dx + dy * dy + dz * dz) <= 0.000025; // 5 mm tolerance for protocol coordinate rounding
         }
     }
 
@@ -767,6 +908,7 @@ public class SetbackManager implements Listener {
     public static class PlayerSetbackContext {
         private volatile LegitimateLocation lastLegitimateLocation;
         private volatile LegitimateLocation previousLegitimateLocation;
+        private volatile LegitimateLocation lastGroundLocation;
         private volatile SetbackOverride override = SetbackOverride.DEFAULT;
         private volatile long lastSetbackTimestamp = 0L;
         private volatile long immunityUntil = 0L;
@@ -787,6 +929,9 @@ public class SetbackManager implements Listener {
         public void update(LegitimateLocation location, int maxCapacity, long maxAgeMs) {
             this.previousLegitimateLocation = this.lastLegitimateLocation;
             this.lastLegitimateLocation = location;
+            if (location != null && location.isOnGround()) {
+                this.lastGroundLocation = location;
+            }
 
             snapshotHistory.addFirst(location);
             long now = System.currentTimeMillis();
@@ -806,20 +951,24 @@ public class SetbackManager implements Listener {
             this.lastLegitimateLocation = location;
             if (location != null) {
                 snapshotHistory.addFirst(location);
+                if (location.isOnGround()) {
+                    this.lastGroundLocation = location;
+                }
             }
         }
 
         /**
-         * P1: 从快照队列检索同世界、时效有效、距离有界且可通行的最优合法快照
-         * 对齐 Grim 机制：地面稳定态优先策略 (Ground Preference)，优先让玩家安全落地方块表面，避免悬空下滑
+         * P1: 从快照队列检索同世界、时效有效、距离有界且处于稳固地面的最优合法快照
+         * 对齐 Grim 机制：地面稳定态强制策略 (Ground-Only Invariant)，回退目标必须是稳固地面，
+         * 绝不在常规移动检测中返回空中快照，彻底消灭空中悬浮漏洞的根源！
          */
         public LegitimateLocation findBoundedLegitimateLocation(UUID worldUid, Location currentLoc, double maxDistance, long maxAgeMs) {
             if (worldUid == null || currentLoc == null) {
                 return null;
             }
             long now = System.currentTimeMillis();
-            LegitimateLocation firstPassable = null;
 
+            // 1. 优先从历史快照队列中检索近期的地面稳定态快照
             for (LegitimateLocation snap : snapshotHistory) {
                 if (snap.getWorldUid() == null || !snap.getWorldUid().equals(worldUid)) {
                     continue;
@@ -835,21 +984,27 @@ public class SetbackManager implements Listener {
                 if (dist > maxDistance) {
                     continue;
                 }
-                if (snap.isPassable()) {
-                    // 若处于稳固地面，作为第一优先级立即采纳返回
-                    if (snap.isOnGround()) {
-                        return snap;
-                    }
-                    if (firstPassable == null) {
-                        firstPassable = snap;
-                    }
+                // 核心法则：常规移动回退目标必须处于地面方块之上，绝不采纳半空快照
+                if (snap.isPassable() && snap.isOnGround()) {
+                    return snap;
                 }
             }
-            return firstPassable;
+
+            // 2. 【P0 根治空中悬浮】：若近期快照无地面记录（例如长时间滞空/飞天），
+            // 只要同世界且可通行，强制拉回历史最后合法的地面位置 (LastGroundLocation)，彻底剥夺空中悬停空间
+            if (lastGroundLocation != null && lastGroundLocation.getWorldUid() != null
+                    && lastGroundLocation.getWorldUid().equals(worldUid)
+                    && lastGroundLocation.isPassable()) {
+                return lastGroundLocation;
+            }
+
+            // 3. 队列与历史记录皆无地面快照时，返回 null，交由外层执行垂直向下探测安全地面 (findSafeGroundBelow)
+            // 绝不返回空中快照！
+            return null;
         }
 
         /**
-         * 安全降级：在同世界且限定距离内查找最近的可通行快照
+         * 安全降级：在同世界且限定距离内查找最近的可通行快照 (优先地面)
          */
         public LegitimateLocation findNearestPassableLocation(UUID worldUid, Location currentLoc, double maxDistance) {
             if (worldUid == null || currentLoc == null) {
@@ -867,9 +1022,17 @@ public class SetbackManager implements Listener {
                     continue;
                 }
                 double dist = MathUtil.getHorizontalDistance(snapLoc, currentLoc);
-                if (dist <= maxDistance && dist < bestDist && snap.isPassable()) {
-                    best = snap;
-                    bestDist = dist;
+                if (dist <= maxDistance && snap.isPassable()) {
+                    // 地面快照为最高优先级
+                    if (snap.isOnGround()) {
+                        if (best == null || !best.isOnGround() || dist < bestDist) {
+                            best = snap;
+                            bestDist = dist;
+                        }
+                    } else if (best == null && dist < bestDist) {
+                        best = snap;
+                        bestDist = dist;
+                    }
                 }
             }
             return best;
@@ -879,6 +1042,7 @@ public class SetbackManager implements Listener {
             LegitimateLocation reset = LegitimateLocation.from(loc, new Vector(0, 0, 0), true, inVehicle, vehicleUid);
             this.lastLegitimateLocation = reset;
             this.previousLegitimateLocation = reset;
+            this.lastGroundLocation = reset;
             this.snapshotHistory.clear();
             if (reset != null) {
                 this.snapshotHistory.addFirst(reset);
@@ -893,6 +1057,7 @@ public class SetbackManager implements Listener {
         public void clear() {
             this.lastLegitimateLocation = null;
             this.previousLegitimateLocation = null;
+            this.lastGroundLocation = null;
             this.snapshotHistory.clear();
             this.pendingCorrection = null;
         }
@@ -903,6 +1068,14 @@ public class SetbackManager implements Listener {
 
         public LegitimateLocation getLastLegitimateLocation() {
             return lastLegitimateLocation;
+        }
+
+        public LegitimateLocation getLastGroundLocation() {
+            return lastGroundLocation;
+        }
+
+        public void setLastGroundLocation(LegitimateLocation location) {
+            this.lastGroundLocation = location;
         }
 
         public LegitimateLocation getPreviousLegitimateLocation() {

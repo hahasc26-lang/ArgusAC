@@ -16,6 +16,8 @@ system:
   unknown-command: "<red>Unknown subcommand: <yellow>{subcommand}</yellow>. Use <gray>/argus help</gray> for command list.</red>"
   target-not-found: "<red>Target player not found: <yellow>{target}</yellow> (player is offline or does not exist)</red>"
   audit-backlog: "<red>[ArgusAC Warning] Audit log queue backlog reached {size}/{capacity} ({ratio}%)! Watch out for disk I/O!</red>"
+  packet-pipeline-ready: "[PacketPipeline] PacketEvents cross-version packet engine registered successfully"
+  packet-pipeline-failed: "[PacketPipeline] Failed to register PacketEvents packet listener"
 
 # Check category names
 check:
@@ -178,6 +180,7 @@ compat:
     fastbreak-full: "Block break timing and animation supported on all versions"
     scaffold-full: "Placement raytracing and direction supported on all versions"
     inventorymove-full: "Inventory state tracking supported on all versions"
+    jesus-full: "Full multi-version support for water-walk, ground spoof, and liquid hover detection"
   diag:
     ready: "Multi-version adaptive environment diagnostics ready:"
     core: "Core: {core} ({type})"

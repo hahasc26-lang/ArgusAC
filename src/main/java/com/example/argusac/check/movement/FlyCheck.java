@@ -52,7 +52,8 @@ public class FlyCheck extends AbstractCheck {
             return;
         }
 
-        if (data.isSetbackImmune() || data.hasAnyLegalVelocity() || data.isInGracePeriod() || data.hasRecentVelocity(1000L)) {
+        // 登录/传送宽限期豁免
+        if (data.isInGracePeriod()) {
             data.setAirTicks(0);
             return;
         }
@@ -66,77 +67,116 @@ public class FlyCheck extends AbstractCheck {
         VersionAdapter adapter = VersionAdapterFactory.getAdapter();
         double deltaY = to.getY() - from.getY();
 
-        // 检查是否接触爬梯、藤蔓、脚手架、蜘蛛网、水等缓冲方块
-        if (isInClimbableOrLiquid(player, adapter, from, to)) {
+        // 检查是否接触爬梯、藤蔓、脚手架、蜘蛛网等攀爬缓冲方块，或全身深潜入水/正常游泳
+        if (isFullySubmergedOrClimbable(player, adapter, from, to)) {
             data.setAirTicks(0);
             return;
         }
 
-        // 1. 确定性垂直物理运动模拟与重力加速度残差校验 (Deterministic Gravity Simulation)
-        com.example.argusac.prediction.DeterministicMovePredictor predictor = plugin.getMovePredictor();
-        if (predictor != null && predictor.isEnabled()) {
-            com.example.argusac.prediction.PredictionResult result = predictor.predict(
-                    player, data, to.getX(), to.getY(), to.getZ(), to.getYaw(), to.getPitch(), data.isOnGround());
-            if (!result.isVerticalValid() && result.getVerticalResidual() > predictor.getVerticalTolerance() * 2.0) {
-                flag(player, 2, "Predict: " + result.getReason(), event);
-                return;
-            }
+        // 【P0 修复】若双脚接触水面但头部未入水且未深潜，不再无条件重置滞空计数
+        // 旧逻辑：脚碰到水就重置 → 作弊者可以在水面悬浮而逃脱飞行检测
+        // 新逻辑：仅在全身深潜入水（脚和头都在水中）或正在游泳时才重置
+        // 水面行走状态（脚在水面、头在空中）继续作为「滞空」累积 airTicks
+        if (isFullySubmergedInLiquid(player, adapter, from, to)) {
+            data.setAirTicks(0);
         }
 
         // 检查脚下及周围是否有物理支撑面
         boolean hasGroundNear = data.isOnGround() || hasBlockBelow(from, adapter) || hasBlockBelow(to, adapter);
 
         if (!hasGroundNear) {
-            data.incrementAirTicks();
-            int airTicks = data.getAirTicks();
-
-            // 1. 非法垂直向上飞升检测 (在空中持续攀升且无飘浮/跳跃提升效果)
-            if (deltaY > verticalAscentThreshold
-                    && !adapter.hasPotionEffect(player, CompatPotionType.JUMP_BOOST)
-                    && !adapter.hasPotionEffect(player, CompatPotionType.LEVITATION)
-                    && !adapter.isRiptiding(player)) {
-                flag(player, 2, String.format("IllegalAscent deltaY=%.3f", deltaY), event);
+            double elapsedTicks = data.incrementAirTicks();
+            if (elapsedTicks == 0.0) {
                 return;
             }
+            int airTicks = data.getAirTicks();
 
-            // 2. 长时间悬空滞空检测 (Hover) - 原版跳跃在最高点滞留通常 <= 2 tick，悬空滞留达到阈值 (默认 <= 6 tick) 判定为浮空
-            int hoverThreshold = Math.min(maxAirTicks, 6);
+            int jumpAmp = adapter.getPotionAmplifier(player, CompatPotionType.JUMP_BOOST);
+            double maxAllowedLaunchAscent = (0.65 + Math.max(0, jumpAmp + 1) * 0.15) * elapsedTicks;
+            double maxAllowedAirAscent = verticalAscentThreshold
+                    + (jumpAmp >= 0 ? (jumpAmp + 1) * 0.15 : 0.0);
+            maxAllowedAirAscent *= elapsedTicks;
+
+            // 1. 非法垂直向上飞升检测 (IllegalAscent)
+            // 首帧起跳 (airTicks <= 1) 允许正常起跳冲量 (包含台阶/坡度起跳 Step-up，容差放宽至 0.65+);
+            // 滞空升空中期 (airTicks > 1) 必须遵循重力递减衰减，无药水/飘浮/激流下持续暴冲 (> 0.42) 判定为反重力喷气飞升
+            boolean hasAscentExemption = adapter.hasPotionEffect(player, CompatPotionType.LEVITATION)
+                    || adapter.isRiptiding(player)
+                    || data.hasAnyLegalVelocity()
+                    || data.hasRecentVelocity(1000L);
+            if (!hasAscentExemption && !data.isSetbackImmune()) {
+                if (airTicks <= 1 && deltaY > maxAllowedLaunchAscent) {
+                    flag(player, 2, String.format("IllegalAscent (Launch) deltaY=%.3f, max=%.3f", deltaY, maxAllowedLaunchAscent), event);
+                    return;
+                } else if (airTicks > 1 && deltaY > maxAllowedAirAscent) {
+                    flag(player, 2, String.format("IllegalAscent (Air) airTicks=%d, deltaY=%.3f, threshold=%.3f", airTicks, deltaY, maxAllowedAirAscent), event);
+                    return;
+                }
+            }
+
+            // 2. 长时间悬空滞空检测 (Hover)
+            // 原版跳跃全周期为 10~12 ticks，滞空超过正常跳跃总时长 (airTicks > 12) 且垂直不产生正常重力下坠判定为悬空
+            int hoverThreshold = Math.max(maxAirTicks, 12);
             if (airTicks > hoverThreshold && Math.abs(deltaY) < 0.08
                     && !adapter.hasPotionEffect(player, CompatPotionType.SLOW_FALLING)
                     && !adapter.hasPotionEffect(player, CompatPotionType.LEVITATION)) {
+                // 【P0 修复空中悬浮漏洞】：若处于自免疫窗口期仍在空中悬浮，
+                // 强制将移动目标拉回最后合法地面，阻断利用回退自免疫洗白 airTicks 并在空中无限悬停的漏洞
+                if (data.isSetbackImmune()) {
+                    com.example.argusac.model.LegitimateLocation ground = plugin.getSetbackManager().getLastGroundLocation(player.getUniqueId());
+                    if (ground != null && ground.toLocation() != null) {
+                        event.setTo(ground.toLocation());
+                    } else {
+                        plugin.getSetbackManager().applySafeAirCancellation(event);
+                    }
+                    return;
+                }
+                plugin.getSetbackManager().applySafeAirCancellation(event);
                 flag(player, 2, String.format("Hover airTicks=%d, deltaY=%.3f", airTicks, deltaY), event);
                 return;
             }
 
-            // 3. 凌空踩空气行走 (AirWalk / 平飞外挂)：滞空且无缓降药水下，垂直位移接近 0
-            if (airTicks > 3 && Math.abs(deltaY) < 0.005
-                    && !adapter.hasPotionEffect(player, CompatPotionType.SLOW_FALLING)
-                    && !adapter.hasPotionEffect(player, CompatPotionType.LEVITATION)) {
-                flag(player, 2, String.format("AirWalk airTicks=%d, deltaY=%.4f", airTicks, deltaY), event);
-                return;
-            }
-
-            // 4. 空中快速水平飞行检测 (Fast Fly)：无激流/飘浮下，滞空中水平高速位移且不发生正常重力下坠
-            double hDist = com.example.argusac.util.MathUtil.getHorizontalDistance(from, to);
-            if (airTicks > 3 && deltaY >= -0.05 && hDist > 0.35
-                    && !adapter.isRiptiding(player)
-                    && !adapter.hasPotionEffect(player, CompatPotionType.LEVITATION)) {
-                flag(player, 2, String.format("FastFly airTicks=%d, deltaY=%.3f, hDist=%.3f", airTicks, deltaY, hDist), event);
-                return;
-            }
         } else {
             data.setAirTicks(0);
         }
     }
 
-    private boolean isInClimbableOrLiquid(Player player, VersionAdapter adapter, Location from, Location to) {
+    private boolean isFullySubmergedOrClimbable(Player player, VersionAdapter adapter, Location from, Location to) {
         Location[] locs = {player.getLocation(), from, to};
         for (Location l : locs) {
             if (l != null && l.getWorld() != null) {
                 Block feet = l.getBlock();
                 Block head = l.clone().add(0, 1.0, 0).getBlock();
-                if (adapter.isClimbable(feet) || adapter.isLiquid(feet)
-                        || adapter.isClimbable(head) || adapter.isLiquid(head)) {
+                // 梯子、藤蔓、脚手架、蜘蛛网始终豁免
+                if (adapter.isClimbable(feet) || adapter.isClimbable(head)) {
+                    return true;
+                }
+                // 正常 3D 游泳或全身浸入深水豁免
+                if (adapter.isSwimming(player) || (adapter.isLiquid(feet) && adapter.isLiquid(head))) {
+                    return true;
+                }
+            }
+        }
+        return false;
+    }
+
+
+    /**
+     * 判断玩家是否真正深潜入水（脚和头都在液体中）或处于游泳姿态
+     * 与 isFeetInLiquid 的区别：水面行走（脚在水面、头在空中）不被认定为深潜
+     */
+    private boolean isFullySubmergedInLiquid(Player player, VersionAdapter adapter, Location from, Location to) {
+        // 游泳姿态直接认定
+        if (adapter.isSwimming(player)) {
+            return true;
+        }
+        Location[] locs = {player.getLocation(), from, to};
+        for (Location l : locs) {
+            if (l != null && l.getWorld() != null) {
+                Block feet = l.getBlock();
+                Block head = l.clone().add(0, 1.0, 0).getBlock();
+                // 脚和头都在液体中 = 真正的深潜/全身入水
+                if (adapter.isLiquid(feet) && adapter.isLiquid(head)) {
                     return true;
                 }
             }
@@ -145,11 +185,22 @@ public class FlyCheck extends AbstractCheck {
     }
 
     private boolean hasBlockBelow(Location loc, VersionAdapter adapter) {
-        Location checkLoc = loc.clone();
-        for (double yOffset = -0.05; yOffset >= -0.25; yOffset -= 0.1) {
-            Block b = checkLoc.clone().add(0, yOffset, 0).getBlock();
-            if (adapter.isStandable(b)) {
-                return true;
+        if (loc == null || loc.getWorld() == null) return false;
+        // 探测中心及边缘四角，防止方块边缘悬空误判
+        double[][] points = {
+                {0, 0},
+                {-0.28, -0.28},
+                {0.28, -0.28},
+                {-0.28, 0.28},
+                {0.28, 0.28}
+        };
+        for (double[] p : points) {
+            Location checkLoc = loc.clone().add(p[0], 0, p[1]);
+            for (double yOffset = -0.05; yOffset >= -0.35; yOffset -= 0.1) {
+                Block b = checkLoc.clone().add(0, yOffset, 0).getBlock();
+                if (adapter.isStandable(b)) {
+                    return true;
+                }
             }
         }
         return false;

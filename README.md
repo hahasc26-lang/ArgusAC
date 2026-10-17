@@ -8,6 +8,10 @@
   <img src="https://img.shields.io/badge/License-MIT-yellow?style=flat-square" alt="License">
 </p>
 
+<p align="center">
+  <a href="https://ko-fi.com/X5Z326V65O"><img src="https://ko-fi.com/img/githubbutton_sm.svg" alt="ko-fi"></a>
+</p>
+
 ---
 
 <p align="center">
