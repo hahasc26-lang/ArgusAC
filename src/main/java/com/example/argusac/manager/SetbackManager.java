@@ -800,18 +800,6 @@ public class SetbackManager implements Listener {
         }
     }
 
-    private String determineEffectiveMode(SetbackOverride pOverride, String checkMode) {
-        if (pOverride == SetbackOverride.SOFT_ONLY) {
-            return "SOFT";
-        }
-        if (pOverride == SetbackOverride.HARD_ONLY) {
-            return "HARD";
-        }
-        if (checkMode != null && !checkMode.isEmpty()) {
-            return checkMode;
-        }
-        return defaultMode;
-    }
 
     // ==============================================================================
     // 集中上下文访问与诊断运维 API
