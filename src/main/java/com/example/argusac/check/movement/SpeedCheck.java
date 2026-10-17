@@ -86,10 +86,6 @@ public class SpeedCheck extends AbstractCheck {
         double distance = MathUtil.getHorizontalDistance(from, to);
         double verticalDistance = Math.abs(to.getY() - from.getY());
 
-        // Bukkit may coalesce movement over multiple server ticks during lag. Scale the
-        // per-tick limit by elapsed event time, with a bounded allowance for short stalls.
-        double allowedLimit = maxHorizontalSpeed;
-
         boolean inLiquid = adapter.isInWater(player) || adapter.isSwimming(player);
         Block fromBlock = from.getBlock();
         Block toBlock = to.getBlock();
@@ -105,6 +101,54 @@ public class SpeedCheck extends AbstractCheck {
             return;
         }
 
+        // 1. 判断真实冰面与粘液块物理环境 (必须是脚下 0.5 格内有冰方块，或在 4 tick 惯性记忆期内)
+        Block underFrom = from.clone().subtract(0, 0.5, 0).getBlock();
+        Block underTo = to.clone().subtract(0, 0.5, 0).getBlock();
+        boolean onIce = adapter.isIce(underFrom) || adapter.isIce(underTo)
+                || adapter.isSlime(underFrom) || adapter.isSlime(underTo)
+                || data.getIceTicks() > 0;
+
+        // 2. 原版真实物理基准速度分类 (彻底阻断在普通泥土/草地上伪造滑冰 0.45+ 的 Slippery 外挂)
+        double baseLimit;
+        boolean sprinting = player.isSprinting();
+        boolean airborne = !data.isOnGround();
+        int airTicks = data.getAirTicks();
+
+        if (airborne || verticalDistance > 0.05) {
+            // 空中移动阶段：
+            if (airTicks <= 1) {
+                // 首帧疾跑起跳冲量 (Sprint Jump Launch)
+                baseLimit = onIce ? Math.max(0.75, maxHorizontalSpeed * (iceModifier / 1.45 * 1.15)) : Math.min(maxHorizontalSpeed, 0.61);
+            } else {
+                // 滞空中期：空气阻力 0.91 强制衰减
+                baseLimit = onIce ? (0.38 * iceModifier) : 0.36;
+            }
+        } else {
+            // 纯地面平跑阶段 (On Ground)：
+            if (onIce) {
+                // 真实冰面：允许滑动加速 (原版冰面疾跑约 0.40)
+                baseLimit = sprinting ? (0.29 * iceModifier) : 0.28;
+            } else {
+                // 普通非冰地面 (泥土、石头、木板等)：
+                // 原版绝对物理极限制：走路 0.215，疾跑 0.287！
+                // 给予 0.02 宽限容差，绝不允许普通地面达到 0.4+ 的滑冰加速！
+                baseLimit = sprinting ? 0.31 : 0.23;
+            }
+        }
+
+        // 灵魂沙与蜂蜜块减速
+        if (adapter.isSoulSand(underFrom) || adapter.isHoney(underFrom)) {
+            baseLimit *= 0.65;
+        }
+
+        // 天花板压头跳 (Ceiling Sprint-Jump) 容差
+        Block ceilingBlock = from.clone().add(0, 2.0, 0).getBlock();
+        if (adapter.isSolidBlock(ceilingBlock)) {
+            baseLimit *= 1.25;
+        }
+
+        double allowedLimit = baseLimit;
+
         // 水中物理环境：深海眷顾、游泳姿态及向上游泳/水面起跳跃升
         if (inLiquid) {
             int depthStrider = getDepthStriderLevel(player);
@@ -119,10 +163,10 @@ public class SpeedCheck extends AbstractCheck {
             }
         }
 
-        // 速度药水加成
+        // 速度药水加成 (按比例加成)
         int speedAmp = adapter.getPotionAmplifier(player, CompatPotionType.SPEED);
         if (speedAmp >= 0) {
-            allowedLimit += (speedAmp + 1) * speedPotionMultiplier;
+            allowedLimit += (speedAmp + 1) * (baseLimit * speedPotionMultiplier);
         }
 
         // 缓慢药水减速约束 (防无视缓慢效果 Anti-Slowness)
@@ -131,34 +175,14 @@ public class SpeedCheck extends AbstractCheck {
             allowedLimit *= Math.max(0.40, 1.0 - ((slownessAmp + 1) * 0.15));
         }
 
-        // 冰面与粘液块加速修正 (包含当前踩踏以及冰面滑行惯性记忆)
-        Block under = from.clone().subtract(0, 0.5, 0).getBlock();
-        if (adapter.isIce(under) || adapter.isSlime(under) || data.getIceTicks() > 0) {
-            allowedLimit *= iceModifier;
-        } else if (adapter.isSoulSand(under) || adapter.isHoney(under)) {
-            // 灵魂沙与蜂蜜块减速
-            allowedLimit *= 0.65;
-        }
-
         // 水中海豚的恩惠或三叉戟加速保守容差
         if (adapter.hasPotionEffect(player, CompatPotionType.DOLPHINS_GRACE) || adapter.isRiptiding(player)) {
             allowedLimit *= 2.0;
         }
 
-        // 天花板压头跳 (Ceiling Sprint-Jump) 容差：头顶 2 格内有方块时碰撞导致高频弹地疾跑加速
-        Block ceilingBlock = from.clone().add(0, 2.0, 0).getBlock();
-        if (adapter.isSolidBlock(ceilingBlock)) {
-            allowedLimit *= 1.35;
-        }
-
-        // Vertical collision/step transitions can produce short horizontal bursts even
-        // while the ground probe reports grounded. Give those moves a wider envelope.
-        if (verticalDistance > 0.01) {
-            allowedLimit *= 1.50;
-        } else if (player.isSprinting() || !data.isOnGround()) {
-            allowedLimit *= 1.30;
-        }
-        allowedLimit *= elapsedTicks;
+        // 发包聚合时间约束：最大仅允许 2.0 倍聚合，防止长断网爆发偷跑
+        double boundedElapsed = Math.max(1.0, Math.min(2.0, elapsedTicks));
+        allowedLimit *= boundedElapsed;
 
         // 速度阈值判定与平滑缓冲区 (Speed Violation Buffer)
         if (distance > allowedLimit) {
@@ -166,23 +190,15 @@ public class SpeedCheck extends AbstractCheck {
             double previousBuffer = data.getSpeedBuffer();
             double currentBuffer = previousBuffer + diff;
 
-            // A single coalesced Bukkit move can be a lag/terrain outlier. Reject that
-            // move immediately, but require accumulated evidence before adding violation.
-            if (diff > 0.35 && previousBuffer < speedBufferMax * 0.6) {
-                event.setCancelled(true);
-                data.setSpeedBuffer(speedBufferMax * 0.6);
-                return;
-            }
+            // 像 GrimAC 一样，一旦检测到非法超速位移，当帧立即在事件内直接取消/修正！
+            event.setCancelled(true);
 
             if (currentBuffer > speedBufferMax) {
-                String details = String.format("dist=%.3f, max=%.3f, buf=%.3f, dy=%.3f, ticks=%.2f",
-                        distance, allowedLimit, currentBuffer, to.getY() - from.getY(), elapsedTicks);
-                event.setCancelled(true);
+                String details = String.format("dist=%.3f, max=%.3f, buf=%.3f, onIce=%b, airTicks=%d",
+                        distance, allowedLimit, currentBuffer, onIce, airTicks);
                 flag(player, 1, details, event);
-                // Reduce the buffer after a report to avoid one alert per move.
-                data.setSpeedBuffer(currentBuffer - (speedBufferMax * 0.6));
+                data.setSpeedBuffer(currentBuffer - (speedBufferMax * 0.5));
             } else {
-                // Accumulate small excesses to tolerate isolated movement jitter.
                 data.setSpeedBuffer(currentBuffer);
             }
         } else {

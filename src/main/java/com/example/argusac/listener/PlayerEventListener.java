@@ -320,10 +320,10 @@ public class PlayerEventListener implements Listener {
             data.setAirTicks(0);
         }
 
-        // 冰面与粘液块滑行惯性追踪 (离开冰面后维持 25 tick 惯性记忆，彻底消除跳出冰面误报 Speed)
+        // 冰面与粘液块滑行惯性追踪 (离开冰面后维持 4 tick 原版真实摩擦衰减，杜绝利用 25 tick 惯性盲区虚假滑冰)
         Block under = to.clone().subtract(0, 0.5, 0).getBlock();
         if (adapter.isIce(under) || adapter.isSlime(under)) {
-            data.setIceTicks(25);
+            data.setIceTicks(4);
         } else {
             data.decrementIceTicks();
         }
@@ -337,8 +337,17 @@ public class PlayerEventListener implements Listener {
             return;
         }
 
-        // 若无空间位置位移 (仅为视角转动)，则安全结束，无需执行后续空间物理位移检测
+        // 核心防空中悬停：若无空间位置位移 (仅为视角转动或客户端发包锁定原点)：
+        // 1. 若玩家处于地面上，安全结束，无需执行后续空间物理位移检测；
+        // 2. 若玩家处于空中 (!onGround)，空间位置保持不动正是最典型的空中定点悬浮 (Hover)！
+        //    绝对不能跳过，必须强制送入 FlyCheck 严格判定滞空与重力下坠状态！
         if (!posChanged) {
+            if (!onGround && !checkManager.isGlidingExempt(player, data)) {
+                checkManager.getFlyCheck().handleMove(player, data, event);
+                if (event.isCancelled() || hasSetbackOccurred(originalTo, event.getTo())) {
+                    handleSetbackOrCancellation(player, data, event.isCancelled() ? from : event.getTo());
+                }
+            }
             return;
         }
 

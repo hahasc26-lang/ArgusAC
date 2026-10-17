@@ -301,14 +301,14 @@ public class PlayerData {
         }
 
         double elapsedTicks = (now - previous) / 50_000_000.0;
-        if (elapsedTicks < 1.0) {
+        if (elapsedTicks < 0.2) {
             return 0.0;
         }
 
-        elapsedTicks = Math.min(4.0, elapsedTicks);
-        airTicks += Math.max(1, (int) elapsedTicks);
+        int added = Math.max(1, (int) Math.round(elapsedTicks));
+        airTicks += Math.min(4, added);
         lastAirTickNanos = now;
-        return elapsedTicks;
+        return Math.max(1.0, elapsedTicks);
     }
 
     public boolean recordNoFallSpoofPacket(boolean spoofed) {

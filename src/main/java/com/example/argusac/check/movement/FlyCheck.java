@@ -114,23 +114,15 @@ public class FlyCheck extends AbstractCheck {
                 }
             }
 
-            // 2. 长时间悬空滞空检测 (Hover)
-            // 原版跳跃全周期为 10~12 ticks，滞空超过正常跳跃总时长 (airTicks > 12) 且垂直不产生正常重力下坠判定为悬空
-            int hoverThreshold = Math.max(maxAirTicks, 12);
-            if (airTicks > hoverThreshold && Math.abs(deltaY) < 0.08
+            // 2. 长时间悬空滞空与异常重力下坠检测 (Hover & Anti-Gravity)
+            // 原版跳跃总滞空时长通常为 10~12 ticks，第 6 tick 达到最高点后必须以 -0.08, -0.156... 加速下落。
+            // 滞空超出正常周期 (airTicks > hoverThreshold) 时，若无上升/飘浮/缓降等合法效果，且垂直位移未能维持正常下落 (deltaY > -0.05)，判定为悬空/慢飞作弊
+            int hoverThreshold = Math.min(maxAirTicks, 12);
+            boolean isAbnormalFall = deltaY > -0.05;
+            if (airTicks > hoverThreshold && isAbnormalFall
+                    && !hasAscentExemption
                     && !adapter.hasPotionEffect(player, CompatPotionType.SLOW_FALLING)
                     && !adapter.hasPotionEffect(player, CompatPotionType.LEVITATION)) {
-                // 【P0 修复空中悬浮漏洞】：若处于自免疫窗口期仍在空中悬浮，
-                // 强制将移动目标拉回最后合法地面，阻断利用回退自免疫洗白 airTicks 并在空中无限悬停的漏洞
-                if (data.isSetbackImmune()) {
-                    com.example.argusac.model.LegitimateLocation ground = plugin.getSetbackManager().getLastGroundLocation(player.getUniqueId());
-                    if (ground != null && ground.toLocation() != null) {
-                        event.setTo(ground.toLocation());
-                    } else {
-                        plugin.getSetbackManager().applySafeAirCancellation(event);
-                    }
-                    return;
-                }
                 plugin.getSetbackManager().applySafeAirCancellation(event);
                 flag(player, 2, String.format("Hover airTicks=%d, deltaY=%.3f", airTicks, deltaY), event);
                 return;

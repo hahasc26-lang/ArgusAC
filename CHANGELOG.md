@@ -7,7 +7,16 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 
 ### Fixed
 
-- **GrimAC-Style Direct In-Event Cancellation**: Completely abolished setback immunity windows; movement violations are cancelled instantly within the move event, immediately pulling airborne cheaters to solid ground and arresting ground moves without rubberbands.
+- **GrimAC-Style Direct In-Event Cancellation**: Completely abolished setback immunity windows; movement violations are cancelled instantly within the move event, enforcing vanilla gravity decay and horizontal arresting for airborne exploits (near-ground snapping to prevent downward teleport/phase exploits and micro-fall bypasses).
+- **Eliminated Airborne Hovering Exploits (Dual Gravity Enforcement)**:
+  1. Fixed zero-delta movement (`!posChanged`) bypass where stationary hovering in air was skipped; stationary airborne moves now route into `FlyCheck` directly.
+  2. Fixed sub-50ms rapid packets incorrectly resetting airTicks accumulation.
+  3. Added server-side **Active Gravity Enforcement Engine (Active Gravity Task)** running every 2 ticks on the main thread, forcing downward gravity descent even if cheating clients completely suspend packet sending (Blink/Freecam/Suspend).
+- **Wurst Slippery / Ice Simulation SpeedHack Fix**:
+  1. Implemented a strict vanilla kinematic envelope distinguishing real ice blocks from normal ground (normal flat sprint strictly capped at 0.31 blocks/tick).
+  2. Reduced post-ice inertia memory (`iceTicks`) from 25 ticks to 4 ticks, eliminating long sliding bypass windows.
+  3. Implemented instant direct event cancellation on speed violations to stop speed runners in-place without buffer creep.
+- **Fly & Hover Detection Hardening**: Enforced post-jump cycle (airTicks > 12) gravity descent checks, closing bypasses on slow ascent and micro-fall floating.
 - **AutoClicker False Positives**: Added continuous mining state tracking to exempt block breaking from combat CPS calculations.
 - **Jesus False Positives**: Refined water surface tracking to only accumulate on unsubmerged surface floating, preventing false flags during normal swimming and wading.
 - **Scaffold False Positives**: Added horizontal footprint bounding checks to avoid false flags when placing blocks ahead or sideways at Y-1.

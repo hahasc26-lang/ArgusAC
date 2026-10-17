@@ -11,10 +11,13 @@ import com.example.argusac.util.ColorUtil;
 import com.example.argusac.util.MathUtil;
 import net.kyori.adventure.text.Component;
 import org.bukkit.Bukkit;
+import org.bukkit.GameMode;
 import org.bukkit.Location;
 import org.bukkit.World;
 import org.bukkit.block.Block;
+import org.bukkit.scheduler.BukkitTask;
 import com.example.argusac.compat.CompatBoundingBox;
+import com.example.argusac.compat.CompatPotionType;
 import com.example.argusac.compat.VersionAdapterFactory;
 import org.bukkit.configuration.file.FileConfiguration;
 import org.bukkit.entity.Player;
@@ -72,10 +75,12 @@ public class SetbackManager implements Listener {
     // ==================== 集中化状态存储 ====================
     private final Map<UUID, PlayerSetbackContext> contextMap = new ConcurrentHashMap<>();
     private final Set<UUID> selfTeleportingPlayers = ConcurrentHashMap.newKeySet();
+    private BukkitTask activeGravityTask = null;
 
     public SetbackManager(ArgusACPlugin plugin) {
         this.plugin = plugin;
         this.reloadConfig();
+        this.startActiveGravityTask();
     }
 
     /**
@@ -362,23 +367,14 @@ public class SetbackManager implements Listener {
         Location cancelTarget;
 
         if (isAirborne || isFlightOrWaterCheck) {
-            // 【核心防悬停对齐 GrimAC】：空中/滞空作弊，绝不在空中定格，优先就近垂直压回脚下坚实地面！
-            Location safeGround = findSafeGroundBelow(from);
-
-            // 若正下方未探测到坚实陆地 (例如超高空或深渊)，拉回起跳前的最后合法稳固地面
-            if (safeGround == null) {
-                LegitimateLocation groundSnap = context.getLastGroundLocation();
-                if (groundSnap != null && groundSnap.getWorldUid() != null
-                        && groundSnap.getWorldUid().equals(from.getWorld().getUID())
-                        && groundSnap.isPassable()) {
-                    safeGround = groundSnap.toLocation();
-                }
-            }
-
-            if (safeGround != null) {
-                cancelTarget = safeGround.clone();
+            // 【核心防悬停对齐 GrimAC】：
+            // 1. 若处于近地面 (1.5 格内有承托地面，如踩水面 Jesus 或方块边缘悬空)，贴回近处稳固地面
+            Location nearGround = findSafeGroundNear(from, 1.5);
+            if (nearGround != null) {
+                cancelTarget = nearGround.clone();
             } else {
-                // 极端虚空环境：锁定水平位移并施加自然重力下坠衰减
+                // 2. 处于中高空滞空或远距离飞行违规：绝不凭空瞬移穿透几十格深渊地面 (杜绝 Downward Phase / 免跌落瞬移漏洞)
+                // 像 GrimAC 一样直接截断水平速度，并严格施加原版自然重力下坠衰减！
                 applySafeAirCancellation(moveEvent);
                 if (data != null && data.getPhysicsState() != null) {
                     data.getPhysicsState().reset(moveEvent.getTo());
@@ -546,10 +542,10 @@ public class SetbackManager implements Listener {
 
     /**
      * 对空中移动进行安全拦截与重力保全：
-     * 1. 严格锁定 X、Z 水平位移至起点 from，阻止非法平移；
-     * 2. 垂直 Y 轴绝不锁定为恒定值，若玩家原本正在自然下落 (to.getY() < from.getY()) 则予以保留；
-     *    若玩家在空中试图向上浮升或静止悬停 (to.getY() >= from.getY())，强制压低 Y 轴 (from.getY() - 0.08)，
-     *    彻底阻断反重力悬停，确保其始终遵循自然重力加速度下坠！
+     * 1. 严格锁定 X、Z 水平位移至起点 from，阻止非法平移飞行；
+     * 2. 垂直 Y 轴严禁锁定为恒定值 (杜绝空中悬停)，并防范微量下落慢速悬浮 (Slow-Fall Bypass)；
+     *    若玩家在空中试图向上浮升或静止悬停或微量下坠 (deltaY > -0.08)，在无缓降药水时强制压低 Y 轴 (from.getY() - 0.08)，
+     *    确保其遵循自然重力加速度坚决下坠！
      */
     public void applySafeAirCancellation(PlayerMoveEvent moveEvent) {
         if (moveEvent == null || moveEvent.getFrom() == null) return;
@@ -564,15 +560,53 @@ public class SetbackManager implements Listener {
         safeTo.setYaw(to.getYaw());
         safeTo.setPitch(to.getPitch());
 
-        // 垂直方向重力保全与强制下坠
-        if (to.getY() < from.getY()) {
-            // 原本正在下落，保留其自然下落 Y 坐标
-            safeTo.setY(to.getY());
+        Player player = moveEvent.getPlayer();
+        boolean slowFalling = (player != null) && VersionAdapterFactory.getAdapter().hasPotionEffect(player, CompatPotionType.SLOW_FALLING);
+
+        double deltaY = to.getY() - from.getY();
+        if (slowFalling) {
+            // 拥有缓降药水：允许慢速滑翔
+            if (deltaY < 0) {
+                safeTo.setY(to.getY());
+            } else {
+                safeTo.setY(from.getY() - 0.02);
+            }
         } else {
-            // 试图反重力向上或悬浮，强制施加自然重力下坠衰减
-            safeTo.setY(from.getY() - 0.08);
+            // 无缓降药水：正常原版最低重力下落速度为 0.08。
+            // 若试图反重力上升、静止悬停或微量下坠伪装悬浮 (deltaY > -0.08)，强制至少下坠 0.08
+            if (deltaY <= -0.08) {
+                safeTo.setY(to.getY());
+            } else {
+                safeTo.setY(from.getY() - 0.08);
+            }
         }
         moveEvent.setTo(safeTo);
+    }
+
+    /**
+     * 在限定垂直距离内向下探测坚实地面 (仅用于低空贴地修正，杜绝深渊瞬移)
+     */
+    public Location findSafeGroundNear(Location loc, double maxDistance) {
+        if (loc == null || loc.getWorld() == null) return null;
+        World world = loc.getWorld();
+        int startY = loc.getBlockY();
+        int lowestY = Math.max(world.getMinHeight(), (int) Math.floor(loc.getY() - maxDistance));
+        for (int y = startY; y >= lowestY; y--) {
+            Block block = world.getBlockAt(loc.getBlockX(), y, loc.getBlockZ());
+            if (block.getType().isSolid()) {
+                Location candidate = new Location(world, loc.getX(), y + 1.0, loc.getZ(), loc.getYaw(), loc.getPitch());
+                if (loc.getY() - candidate.getY() <= maxDistance) {
+                    CompatBoundingBox box = new CompatBoundingBox(
+                            candidate.getX() - 0.29, candidate.getY() + 0.01, candidate.getZ() - 0.29,
+                            candidate.getX() + 0.29, candidate.getY() + 1.79, candidate.getZ() + 0.29
+                    );
+                    if (VersionAdapterFactory.getAdapter().isSpacePassable(world, box)) {
+                        return candidate;
+                    }
+                }
+            }
+        }
+        return null;
     }
 
     /**
@@ -801,6 +835,116 @@ public class SetbackManager implements Listener {
     }
 
 
+    public void cleanup() {
+        stopActiveGravityTask();
+        contextMap.clear();
+        selfTeleportingPlayers.clear();
+    }
+
+    public void startActiveGravityTask() {
+        if (activeGravityTask != null) {
+            activeGravityTask.cancel();
+        }
+        // 每 2 tick (100ms) 主线程巡检所有玩家，主动压制空中滞空悬停
+        this.activeGravityTask = Bukkit.getScheduler().runTaskTimer(plugin, this::tickActiveGravityEnforcement, 2L, 2L);
+    }
+
+    public void stopActiveGravityTask() {
+        if (activeGravityTask != null) {
+            activeGravityTask.cancel();
+            activeGravityTask = null;
+        }
+    }
+
+    /**
+     * 服务端主动重力监管引擎：
+     * 解决作弊端挂起移动发包 (Blink/Suspend/Hover/Freecam) 导致 PlayerMoveEvent 不触发从而悬浮在空中的终极根源。
+     * 每 2 tick 主动巡检所有在线玩家，若处于空中无支撑面且没有原版重力下落位移，服务端主动介入强制压制下坠！
+     */
+    private void tickActiveGravityEnforcement() {
+        if (!globalEnabled) return;
+        com.example.argusac.compat.VersionAdapter adapter = VersionAdapterFactory.getAdapter();
+        long now = System.currentTimeMillis();
+
+        for (Player player : Bukkit.getOnlinePlayers()) {
+            if (player == null || !player.isOnline()) continue;
+            if (plugin.isPlayerExempt(player)) continue;
+
+            // 豁免创造/旁观、允许飞行、坐在载具中
+            if (player.getGameMode() == GameMode.CREATIVE || player.getGameMode() == GameMode.SPECTATOR
+                    || player.isFlying() || player.getAllowFlight() || player.isInsideVehicle()) {
+                continue;
+            }
+
+            com.example.argusac.data.PlayerData data = plugin.getPlayerManager().getPlayerData(player);
+            if (data == null || data.isInGracePeriod()) continue;
+
+            // 鞘翅滑翔、飘浮、缓降药水豁免
+            if (adapter.isGliding(player)
+                    || adapter.hasPotionEffect(player, CompatPotionType.LEVITATION)
+                    || adapter.hasPotionEffect(player, CompatPotionType.SLOW_FALLING)) {
+                continue;
+            }
+
+            // 具有合法击退冲量豁免
+            if (data.hasAnyLegalVelocity() || data.hasRecentVelocity(800L)) {
+                continue;
+            }
+
+            Location curLoc = player.getLocation();
+            if (curLoc == null || curLoc.getWorld() == null) continue;
+            if (exemptedWorlds.contains(curLoc.getWorld().getName().toLowerCase())) continue;
+
+            // 检查脚下与周围是否处于物理支撑面或攀爬物/深水中
+            boolean grounded = isGrounded(player, curLoc);
+            Block feet = curLoc.getBlock();
+            Block head = curLoc.clone().add(0, 1.0, 0).getBlock();
+            boolean climbOrSubmerged = adapter.isClimbable(feet) || adapter.isClimbable(head)
+                    || adapter.isSwimming(player)
+                    || (adapter.isLiquid(feet) && adapter.isLiquid(head));
+
+            PlayerSetbackContext context = getContext(player.getUniqueId());
+
+            if (grounded || climbOrSubmerged) {
+                // 在地面或攀爬物/水中，重置悬空跟踪
+                context.resetActiveHoverTracking();
+                continue;
+            }
+
+            // 此时确定玩家处于空中无支撑状态！
+            ActiveHoverTracker tracker = context.getHoverTracker();
+            tracker.tick(curLoc, now);
+
+            // 如果连续滞空超过正常跳跃总时长 (例如 > 12 ticks / 600ms) 且没有有效自然下落
+            if (tracker.isIllegalHover(12, 600L)) {
+                // 主动强制介入：向下压制重力！
+                selfTeleportingPlayers.add(player.getUniqueId());
+                try {
+                    Location target = curLoc.clone();
+                    // 强制压低 Y 轴，施加自然重力下坠衰减 (2 ticks 自然下落位移约 0.16)
+                    target.setY(curLoc.getY() - 0.16);
+                    player.teleport(target, PlayerTeleportEvent.TeleportCause.UNKNOWN);
+
+                    if (data.getPhysicsState() != null) {
+                        data.getPhysicsState().reset(target);
+                    }
+
+                    // 触发违规记录
+                    Check flyCheck = plugin.getCheckManager() != null ? plugin.getCheckManager().getFlyCheck() : null;
+                    if (flyCheck != null) {
+                        plugin.getViolationManager().handleViolation(
+                                player, flyCheck, 2,
+                                String.format("ActiveHoverSuppression airTicks=%d, noGravityFall", tracker.getAirTicks()),
+                                null
+                        );
+                    }
+                } finally {
+                    selfTeleportingPlayers.remove(player.getUniqueId());
+                }
+            }
+        }
+    }
+
     // ==============================================================================
     // 集中上下文访问与诊断运维 API
     // ==============================================================================
@@ -890,10 +1034,6 @@ public class SetbackManager implements Listener {
         }
     }
 
-    public void cleanup() {
-        contextMap.clear();
-        selfTeleportingPlayers.clear();
-    }
 
     // ==============================================================================
     // 待同步网络校正数据模型 (PendingCorrection)
@@ -956,6 +1096,15 @@ public class SetbackManager implements Listener {
 
         private final Deque<ViolationLog> logs = new ConcurrentLinkedDeque<>();
         private final Deque<SetbackFailureLog> failureLogs = new ConcurrentLinkedDeque<>();
+        private final ActiveHoverTracker hoverTracker = new ActiveHoverTracker();
+
+        public ActiveHoverTracker getHoverTracker() {
+            return hoverTracker;
+        }
+
+        public void resetActiveHoverTracking() {
+            hoverTracker.reset();
+        }
 
         public void update(LegitimateLocation location, int maxCapacity, long maxAgeMs) {
             this.previousLegitimateLocation = this.lastLegitimateLocation;
@@ -1079,6 +1228,7 @@ public class SetbackManager implements Listener {
                 this.snapshotHistory.addFirst(reset);
             }
             this.pendingCorrection = null;
+            resetActiveHoverTracking();
         }
 
         public void resetPreviousOnly() {
@@ -1091,6 +1241,7 @@ public class SetbackManager implements Listener {
             this.lastGroundLocation = null;
             this.snapshotHistory.clear();
             this.pendingCorrection = null;
+            resetActiveHoverTracking();
         }
 
         public boolean isImmune() {
@@ -1197,6 +1348,49 @@ public class SetbackManager implements Listener {
 
         public List<SetbackFailureLog> getFailureLogs() {
             return new ArrayList<>(failureLogs);
+        }
+    }
+
+    /**
+     * 服务端主动重力监管状态追踪器：
+     * 解决作弊端挂起移动发包 (Blink/Suspend/Hover/Freecam) 导致 PlayerMoveEvent 不触发从而悬浮在空中的终极根源。
+     */
+    public static class ActiveHoverTracker {
+        private int airborneTicks = 0;
+        private double lastY = Double.NaN;
+        private long airborneStartTime = 0L;
+
+        public void reset() {
+            this.airborneTicks = 0;
+            this.lastY = Double.NaN;
+            this.airborneStartTime = 0L;
+        }
+
+        public void tick(Location loc, long now) {
+            if (loc == null) return;
+            if (airborneStartTime == 0L) {
+                airborneStartTime = now;
+            }
+            airborneTicks += 2; // 每 2 tick 巡检一次
+
+            double curY = loc.getY();
+            if (!Double.isNaN(lastY)) {
+                double dy = curY - lastY;
+                // 若出现正常下落 (下落幅度至少 0.06)，说明重力在起效
+                if (dy < -0.06) {
+                    airborneTicks = Math.max(0, airborneTicks - 2);
+                }
+            }
+            this.lastY = curY;
+        }
+
+        public boolean isIllegalHover(int thresholdTicks, long thresholdMs) {
+            long now = System.currentTimeMillis();
+            return airborneTicks >= thresholdTicks && (now - airborneStartTime >= thresholdMs);
+        }
+
+        public int getAirTicks() {
+            return airborneTicks;
         }
     }
 }
