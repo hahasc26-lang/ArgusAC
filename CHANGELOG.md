@@ -3,22 +3,17 @@
 All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [1.1.5] - 2026-10-17
-
-### Enhanced
-
-- **Comprehensive Setback System Modernization & Player Experience Overhaul**:
-  1. **Vanilla Gravity Acceleration Curve Fitting**: Dynamically computes realistic Minecraft free-fall acceleration ($v_Y = (v_{Y,prev} - 0.08) \times 0.98$) during in-event air cancellation and server-side Active Gravity Tasks, completely eliminating constant-speed artificial sinking and visually matching authentic vanilla descent.
-  2. **Precision Sub-Block Terrain Adherence**: Overhauled `findSafeGroundNear` and `findSafeGroundBelow` with exact collision shape Top-Y calculation via `CompatBoundingBox`, perfectly snapping setback targets to the real surface of slabs (0.5), snow layers (0.125*N), stairs, and carpets to eliminate the 0.5m post-setback micro-drop.
-  3. **Vehicle & Mount Axis Synchronization**: Integrated synchronized vehicle velocity zeroing and entity teleportation across direct cancellation and hard setbacks, keeping players smoothly inside their boats/minecarts/horses instead of forcibly dismounting them into voids or liquids.
-  4. **Teleport Sequence ID Acknowledgement**: Integrated monotonic `SequenceId` tracking on `PendingCorrection` to prevent feedback loops and rubberband storms caused by high-ping stale packets during transition windows.
-  5. **Low-VL Ping-Adaptive Jitter Vector Clamping**: Implemented vector projection clamping in `SpeedCheck` for sub-threshold jitter (`diff < 0.08`), allowing high-ping legitimate players to move smoothly forward at max allowable speed without jarring wall hitches.
-
 ## [1.1.4] - 2026-10-17
 
 ### Fixed
 
-- **GrimAC-Style Direct In-Event Cancellation**: Completely abolished setback immunity windows; movement violations are cancelled instantly within the move event, enforcing vanilla gravity decay and horizontal arresting for airborne exploits (near-ground snapping to prevent downward teleport/phase exploits and micro-fall bypasses).
+- **GrimAC-Style Direct In-Event Cancellation & Setback Modernization**:
+  1. Completely abolished setback immunity windows; movement violations are cancelled instantly within the move event.
+  2. **Vanilla Gravity Acceleration Curve Fitting**: Dynamically simulates authentic free-fall acceleration ($v_Y = (v_{Y,prev} - 0.08) \times 0.98$) during air cancellation and Active Gravity Tasks, eliminating constant-speed artificial sinking.
+  3. **Precision Sub-Block Terrain Adherence**: Exact collision shape Top-Y calculation via `CompatBoundingBox`, snapping setback targets to the real surface of slabs (0.5), snow layers, and stairs to eliminate post-setback micro-drops.
+  4. **Vehicle & Mount Synchronization**: Synchronized vehicle velocity zeroing and teleportation during setbacks, keeping players smoothly inside their boats/minecarts/horses.
+  5. **Teleport Sequence ID Ack**: Monotonic `SequenceId` tracking on `PendingCorrection` to prevent feedback loops and rubberband storms during high-ping transition windows.
+  6. **Low-VL Ping-Adaptive Jitter Clamping**: Vector projection clamping in `SpeedCheck` for sub-threshold jitter (`diff < 0.08`), allowing high-ping legitimate players to move smoothly forward.
 - **Eliminated Airborne Hovering Exploits (Dual Gravity Enforcement)**:
   1. Fixed zero-delta movement (`!posChanged`) bypass where stationary hovering in air was skipped; stationary airborne moves now route into `FlyCheck` directly.
   2. Fixed sub-50ms rapid packets incorrectly resetting airTicks accumulation.
