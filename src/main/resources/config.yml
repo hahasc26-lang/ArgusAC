@@ -1,0 +1,455 @@
+# ==============================================================================
+# AegisAC - Core Configuration File
+# Supports Spigot / Paper 1.12.2 ~ 1.21.x Multi-Version Architecture, Powered by Java 17
+# ==============================================================================
+
+# ==============================================================================
+# Language & Internationalization (i18n) Configuration
+# ==============================================================================
+language:
+  # Default language code used for server console output, system logs, and global broadcasts.
+  # Corresponds to filenames in the lang/ directory (lowercase without .yml extension, e.g. zh_cn).
+  server-language: "zh_cn"
+
+  # Client fallback language:
+  # Used when a player's client locale cannot be detected, or when their language file is missing (e.g. en_us).
+  client-default-language: "en_us"
+
+  # Whether to automatically adapt messages based on each player's client language (true / false).
+  # If false, all players receive messages in server-language.
+  auto-client-language: true
+
+# ==============================================================================
+# Cross-Version Adaptive Compatibility Matrix
+# ==============================================================================
+compatibility-matrix:
+  # Minimum allowed server version (plugin safely disables below this version to protect server stability)
+  minimum-allowed-version: "1.12.2"
+
+  # Degradation policy when legacy server APIs lack certain modern features:
+  # true  = Graceful degradation (missing features fall back to mathematical/geometric approximation)
+  # false = Strict mode (directly disables checks that require native modern APIs)
+  allow-feature-degradation: true
+
+  # Whether to conspicuously notify admins in console and in /aegis status when modules are degraded
+  notify-admins-on-degradation: true
+
+  # Module-level version overrides and compatibility switches
+  module-overrides:
+    elytra-fly:
+      auto-disable-below-1-9: true
+      fallback-to-speed-check: true
+
+    reach:
+      enable-aabb-reflection-fallback: true
+      fallback-player-width: 0.60
+      fallback-player-height: 1.80
+
+    bad-packets:
+      fallback-to-bukkit-events-without-protocollib: true
+
+  # Low-version performance tuning and TPS sampling strategy
+  performance-tuning:
+    enable-internal-tick-monitor: true
+    default-fallback-ping-ms: 50
+
+# ==============================================================================
+# Unified Lightweight Audit & Logging System Configuration
+# ==============================================================================
+audit:
+  prefix: "&8[&bAegis&3AC&8] &r"
+  server-id: "survival-01"
+  memory-buffer-size: 30
+  queue-capacity: 5000
+
+  hash-chain:
+    enabled: true
+    seed: "AegisAC-Enterprise-Seed-2026-X99"
+    checkpoint-interval-lines: 100
+
+  archive:
+    retention-days: 30
+    keep-admin-permanent: true
+    auto-compress-days: 7
+    min-tps-threshold: 18.5
+
+  privacy:
+    log-ip: false
+    hash-ip: true
+    salt: "AegisAC-Privacy-Salt-Secure-8820"
+
+settings:
+  # Plugin message prefix (supports legacy '&' color codes)
+  prefix: "&8[&bAegis&3AC&8] &r"
+  # Enable debug mode (outputs detailed evaluation telemetry)
+  debug: false
+  # Whether to automatically exempt players in Creative mode (even without aegisac.bypass permission)
+  bypass-creative: true
+  # Violation Level (VL) auto-decay settings
+  vl-decay:
+    interval-seconds: 15     # Decay interval in seconds
+    amount: 1                # VL deducted per decay cycle
+  # Violation log storage settings
+  logs:
+    max-per-player: 50       # Maximum log entries retained per player
+
+# ==============================================================================
+# Alert Notification System
+# ==============================================================================
+alerts:
+  enabled: true
+  # Alert format: {player}=Player, {check}=Check, {vl}=VL, {max_vl}=Threshold, {details}=Data, {ping}=Ping
+  format: "&c[!] &e{player} &7failed &b{check} &8(VL: &c{vl}&8/&7{max_vl}&8) &7- &f{details} &8[&7{ping}ms&8]"
+  # Play alert sound to staff with aegisac.alert permission
+  sound:
+    enabled: true
+    type: "BLOCK_NOTE_BLOCK_BASS"
+    volume: 1.0
+    pitch: 1.2
+  # Alert cooldown (ms) to prevent message spam from rapid violations
+  cooldown-ms: 1000
+
+# ==============================================================================
+# Core Mechanism: Last Known Valid Location Setback System
+# [Default Mitigation]: As the first line of defense, setbacks are enabled by default!
+# Reverses invalid movement and pulls cheating players back to their last safe location.
+# ==============================================================================
+setback:
+  # Master toggle (true by default as the primary active mitigation mechanism)
+  global-enabled: true
+
+  # Default setback execution mode:
+  # SOFT: Smoothly overrides movement destination inside PlayerMoveEvent without jarring rubberbands
+  # HARD: Schedules synchronous teleport on main thread, canceling velocity and fall distance
+  default-mode: "HARD"
+
+  # Cooldown between setbacks (ms) to prevent high-frequency jitter or network overload
+  cooldown-ms: 350
+
+  # Default minimum Violation Level (VL) required to trigger a setback (1 = immediate setback on violation)
+  default-min-vl: 1
+
+  # World exemption list (players in these worlds will not be set back)
+  exempted-worlds: []
+
+  # Boundary safety: when the last valid location is obstructed by external blocks or pistons
+  boundary:
+    # Whether to disconnect the player if both current and fallback safe positions are blocked by solid blocks
+    kick-when-both-blocked: false
+    kick-message: "&c[AegisAC] Irregular movement detected and previous location obstructed. Disconnected safely."
+
+  # Post-setback temporary immunity window (prevents sudden coordinate shifts from re-triggering other checks)
+  immunity:
+    # Minimum base immunity duration in milliseconds (actual immunity = max(min-duration, 4 * ping + extra-buffer))
+    min-duration-ms: 1500
+    extra-buffer-ms: 200
+
+  # Notification settings
+  notifications:
+    player:
+      # Notification channel: ACTIONBAR, CHAT, or NONE
+      channel: "ACTIONBAR"
+      message: "&c[AegisAC] Irregular movement detected, your position has been setback!"
+      # Notification cooldown (ms) to avoid spam
+      cooldown-ms: 1000
+    admin:
+      enabled: true
+      format: "&6[Setback] &e{player} &7set back by &c{check} &8(&f{old_loc} &8-> &a{new_loc}&8) &7[&b{mode}&7]"
+
+  # Asynchronous disk audit logging (persisted as JSON Lines, one JSON object per line)
+  disk-logging:
+    enabled: true
+    path: "plugins/AegisAC/logs/setbacks.jsonl"
+
+  # Per-check setback overrides (override global defaults)
+  per-check:
+    Speed:
+      enabled: true
+      min-vl: 1
+      mode: "HARD"
+    Fly:
+      enabled: true
+      min-vl: 1
+      mode: "HARD"
+    NoFall:
+      enabled: true
+      min-vl: 1
+      mode: "HARD"
+    Velocity:
+      enabled: true
+      min-vl: 1
+      mode: "HARD"
+    Scaffold:
+      enabled: true
+      min-vl: 1
+      mode: "HARD"
+    InventoryMove:
+      enabled: true
+      min-vl: 1
+      mode: "SOFT"
+    BadPackets:
+      enabled: true
+      min-vl: 1
+      mode: "HARD"
+    Reach:
+      enabled: true
+      min-vl: 1
+      mode: "HARD"
+    KillAura:
+      enabled: true
+      min-vl: 1
+      mode: "HARD"
+    FastBreak:
+      enabled: true
+      min-vl: 1
+      mode: "HARD"
+    Nuker:
+      enabled: true
+      min-vl: 1
+      mode: "HARD"
+    AutoClicker:
+      enabled: true
+      min-vl: 1
+      mode: "HARD"
+    ElytraFly:
+      enabled: true
+      min-vl: 3
+      mode: "HARD"
+
+# ==============================================================================
+# Punishment System
+# Architecture: Two-Tier Punishment Mechanism
+# 1. Tier 1 Default Punishment: Setback Mechanism!
+#    Serves as the primary active defense line. Once violation is confirmed (VL >= 1),
+#    immediately pulls the player back and resets motion momentum.
+# 2. Tier 2 Escalated Punishment: Console Command Actions.
+#    Triggers automated console commands (e.g. kick/ban) only when a player persists in
+#    cheating and accumulates a high VL threshold.
+# ==============================================================================
+punishments:
+  enabled: true
+
+  # Default mitigation configuration: using Setback as first-line action
+  default-action:
+    setback-as-default: true
+    min-vl: 1
+
+  # Escalated console punishment commands (triggered only at high VL thresholds)
+  # Supported variables: {player}=Player name, {check}=Check name, {vl}=Current VL
+  actions:
+    - vl: 25
+      command: "kick {player} [AegisAC] Continuous irregular client behavior detected."
+    # Example ban rule (uncomment to enable):
+    # - vl: 50
+    #   command: "ban {player} 7d [AegisAC] Persistent cheating behavior detected"
+
+# ==============================================================================
+# Detection Module Threshold Configurations
+# ==============================================================================
+checks:
+  # 1. Speed Check
+  Speed:
+    enabled: true
+    max-vl: 15
+    # Maximum allowed horizontal distance per tick (sprinting/jumping is ~0.62, includes potion & ice tolerances)
+    max-horizontal-speed: 0.65
+    # Additional velocity multiplier for ice/packed ice friction
+    ice-modifier: 1.45
+    # Speed potion bonus multiplier per potion amplifier level
+    speed-potion-multiplier: 0.20
+
+  # 2. Fly Check
+  Fly:
+    enabled: true
+    max-vl: 12
+    # Maximum allowed air tick count without collision, elytra, or flight ability
+    max-air-ticks: 25
+    # Illegal upwards ascent threshold without jump boost effects
+    vertical-ascent-threshold: 0.42
+
+  # 3. NoFall Check (Spoofed onGround packets)
+  NoFall:
+    enabled: true
+    max-vl: 15
+    # Tolerance distance when client declares onGround=true but no solid blocks are beneath
+    ground-check-tolerance: 0.001
+
+  # 4. Reach Check (Combat distance)
+  Reach:
+    enabled: true
+    max-vl: 15
+    # Maximum base reach distance in blocks for Survival mode
+    max-reach: 3.10
+    # Maximum reach threshold with ping compensation and knockback margins
+    max-ping-reach: 3.50
+
+  # 5. AutoClicker Check (Click speed and regularity)
+  AutoClicker:
+    enabled: true
+    max-vl: 15
+    # Maximum allowed clicks per second (CPS)
+    max-cps: 18
+    # Minimum standard deviation threshold (detects mechanical uniformity from macro/autoclickers)
+    min-std-deviation: 4.5
+
+  # 6. KillAura Check (Combat angles and raytracing)
+  KillAura:
+    enabled: true
+    max-vl: 18
+    # Maximum allowed field-of-view angle (degrees) away from target when attacking
+    max-angle: 68.0
+    # Check for solid block obstruction between attacker eyes and target eyes
+    raytrace-blocks: true
+    # Maximum target-switching interval in milliseconds for rapid aura attacks
+    target-switch-ms: 80
+
+  # 7. Velocity Check (Knockback modification / Anti-KB)
+  Velocity:
+    enabled: true
+    max-vl: 15
+    # Expected vertical knockback ratio (values below this threshold indicate anti-knockback)
+    vertical-ratio: 0.85
+    # Expected horizontal knockback ratio
+    horizontal-ratio: 0.80
+
+  # 8. FastBreak Check
+  FastBreak:
+    enabled: true
+    max-vl: 15
+    # Percentage threshold for digging faster than theoretical duration (0.20 = 20% faster)
+    time-leniency: 0.20
+
+  # 9. Nuker Check (Mass block breaking)
+  Nuker:
+    enabled: true
+    max-vl: 12
+    # Maximum blocks broken per tick (vanilla clients break at most 1 per tick)
+    max-breaks-per-tick: 2
+    # Maximum blocks broken per second without Haste II
+    max-breaks-per-second: 15
+
+  # 10. Scaffold Check (Automated bridging)
+  Scaffold:
+    enabled: true
+    max-vl: 15
+    # Minimum downward pitch angle when placing blocks beneath feet
+    min-pitch: 70.0
+    # Tolerance delay (ms) for rapid consecutive downward backwards placement
+    fast-placement-delay-ms: 120
+
+  # 11. InventoryMove Check
+  InventoryMove:
+    enabled: true
+    max-vl: 10
+    # Maximum allowed distance moved while viewing inventory or container screens
+    max-distance-while-open: 0.15
+
+  # 12. BadPackets Check
+  BadPackets:
+    enabled: true
+    max-vl: 10
+    # Strict pitch constraint: pitch must remain within [-90.0, 90.0] (prevents Derp / HeadRoll)
+    strict-pitch: true
+    # Check for duplicate movement packets while ascending
+    check-duplicate-move: true
+
+  # 13. ElytraFly Check
+  # Analyzes elytra aerodynamics to detect hovering, unauthorized propulsion, timer, and no-fall exploits
+  ElytraFly:
+    enabled: true
+    max-vl: 15
+
+    # Exemption and physical environment parameters
+    exemptions:
+      # Firework rocket boost grace window (ms)
+      firework-boost-duration-ms: 1500
+      # Riptide trident grace window (ms)
+      riptide-duration-ms: 2000
+      # External velocity grace window for explosions, pistons, and wind charges (ms)
+      external-velocity-duration-ms: 1200
+      # Takeoff grace duration during initial jump glide (ms)
+      takeoff-grace-duration-ms: 1000
+      # Minimum server TPS threshold before relaxing strict checks
+      min-server-tps: 17.5
+
+    # Sub-Check 1: Gliding Speed Limit (ElytraSpeed)
+    speed:
+      enabled: true
+      # Maximum horizontal speed in unboosted level flight (blocks/tick, vanilla is ~1.35)
+      max-unboosted-speed: 1.45
+      # Maximum allowed horizontal speed during rocket propulsion (blocks/tick)
+      max-boosted-speed: 2.60
+      # Dive speed multiplier based on downward viewing angle (pitch > 0)
+      pitch-dive-multiplier: 0.55
+      min-vl: 3
+      setback-mode: "HARD"
+
+    # Sub-Check 2: Unpropelled Ascent (ElytraAscend)
+    ascend:
+      enabled: true
+      # Maximum vertical ascent speed per tick without fireworks, riptide, or bubble columns
+      max-vertical-ascent: 0.15
+      # Consecutive ascent tick threshold (tolerates 1-2 ticks of network interpolation jitter)
+      ascend-ticks-threshold: 4
+      min-vl: 3
+      setback-mode: "HARD"
+
+    # Sub-Check 3: Mid-Air Hovering (ElytraHover)
+    hover:
+      enabled: true
+      # Maximum horizontal speed threshold for hovering (blocks/tick)
+      max-horizontal-speed: 0.08
+      # Maximum vertical speed threshold for hovering (blocks/tick)
+      max-vertical-speed: 0.05
+      # Consecutive hovering ticks required to trigger violation
+      hover-ticks-threshold: 15
+      min-vl: 3
+      setback-mode: "HARD"
+
+    # Sub-Check 4: Firework Acceleration Alignment (ElytraFirework)
+    firework:
+      enabled: true
+      # Minimum unauthorized forward acceleration without firework rocket consumption
+      min-unpropelled-accel: 0.12
+      # Consecutive ticks sustaining theoretical maximum velocity without fireworks
+      continuous-high-speed-ticks: 50
+      min-vl: 3
+      setback-mode: "HARD"
+
+    # Sub-Check 5: Glide State Consistency (ElytraGlideState)
+    glide-state:
+      enabled: true
+      # Validate whether chestplate elytra has depleted durability (durability 0 cannot glide)
+      check-chestplate-durability: true
+      min-vl: 1
+      setback-mode: "HARD"
+
+    # Sub-Check 6: Tick Rate Timer Anomaly (ElytraTimer)
+    timer:
+      enabled: true
+      # Sliding window sample size (average interval across last N move packets)
+      sample-window-size: 20
+      # Minimum average interval lower bound (ms, normal is ~50ms per tick)
+      min-average-interval-ms: 44.0
+      min-vl: 3
+      setback-mode: "SOFT"
+
+    # Sub-Check 7: Rapid State Toggling (ElytraFlip)
+    flip:
+      enabled: true
+      # Sliding statistical window in milliseconds
+      window-ms: 1000
+      # Maximum allowed glide state toggles within the statistical window
+      max-toggles: 4
+      min-vl: 3
+      setback-mode: "SOFT"
+
+    # Sub-Check 8: Ground Proximity Fall Damage Exploit (ElytraNoFall)
+    nofall:
+      enabled: true
+      # Fall distance threshold prior to touching ground (blocks)
+      min-fall-distance: 3.0
+      # Proximity threshold to solid ground beneath feet (blocks)
+      ground-proximity-distance: 1.8
+      min-vl: 3
+      setback-mode: "HARD"

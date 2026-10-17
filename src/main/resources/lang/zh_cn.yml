@@ -1,0 +1,39 @@
+# ==============================================================================
+# AegisAC - Simplified Chinese Language File (zh_cn.yml)
+# Supports MiniMessage formatting (e.g. <red>, <bold>, <gradient:#55cdfc:#f7a8b8>)
+# as well as legacy color codes (e.g. &a, &c, &e, &#RRGGBB)
+# ==============================================================================
+
+# Global plugin prefix
+prefix: "<gradient:#00C9FF:#92FE9D>[AegisAC]</gradient>&r "
+
+# System and administrative console messages
+system:
+  reload-success: "<green>所有配置文件、检测规则与多语言文件已成功热重载！耗时: <yellow>{time}ms</yellow></green>"
+  reload-failed: "<red>配置文件重载失败，已安全回退到此前版本，详情请查看控制台日志！</red>"
+  no-permission: "<red>权限不足！你没有执行此命令的权限: <yellow>{permission}</yellow></red>"
+  only-player: "<red>该命令只能由游戏内玩家执行！</red>"
+  unknown-command: "<red>未知的子命令: <yellow>{subcommand}</yellow>。输入 <gray>/aegis help</gray> 查看命令列表。</red>"
+  target-not-found: "<red>未找到目标玩家: <yellow>{target}</yellow>（玩家不在线或不存在）</red>"
+
+# Cheat detection alert messages (sent to staff)
+alert:
+  format: "<dark_gray>[</dark_gray><aqua>Aegis</aqua><dark_aqua>AC</dark_aqua><dark_gray>]</dark_gray> <gray>玩家</gray> <red>{player}</red> <gray>触发检测</gray> <gold>{check}</gold> <dark_gray>(</dark_gray><yellow>{type}</yellow><dark_gray>)</dark_gray> <gray>VL: <red>{vl}</red>/<dark_red>{max_vl}</dark_red> <dark_gray>[<gray>Ping: <green>{ping}ms</green> <gray>TPS: <green>{tps}</green><dark_gray>]</dark_gray>"
+  hover-details: "<yellow>点击传送至玩家所在位置</yellow>\n<gray>详细信息: <white>{detail}</white>"
+
+# Mitigation and punishment messages (sent to suspected player)
+punishment:
+  setback-notify: "<red>检测到异常移动行为，位置已重置！</red>"
+  kick-reason: "<red>[AegisAC] 您的客户端行为异常，已被移出服务器。\n<gray>触发检测: <yellow>{check}</yellow> <gray>(代码: <white>{code}</white>)</gray>"
+  ban-reason: "<red>[AegisAC] 您的账户因违规行为已被封禁。\n<gray>原因: <yellow>{reason}</yellow>\n<gray>如有异议请联系管理员申诉。</gray>"
+
+# Command help menu entries (List format)
+help:
+  header: "<dark_gray>================= <gradient:#00C9FF:#92FE9D>AegisAC 反作弊帮助菜单</gradient> <dark_gray>================="
+  footer: "<dark_gray>====================================================="
+  entries:
+    - "<yellow>/aegis help</yellow> <dark_gray>-</dark_gray> <gray>查看本帮助菜单</gray>"
+    - "<yellow>/aegis reload</yellow> <dark_gray>-</dark_gray> <gray>热重载配置文件与语言包</gray>"
+    - "<yellow>/aegis status</yellow> <dark_gray>-</dark_gray> <gray>查看服务器当前检测模块运行状态</gray>"
+    - "<yellow>/aegis vl <玩家></yellow> <dark_gray>-</dark_gray> <gray>查询指定玩家的当前违规值 (VL)</gray>"
+    - "<yellow>/aegis logs <玩家></yellow> <dark_gray>-</dark_gray> <gray>查询指定玩家的历史违规审计记录</gray>"

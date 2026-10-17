@@ -1,0 +1,39 @@
+# ==============================================================================
+# AegisAC - English Language File (en_us.yml)
+# Supports MiniMessage formatting (e.g. <red>, <bold>, <gradient:#55cdfc:#f7a8b8>)
+# as well as legacy color codes (e.g. &a, &c, &e, &#RRGGBB)
+# ==============================================================================
+
+# Global plugin prefix
+prefix: "<gradient:#00C9FF:#92FE9D>[AegisAC]</gradient>&r "
+
+# System and administrative console messages
+system:
+  reload-success: "<green>All configuration, detection rules, and language files reloaded in <yellow>{time}ms</yellow>!</green>"
+  reload-failed: "<red>Failed to reload configuration! Rolled back to previous version, see console for details.</red>"
+  no-permission: "<red>Permission denied! You lack permission: <yellow>{permission}</yellow></red>"
+  only-player: "<red>This command can only be executed by in-game players!</red>"
+  unknown-command: "<red>Unknown subcommand: <yellow>{subcommand}</yellow>. Use <gray>/aegis help</gray> for command list.</red>"
+  target-not-found: "<red>Target player not found: <yellow>{target}</yellow> (player is offline or does not exist)</red>"
+
+# Cheat detection alert messages (sent to staff)
+alert:
+  format: "<dark_gray>[</dark_gray><aqua>Aegis</aqua><dark_aqua>AC</dark_aqua><dark_gray>]</dark_gray> <gray>Player</gray> <red>{player}</red> <gray>failed</gray> <gold>{check}</gold> <dark_gray>(</dark_gray><yellow>{type}</yellow><dark_gray>)</dark_gray> <gray>VL: <red>{vl}</red>/<dark_red>{max_vl}</dark_red> <dark_gray>[<gray>Ping: <green>{ping}ms</green> <gray>TPS: <green>{tps}</green><dark_gray>]</dark_gray>"
+  hover-details: "<yellow>Click to teleport to player</yellow>\n<gray>Details: <white>{detail}</white>"
+
+# Mitigation and punishment messages (sent to suspected player)
+punishment:
+  setback-notify: "<red>Irregular movement detected, your position has been setback!</red>"
+  kick-reason: "<red>[AegisAC] Irregular client behavior detected.\n<gray>Triggered Check: <yellow>{check}</yellow> <gray>(Code: <white>{code}</white>)</gray>"
+  ban-reason: "<red>[AegisAC] Your account has been permanently suspended for cheating.\n<gray>Reason: <yellow>{reason}</yellow>\n<gray>Appeal at staff support if you believe this is in error.</gray>"
+
+# Command help menu entries (List format)
+help:
+  header: "<dark_gray>================= <gradient:#00C9FF:#92FE9D>AegisAC Help Menu</gradient> <dark_gray>================="
+  footer: "<dark_gray>====================================================="
+  entries:
+    - "<yellow>/aegis help</yellow> <dark_gray>-</dark_gray> <gray>Display this help menu</gray>"
+    - "<yellow>/aegis reload</yellow> <dark_gray>-</dark_gray> <gray>Reload configuration files and language packs</gray>"
+    - "<yellow>/aegis status</yellow> <dark_gray>-</dark_gray> <gray>View current detection module status</gray>"
+    - "<yellow>/aegis vl <player></yellow> <dark_gray>-</dark_gray> <gray>Check violation level (VL) for a player</gray>"
+    - "<yellow>/aegis logs <player></yellow> <dark_gray>-</dark_gray> <gray>Query historical audit logs for a player</gray>"

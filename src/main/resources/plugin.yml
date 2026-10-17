@@ -1,0 +1,27 @@
+name: AegisAC
+version: '${project.version}'
+main: com.example.aegisac.AegisACPlugin
+api-version: '1.13'
+author: haha
+description: Industrial-grade high-performance cross-version anti-cheat plugin, supporting 1.12.2 - 1.21.x
+softdepend:
+  - ProtocolLib
+
+commands:
+  aegis:
+    description: AegisAC main command
+    aliases:
+      - ac
+    permission: aegisac.admin
+    usage: /<command> [help|reload|vl|logs|toggle|setback]
+
+permissions:
+  aegisac.admin:
+    description: Allows the use of all AegisAC admin commands
+    default: op
+  aegisac.alert:
+    description: Allows receiving anti-cheat violation and setback alert notifications
+    default: op
+  aegisac.bypass:
+    description: Bypasses anti-cheat checks and setbacks
+    default: false
