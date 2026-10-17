@@ -223,7 +223,11 @@ public class ModernVersionAdapter implements VersionAdapter {
 
     @Override
     public double[] getTPS() {
-        return Bukkit.getTPS();
+        try {
+            return Bukkit.getTPS();
+        } catch (Throwable t) {
+            return TickMonitor.getRecentTps();
+        }
     }
 
     @Override

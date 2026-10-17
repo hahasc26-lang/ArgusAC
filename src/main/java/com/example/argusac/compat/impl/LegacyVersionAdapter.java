@@ -377,8 +377,7 @@ public class LegacyVersionAdapter implements VersionAdapter {
         }
 
         // 最终兜底：内置 TickMonitor 采样器或安全默认值
-        double currentTps = TickMonitor.getEstimatedTps();
-        return new double[]{ currentTps, currentTps, currentTps };
+        return TickMonitor.getRecentTps();
     }
 
     @Override

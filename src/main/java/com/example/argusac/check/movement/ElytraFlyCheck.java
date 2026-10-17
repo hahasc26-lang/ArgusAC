@@ -7,7 +7,6 @@ import com.example.argusac.check.AbstractCheck;
 import com.example.argusac.data.ElytraData;
 import com.example.argusac.data.PlayerData;
 import com.example.argusac.model.VelocitySourceType;
-import org.bukkit.Bukkit;
 import org.bukkit.GameMode;
 import org.bukkit.Location;
 import org.bukkit.Material;
@@ -702,7 +701,7 @@ public class ElytraFlyCheck extends AbstractCheck {
 
     private double getRecentTps() {
         try {
-            double[] tps = Bukkit.getTPS();
+            double[] tps = com.example.argusac.compat.VersionAdapterFactory.getAdapter().getTPS();
             if (tps != null && tps.length > 0) {
                 return Math.min(20.0, Math.max(0.0, tps[0]));
             }

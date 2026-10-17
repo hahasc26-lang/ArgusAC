@@ -12,9 +12,10 @@ public final class VersionAdapterFactory {
     private static final VersionAdapter ADAPTER;
 
     static {
-        if (ServerVersion.isAtLeast(ServerVersion.V1_20_4) && ServerVersion.isPaper()) {
+        if (ServerVersion.isAtLeast(ServerVersion.V1_20_4)) {
             ADAPTER = new ModernVersionAdapter();
-            Bukkit.getLogger().info("[ArgusAC-Compat] Environment detected: Paper 1.20+ -> Activated [Modern Native Adapter]");
+            Bukkit.getLogger().info(String.format("[ArgusAC-Compat] Environment detected: %s (Code: %d, %s) -> Activated [Modern Native Adapter]",
+                    ServerVersion.get().getFriendlyName(), ServerVersion.getCode(), ServerVersion.isPaper() ? "Paper" : "Spigot"));
         } else {
             ADAPTER = new LegacyVersionAdapter();
             Bukkit.getLogger().info(String.format("[ArgusAC-Compat] Environment detected: %s (Code: %d) -> Activated [Cross-Version Fallback Adapter]",

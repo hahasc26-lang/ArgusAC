@@ -48,4 +48,9 @@ public final class TickMonitor {
         double tps = 1000.0 / Math.max(50.0, avgTickMs);
         return Math.min(20.0, Math.max(0.0, tps));
     }
+
+    public static double[] getRecentTps() {
+        double current = getEstimatedTps();
+        return new double[]{ current, current, current };
+    }
 }

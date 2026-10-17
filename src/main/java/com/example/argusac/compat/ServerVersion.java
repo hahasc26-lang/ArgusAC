@@ -22,7 +22,14 @@ public enum ServerVersion {
     V1_18_2(11802, "1.18.2"),
     V1_19_4(11904, "1.19.4"),
     V1_20_4(12004, "1.20.4"),
-    V1_21(12100, "1.21");
+    V1_21(12100, "1.21"),
+    V1_21_4(12104, "1.21.4"),
+    V1_22(12200, "1.22"),
+    V1_23(12300, "1.23"),
+    V1_24(12400, "1.24"),
+    V1_25(12500, "1.25"),
+    V1_26(12600, "1.26"),
+    V1_26_3(12603, "1.26.3 (26.3)");
 
     private final int versionCode;
     private final String friendlyName;
@@ -91,24 +98,37 @@ public enum ServerVersion {
     private static int parseServerVersionCode() {
         try {
             String versionStr = Bukkit.getVersion();
-            Pattern pattern = Pattern.compile("(?i)\\(MC:\\s*([0-9]+)\\.([0-9]+)(?:\\.([0-9]+))?\\)");
+            // 兼容 (MC: 1.20.4), (MC: 1.26.3) 以及 (MC: 26.3)
+            Pattern pattern = Pattern.compile("(?i)\\(MC:\\s*(?:1\\.)?([0-9]+)(?:\\.([0-9]+))?(?:\\.([0-9]+))?\\)");
             Matcher matcher = pattern.matcher(versionStr);
 
             if (matcher.find()) {
-                int major = Integer.parseInt(matcher.group(1));
-                int minor = Integer.parseInt(matcher.group(2));
-                int patch = (matcher.group(3) != null) ? Integer.parseInt(matcher.group(3)) : 0;
-                return major * 10000 + minor * 100 + patch;
+                int first = Integer.parseInt(matcher.group(1));
+                int second = (matcher.group(2) != null) ? Integer.parseInt(matcher.group(2)) : 0;
+                int third = (matcher.group(3) != null) ? Integer.parseInt(matcher.group(3)) : 0;
+                if (first == 1) {
+                    return first * 10000 + second * 100 + third;
+                } else if (first >= 20) {
+                    return 10000 + first * 100 + second;
+                } else {
+                    return 10000 + first * 100 + second;
+                }
             }
 
             String bukkitVer = Bukkit.getBukkitVersion();
-            Pattern bPattern = Pattern.compile("^([0-9]+)\\.([0-9]+)(?:\\.([0-9]+))?");
+            Pattern bPattern = Pattern.compile("^(?:1\\.)?([0-9]+)(?:\\.([0-9]+))?(?:\\.([0-9]+))?");
             Matcher bMatcher = bPattern.matcher(bukkitVer);
             if (bMatcher.find()) {
-                int major = Integer.parseInt(bMatcher.group(1));
-                int minor = Integer.parseInt(bMatcher.group(2));
-                int patch = (bMatcher.group(3) != null) ? Integer.parseInt(bMatcher.group(3)) : 0;
-                return major * 10000 + minor * 100 + patch;
+                int first = Integer.parseInt(bMatcher.group(1));
+                int second = (bMatcher.group(2) != null) ? Integer.parseInt(bMatcher.group(2)) : 0;
+                int third = (bMatcher.group(3) != null) ? Integer.parseInt(bMatcher.group(3)) : 0;
+                if (first == 1) {
+                    return first * 10000 + second * 100 + third;
+                } else if (first >= 20) {
+                    return 10000 + first * 100 + second;
+                } else {
+                    return 10000 + first * 100 + second;
+                }
             }
         } catch (Exception ignored) {}
 

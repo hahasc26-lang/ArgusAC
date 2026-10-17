@@ -105,13 +105,14 @@ public class LogArchiveService {
 
     private void throttleIfTpsDrops() {
         try {
-            double currentTps = Bukkit.getTPS()[0];
+            double currentTps = com.example.argusac.compat.VersionAdapterFactory.getAdapter().getTPS()[0];
             while (currentTps < minTpsThreshold) {
                 Thread.sleep(1000L);
-                currentTps = Bukkit.getTPS()[0];
+                currentTps = com.example.argusac.compat.VersionAdapterFactory.getAdapter().getTPS()[0];
             }
         } catch (InterruptedException ignored) {
             Thread.currentThread().interrupt();
+        } catch (Throwable ignored) {
         }
     }
 
