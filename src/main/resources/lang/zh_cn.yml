@@ -15,6 +15,15 @@ system:
   only-player: "<red>该命令只能由游戏内玩家执行！</red>"
   unknown-command: "<red>未知的子命令: <yellow>{subcommand}</yellow>。输入 <gray>/argus help</gray> 查看命令列表。</red>"
   target-not-found: "<red>未找到目标玩家: <yellow>{target}</yellow>（玩家不在线或不存在）</red>"
+  audit-backlog: "<red>[ArgusAC 警告] 审计日志队列积压已达 {size}/{capacity} ({ratio}%)！请注意磁盘 I/O！</red>"
+
+# Check category names
+check:
+  type:
+    movement: "移动"
+    combat: "战斗"
+    world: "世界交互"
+    packet: "数据包"
 
 # Cheat detection alert messages (sent to staff)
 alert:
@@ -63,6 +72,10 @@ command:
     usage: "<red>用法: /{label} logs <玩家名> [--check <name>] [--since <1h|24h|7d>] [--setback] [--page <n>]</red>"
     empty: "<gray>玩家 <yellow>{player}</yellow> 在内存快速缓冲中无匹配记录。</gray>"
     header: "<yellow>=== {title} (第 {page}/{total_pages} 页) ===</yellow>"
+    title-memory: "内存快速日志 (近 {count} 条)"
+    title-history: "历史审计档案 (共 {count} 条)"
+    admin-format: "&8[{time}] &dADMIN &7{actor} 执行 &e{action} &7目标:&b{target}"
+    integrity-format: "&8[{time}] &5INTEGRITY &7行数:&f{count}"
   history:
     usage: "<red>用法: /{label} history <玩家名> <查询天数> [--check <name>] [--setback] [--page <n>]</red>"
     searching: "<gray>正在异步流式检索历史日志档案 (含 .jsonl.gz)...</gray>"
@@ -86,6 +99,9 @@ command:
     chain: "<gray>哈希链高度: <white>#{chain_index}</white> <dark_gray>|</dark_gray> 根哈希: <aqua>{hash}</aqua></gray>"
     archive: "<gray>历史归档文件数: <white>{archive_count}</white> <dark_gray>|</dark_gray> 存储占用: <white>{size}</white></gray>"
     flush-time: "<gray>最近落盘时间: <white>{time}</white>{dropped}</gray>"
+    memory-high: "偏高"
+    memory-healthy: "健康"
+    dropped-hint: "&8(&c丢弃: {dropped}&8)"
   compat:
     header: "<gradient:#00C9FF:#92FE9D>=== ArgusAC 跨版本运行兼容矩阵 ===</gradient>"
     env: "<gray>当前服务器环境: <aqua>{env}</aqua> <dark_gray>(编码: <white>{code}</white>) | 核心: <dark_aqua>{core}</dark_aqua></gray>"
@@ -98,6 +114,14 @@ command:
   replay:
     usage: "<red>用法: /{label} replay <玩家名> [--side]</red>"
     empty: "<red>该玩家近期 60 秒内无可用移动轨迹数据。</red>"
+    no-coords: "&c无有效轨迹坐标可回放。"
+    view-side: "XY 侧视图"
+    view-top: "XZ 俯视图"
+    header: "&e=== 移动轨迹 ASCII 取证回放: &b{player} &e({view}) ==="
+    info: "&7检测项: &c{check} &8| &7严重度: &e{severity} &8| &7回退模式: &b{mode}"
+    coords: "&7起点(S): &a{from} &8-> &7回退点(X): &c{to}"
+    height-bar: "&7[高度条]"
+    legend: "&7图例: &aS&7=最后合法起点, &e*&7=异常越界位移, &cX&7=强制回退点"
   verify:
     running: "<yellow>正在后台多线程验证审计日志 SHA-256 哈希链签名，请稍候...</yellow>"
     success: "<green>哈希链审计验证通过！所有日志数据完整且未经任何外部篡改。</green>"
@@ -131,3 +155,34 @@ command:
   purge:
     usage: "<red>用法: /{label} purge <玩家名></red>"
     success: "<green>已彻底清除玩家 <yellow>{player}</yellow> 的全部反作弊数据，并已写入系统注销审计日志。</green>"
+
+# Multi-version compatibility descriptions and diagnostics
+compat:
+  status:
+    full: "&a完整支持"
+    degraded: "&e降级运行"
+    disabled: "&c版本禁用"
+  reason:
+    default: "正常运转"
+    elytrafly-disabled: "Minecraft 1.9 以前不存在滑翔机制"
+    elytrafly-full: "完整支持滑翔姿态采样"
+    speed-degraded: "1.13 以前无 swimming 姿态，在水中采用老版浮力模型推算"
+    speed-full: "支持确定性物理运动模拟预测与原生碰撞盒"
+    fly-full: "支持确定性重力加速度预测模拟与高度边界计算"
+    fly-legacy: "基础位移向量与重力加速度全版本支持"
+    reach-degraded: "无 Entity#getBoundingBox，采用 0.6x1.8 盒状近似计算"
+    reach-full: "支持原生精确碰撞盒交互距离运算"
+    badpackets-degraded: "当前依赖 Bukkit 事件层近似校验，数据包级协议状态机待挂载"
+    badpackets-full: "PacketEvents 数据包协议引擎已激活，完整支持底层时序与数据包校验"
+    nofall-full: "坠落动量与地面状态全版本支持"
+    fastbreak-full: "方块挖掘时序全版本支持"
+    scaffold-full: "搭建朝向与视线交点全版本支持"
+    inventorymove-full: "背包开启状态监听全版本支持"
+  diag:
+    ready: "多版本自适应环境自检就绪:"
+    core: "识别内核: {core} ({type})"
+    code: "版本编码: {code}"
+    adapter: "适配器通道: {adapter}"
+    matrix: "模块能力矩阵: {count} 个检测项已分配运行等级"
+    degraded-notice: "[提示] 检测到部分模块运行在降级兼容模式，使用 /argus compat 可查看详情。"
+

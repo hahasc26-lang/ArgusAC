@@ -49,7 +49,7 @@ public class HashChainEngine {
             }
             return hexString.toString();
         } catch (NoSuchAlgorithmException e) {
-            throw new RuntimeException("SHA-256 算法不支持", e);
+            throw new RuntimeException("SHA-256 algorithm not supported", e);
         }
     }
 }

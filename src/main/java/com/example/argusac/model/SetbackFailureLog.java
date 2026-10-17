@@ -65,7 +65,7 @@ public class SetbackFailureLog {
 
     @Override
     public String toString() {
-        return String.format("[%s] [FAIL] %s 触发 %s 回退失败 - 原因: %s (原目标: %s)",
+        return String.format("[%s] [FAIL] %s triggered %s setback failure - Reason: %s (Original: %s)",
                 getFormattedTime(), playerName, checkName, failureReason, originalLocation);
     }
 }

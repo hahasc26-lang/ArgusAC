@@ -4,8 +4,6 @@ main: com.example.argusac.ArgusACPlugin
 api-version: '1.13'
 author: haha
 description: Industrial-grade high-performance cross-version anti-cheat plugin (ArgusAC), supporting 1.12.2 - 1.21.x
-softdepend:
-  - ProtocolLib
 
 commands:
   argus:

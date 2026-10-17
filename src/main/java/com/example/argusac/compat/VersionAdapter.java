@@ -70,4 +70,7 @@ public interface VersionAdapter {
     void sendActionBar(Player player, String colorFormattedText);
 
     void playSound(Player player, Location loc, String soundName, float volume, float pitch);
+
+    // 视线射线碰撞遮挡判定 (跨版本安全判定隔墙攻击)
+    boolean isRayOccluded(Location from, Location to);
 }

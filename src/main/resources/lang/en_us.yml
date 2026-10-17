@@ -15,6 +15,15 @@ system:
   only-player: "<red>This command can only be executed by in-game players!</red>"
   unknown-command: "<red>Unknown subcommand: <yellow>{subcommand}</yellow>. Use <gray>/argus help</gray> for command list.</red>"
   target-not-found: "<red>Target player not found: <yellow>{target}</yellow> (player is offline or does not exist)</red>"
+  audit-backlog: "<red>[ArgusAC Warning] Audit log queue backlog reached {size}/{capacity} ({ratio}%)! Watch out for disk I/O!</red>"
+
+# Check category names
+check:
+  type:
+    movement: "Movement"
+    combat: "Combat"
+    world: "World"
+    packet: "Packet"
 
 # Cheat detection alert messages (sent to staff)
 alert:
@@ -63,6 +72,10 @@ command:
     usage: "<red>Usage: /{label} logs <player> [--check <name>] [--since <1h|24h|7d>] [--setback] [--page <n>]</red>"
     empty: "<gray>No in-memory audit logs found for player <yellow>{player}</yellow>.</gray>"
     header: "<yellow>=== {title} (Page {page}/{total_pages}) ===</yellow>"
+    title-memory: "In-Memory Fast Logs (Recent {count} entries)"
+    title-history: "Historical Audit Archives ({count} entries)"
+    admin-format: "&8[{time}] &dADMIN &7{actor} executed &e{action} &7target:&b{target}"
+    integrity-format: "&8[{time}] &5INTEGRITY &7lines:&f{count}"
   history:
     usage: "<red>Usage: /{label} history <player> <days> [--check <name>] [--setback] [--page <n>]</red>"
     searching: "<gray>Streaming historical log archives (including .jsonl.gz)...</gray>"
@@ -86,6 +99,9 @@ command:
     chain: "<gray>Hash chain height: <white>#{chain_index}</white> <dark_gray>|</dark_gray> Root hash: <aqua>{hash}</aqua></gray>"
     archive: "<gray>Archived log files: <white>{archive_count}</white> <dark_gray>|</dark_gray> Storage footprint: <white>{size}</white></gray>"
     flush-time: "<gray>Last Flush: <white>{time}</white>{dropped}</gray>"
+    memory-high: "High"
+    memory-healthy: "Healthy"
+    dropped-hint: "&8(&cDropped: {dropped}&8)"
   compat:
     header: "<gradient:#00C9FF:#92FE9D>=== ArgusAC Cross-Version Compatibility Matrix ===</gradient>"
     env: "<gray>Environment: <aqua>{env}</aqua> <dark_gray>(Code: <white>{code}</white>) | Core: <dark_aqua>{core}</dark_aqua></gray>"
@@ -98,6 +114,14 @@ command:
   replay:
     usage: "<red>Usage: /{label} replay <player> [--side]</red>"
     empty: "<red>No trajectory data available in the last 60 seconds for this player.</red>"
+    no-coords: "&cNo valid trajectory coordinates available for replay."
+    view-side: "XY Side View"
+    view-top: "XZ Top-down View"
+    header: "&e=== Movement Trajectory Forensic Replay: &b{player} &e({view}) ==="
+    info: "&7Check: &c{check} &8| &7Severity: &e{severity} &8| &7Mode: &b{mode}"
+    coords: "&7Start(S): &a{from} &8-> &7Setback(X): &c{to}"
+    height-bar: "&7[Height Bar]"
+    legend: "&7Legend: &aS&7=Legal Origin, &e*&7=Illegal Vector, &cX&7=Forced Setback"
   verify:
     running: "<yellow>Verifying audit log SHA-256 hash chain signatures in background, please wait...</yellow>"
     success: "<green>Hash chain audit passed! All log entries are intact with zero tampering.</green>"
@@ -131,3 +155,34 @@ command:
   purge:
     usage: "<red>Usage: /{label} purge <player></red>"
     success: "<green>Successfully purged all stored audit logs for player <yellow>{player}</yellow>.</green>"
+
+# Multi-version compatibility descriptions and diagnostics
+compat:
+  status:
+    full: "&aFULL"
+    degraded: "&eDEGRADED"
+    disabled: "&cDISABLED"
+  reason:
+    default: "Operating normally"
+    elytrafly-disabled: "Gliding mechanics do not exist before Minecraft 1.9"
+    elytrafly-full: "Full gliding posture and pitch sampling support"
+    speed-degraded: "Pre-1.13 lacking swimming posture; falls back to legacy buoyancy model"
+    speed-full: "Deterministic motion simulation prediction and native bounding box support"
+    fly-full: "Deterministic gravity acceleration simulation and height boundary calculation"
+    fly-legacy: "Vector velocity and gravity acceleration supported on all versions"
+    reach-degraded: "No Entity#getBoundingBox; approximating with 0.6x1.8 bounding box"
+    reach-full: "Accurate native bounding box interaction distance calculation"
+    badpackets-degraded: "Operating on Bukkit event layer; packet-level pipeline pending"
+    badpackets-full: "PacketEvents pipeline active; full packet sequence tracking enabled"
+    nofall-full: "Fall momentum and on-ground state supported on all versions"
+    fastbreak-full: "Block break timing and animation supported on all versions"
+    scaffold-full: "Placement raytracing and direction supported on all versions"
+    inventorymove-full: "Inventory state tracking supported on all versions"
+  diag:
+    ready: "Multi-version adaptive environment diagnostics ready:"
+    core: "Core: {core} ({type})"
+    code: "Version Code: {code}"
+    adapter: "Adapter Channel: {adapter}"
+    matrix: "Capability Matrix: {count} check modules assigned runtime tiers"
+    degraded-notice: "[Notice] Some modules are running in degraded compatibility mode. Run /argus compat for details."
+

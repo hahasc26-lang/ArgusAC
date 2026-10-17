@@ -88,7 +88,7 @@ public class SetbackManager implements Listener {
         this.globalMinVl = config.getInt("setback.default-min-vl", 1);
         this.kickWhenBothBlocked = config.getBoolean("setback.boundary.kick-when-both-blocked", false);
         this.kickMessage = config.getString("setback.boundary.kick-message",
-                "&c[ArgusAC] 移动异常且历史位置已被阻挡，已安全断开连接。");
+                "&c[ArgusAC] Irregular movement detected and previous location obstructed. Disconnected safely.");
 
         this.exemptedWorlds.clear();
         for (String w : config.getStringList("setback.exempted-worlds")) {
@@ -480,7 +480,7 @@ public class SetbackManager implements Listener {
             }
 
         } catch (Exception ex) {
-            plugin.getLogger().log(Level.WARNING, "执行玩家 " + player.getName() + " HARD 回退时异常", ex);
+            plugin.getLogger().log(Level.WARNING, "Error executing HARD setback for " + player.getName(), ex);
             recordFailure(player, context, checkName, "EXCEPTION_" + ex.getMessage(), toLocStr);
         } finally {
             selfTeleportingPlayers.remove(player.getUniqueId());

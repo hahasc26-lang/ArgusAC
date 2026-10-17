@@ -104,10 +104,10 @@ public class ViolationLog {
     public String toString() {
         String setbackInfo = "";
         if (setbackExecuted) {
-            String fallbackTag = usedFallback ? " (已启用前一位置兜底)" : "";
-            setbackInfo = String.format(" [回退(%s): %s -> %s%s]", setbackMode, fromLocation, toLocation, fallbackTag);
+            String fallbackTag = usedFallback ? " (fallback-used)" : "";
+            setbackInfo = String.format(" [Setback(%s): %s -> %s%s]", setbackMode, fromLocation, toLocation, fallbackTag);
         }
-        return String.format("[%s] %s 触发 %s (VL: %d) - %s%s",
+        return String.format("[%s] %s triggered %s (VL: %d) - %s%s",
                 getFormattedTime(), playerName, checkName, vl, details, setbackInfo);
     }
 }

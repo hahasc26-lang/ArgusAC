@@ -117,7 +117,7 @@ public class LegacyVersionAdapter implements VersionAdapter {
             return pingField.getInt(nmsPlayer);
         } catch (Exception e) {
             pingReflectionFailed = true;
-            Bukkit.getLogger().log(Level.FINE, "[ArgusAC-Compat] 反射读取 NMS 延迟失败，后续转为默认容差: " + e.getMessage());
+            Bukkit.getLogger().log(Level.FINE, "[ArgusAC-Compat] Failed to read NMS ping via reflection, falling back to default tolerance: " + e.getMessage());
             return -1;
         }
     }
@@ -441,6 +441,34 @@ public class LegacyVersionAdapter implements VersionAdapter {
             Sound sound = Sound.valueOf(mapLegacySoundName(soundName));
             player.playSound(loc, sound, volume, pitch);
         } catch (Throwable ignored) {}
+    }
+
+    @Override
+    public boolean isRayOccluded(Location from, Location to) {
+        if (from == null || to == null || from.getWorld() != to.getWorld()) return false;
+        double dist = from.distance(to);
+        if (dist <= 0.6) return false;
+
+        if (ServerVersion.isAtLeast(ServerVersion.V1_13)) {
+            try {
+                org.bukkit.util.Vector dir = to.toVector().subtract(from.toVector()).normalize();
+                org.bukkit.util.RayTraceResult result = from.getWorld().rayTraceBlocks(
+                        from, dir, dist - 0.2, org.bukkit.FluidCollisionMode.NEVER, true);
+                return result != null && result.getHitBlock() != null && result.getHitBlock().getType().isOccluding();
+            } catch (Throwable ignored) {}
+        }
+
+        // 1.12.2 跨版本安全步进射线检测 (规避低版本缺少 World#rayTraceBlocks 抛出 NoSuchMethodError)
+        org.bukkit.util.Vector dir = to.toVector().subtract(from.toVector()).normalize();
+        double step = 0.35;
+        for (double d = 0.5; d < dist - 0.2; d += step) {
+            Location sample = from.clone().add(dir.clone().multiply(d));
+            Block b = sample.getBlock();
+            if (isSolidBlock(b) && b.getType().isOccluding()) {
+                return true;
+            }
+        }
+        return false;
     }
 
     private PotionEffectType matchLegacyPotionType(CompatPotionType type) {

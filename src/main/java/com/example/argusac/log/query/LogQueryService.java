@@ -94,7 +94,7 @@ public class LogQueryService {
                         }
                     }
                 } catch (IOException e) {
-                    plugin.getLogger().warning("读取历史文件失败: " + file.getName());
+                    plugin.getLogger().warning("Failed to read historical file: " + file.getName());
                 }
             }
 
@@ -226,7 +226,7 @@ public class LogQueryService {
                 zos.closeEntry();
                 callback.accept(zipFile);
             } catch (IOException e) {
-                plugin.getLogger().log(java.util.logging.Level.SEVERE, "导出玩家数据失败: " + e.getMessage(), e);
+                plugin.getLogger().log(java.util.logging.Level.SEVERE, "Failed to export player data: " + e.getMessage(), e);
                 callback.accept(null);
             }
         });

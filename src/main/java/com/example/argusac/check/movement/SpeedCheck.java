@@ -70,7 +70,17 @@ public class SpeedCheck extends AbstractCheck {
         VersionAdapter adapter = VersionAdapterFactory.getAdapter();
         double distance = MathUtil.getHorizontalDistance(from, to);
 
-        // 计算当前环境的最大合法阈值
+        // 1. 确定性物理移动模拟预测 (Deterministic Prediction Simulation)
+        com.example.argusac.prediction.DeterministicMovePredictor predictor = plugin.getMovePredictor();
+        if (predictor != null && predictor.isEnabled()) {
+            com.example.argusac.prediction.PredictionResult result = predictor.predict(
+                    player, data, to.getX(), to.getY(), to.getZ(), to.getYaw(), to.getPitch(), data.isOnGround());
+            if (!result.isValid() && result.getHorizontalResidual() > 0.005) {
+                flag(player, 1, "Predict: " + result.getReason(), event);
+            }
+        }
+
+        // 2. 宏观物理阈值与环境判定 (第二道防线兜底)
         double allowedLimit = maxHorizontalSpeed;
 
         // 速度药水加成

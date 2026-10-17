@@ -5,6 +5,7 @@ import com.example.argusac.model.SetbackFailureLog;
 import com.example.argusac.model.SetbackOverride;
 import com.example.argusac.model.VelocitySourceType;
 import com.example.argusac.model.ViolationLog;
+import com.example.argusac.prediction.PlayerPhysicsState;
 import org.bukkit.Location;
 import org.bukkit.entity.Player;
 import org.bukkit.util.Vector;
@@ -80,6 +81,12 @@ public class PlayerData {
 
     // 鞘翅滑翔数据追踪 (ElytraFly)
     private final ElytraData elytraData = new ElytraData();
+
+    // 确定性物理仿真运行时状态 (Prediction Simulation)
+    private final PlayerPhysicsState physicsState = new PlayerPhysicsState();
+
+    // 协议层 Timer 发包时钟平衡追踪器 (Timer & Clock Drift)
+    private final com.example.argusac.packet.TimerTracker timerTracker = new com.example.argusac.packet.TimerTracker();
 
     public PlayerData(Player player) {
         this.uuid = player.getUniqueId();
@@ -301,6 +308,9 @@ public class PlayerData {
         this.expectedVelocity = expectedVelocity;
         this.lastVelocityReceivedTime = System.currentTimeMillis();
         this.velocityHandled = false;
+        if (expectedVelocity != null) {
+            this.physicsState.addPendingVelocity(expectedVelocity.getX(), expectedVelocity.getY(), expectedVelocity.getZ());
+        }
     }
 
     public long getLastVelocityReceivedTime() {
@@ -321,6 +331,7 @@ public class PlayerData {
 
     public void setLastTeleportTime(long lastTeleportTime) {
         this.lastTeleportTime = lastTeleportTime;
+        this.timerTracker.reset();
     }
 
     public long getLastFlightToggleTime() {
@@ -458,6 +469,14 @@ public class PlayerData {
         this.clientBrand = clientBrand;
     }
 
+    public PlayerPhysicsState getPhysicsState() {
+        return physicsState;
+    }
+
+    public com.example.argusac.packet.TimerTracker getTimerTracker() {
+        return timerTracker;
+    }
+
     /**
      * 彻底清除该玩家的所有运行时违规、日志与高机动时效状态 (用于 GDPR/合规性安全注销)
      */
@@ -467,5 +486,7 @@ public class PlayerData {
         failureLogs.clear();
         legalVelocitySources.clear();
         lastPunishedVl = 0;
+        physicsState.reset(0.0, 0.0, 0.0, 0.0f, 0.0f);
+        timerTracker.reset();
     }
 }

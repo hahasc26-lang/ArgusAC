@@ -52,19 +52,26 @@ public class ReachCheck extends AbstractCheck {
             return;
         }
 
-        // 精确计算视线起点到目标跨版本碰撞箱 (CompatBoundingBox) 最短物理距离
-        com.example.argusac.compat.CompatBoundingBox box = com.example.argusac.compat.VersionAdapterFactory.getAdapter().getEntityBoundingBox(victim);
-        double distanceToBox = box.distanceTo(eyeLocation);
-
         int ping = Math.max(0, com.example.argusac.compat.VersionAdapterFactory.getAdapter().getPing(attacker));
-        // 延迟补偿：每 100ms 延迟放宽约 0.08 格
-        double dynamicLimit = maxReach + Math.min(0.40, (ping / 100.0) * 0.08);
-        dynamicLimit = Math.min(dynamicLimit, maxPingReach);
+
+        // 1. 基于实体历史碰撞盒回溯的延迟补偿物理距离计算 (GrimAC-Grade Lag Compensated Reach)
+        double distanceToBox;
+        if (plugin.getHistoryTracker() != null) {
+            distanceToBox = plugin.getHistoryTracker().getCompensatedMinDistance(eyeLocation, victim, ping);
+        } else {
+            com.example.argusac.compat.CompatBoundingBox box = com.example.argusac.compat.VersionAdapterFactory.getAdapter().getEntityBoundingBox(victim);
+            distanceToBox = box.distanceTo(eyeLocation);
+        }
+
+        // 若历史回溯追踪器正常运转，严格收拢在真实物理极限；若未启用则使用带 Ping 上限的降级兜底
+        double dynamicLimit = (plugin.getHistoryTracker() != null)
+                ? maxReach
+                : Math.min(maxReach + Math.min(0.40, (ping / 100.0) * 0.08), maxPingReach);
 
         if (distanceToBox > dynamicLimit) {
             // 超距攻击直接取消本次伤害事件生效
             event.setCancelled(true);
-            flag(attacker, 1, String.format("dist=%.2f, limit=%.2f, ping=%d", distanceToBox, dynamicLimit, ping));
+            flag(attacker, 1, String.format("dist=%.3f, limit=%.2f, ping=%d (Backtracked)", distanceToBox, dynamicLimit, ping));
         }
     }
 }

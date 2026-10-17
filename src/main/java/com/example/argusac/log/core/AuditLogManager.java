@@ -144,7 +144,7 @@ public class AuditLogManager {
                 Thread.currentThread().interrupt();
                 break;
             } catch (Exception ex) {
-                plugin.getLogger().log(Level.SEVERE, "[AuditLog] 写入日志异常", ex);
+                plugin.getLogger().log(Level.SEVERE, "[AuditLog] Error writing audit log", ex);
             }
         }
         flushInternal();
@@ -203,7 +203,7 @@ public class AuditLogManager {
         } catch (UnsupportedOperationException ignored) {
             // Windows 系统不支持 POSIX 文件权限，安全跳过
         } catch (Exception e) {
-            plugin.getLogger().log(Level.FINE, "设置文件权限跳过: " + e.getMessage());
+            plugin.getLogger().log(Level.FINE, "Skip setting POSIX permissions: " + e.getMessage());
         }
     }
 
@@ -238,7 +238,7 @@ public class AuditLogManager {
                     lastFlushTime = System.currentTimeMillis();
                     uncommittedEntries = 0;
                 } catch (IOException e) {
-                    plugin.getLogger().log(Level.WARNING, "[AuditLog] Flush 失败: " + e.getMessage());
+                    plugin.getLogger().log(Level.WARNING, "[AuditLog] Flush failed: " + e.getMessage());
                 }
             }
         }
@@ -259,13 +259,14 @@ public class AuditLogManager {
     private void checkAndAlertBackpressure() {
         int size = diskQueue.size();
         if (size > (queueCapacity * 0.5)) {
-            String msg = String.format("§c[ArgusAC 警告] 审计日志队列积压已达 %d/%d (%.1f%%)！请注意磁盘 I/O！",
-                    size, queueCapacity, (size * 100.0 / queueCapacity));
+            String ratioStr = String.format("%.1f", (size * 100.0 / queueCapacity));
             Bukkit.getOnlinePlayers().stream()
                     .filter(p -> p.hasPermission("argusac.alert") || p.hasPermission("ArgusAC.alert"))
                     .filter(p -> !plugin.getAlertManager().isMuted(p))
-                    .forEach(p -> p.sendMessage(msg));
-            plugin.getLogger().warning(msg);
+                    .forEach(p -> com.example.argusac.i18n.I18n.send(p, "system.audit-backlog",
+                            "size", size, "capacity", queueCapacity, "ratio", ratioStr));
+            plugin.getLogger().warning(com.example.argusac.i18n.I18n.getServer("system.audit-backlog",
+                    "size", size, "capacity", queueCapacity, "ratio", ratioStr));
         }
     }
 
@@ -275,7 +276,7 @@ public class AuditLogManager {
                 String today = LocalDate.now().format(DateTimeFormatter.ISO_DATE);
                 rotateDayFileInternal(today);
             } catch (IOException e) {
-                plugin.getLogger().log(Level.SEVERE, "手动轮转日志失败", e);
+                plugin.getLogger().log(Level.SEVERE, "Failed to rotate log file manually", e);
             }
         });
     }
@@ -313,3 +314,4 @@ public class AuditLogManager {
     public File getBaseLogDir() { return baseLogDir; }
     public String getServerId() { return serverId; }
 }
+

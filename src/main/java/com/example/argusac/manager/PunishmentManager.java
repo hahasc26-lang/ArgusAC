@@ -51,7 +51,7 @@ public class PunishmentManager {
                     rules.add(new PunishmentRule(vl, cmd));
                 }
             } catch (Exception e) {
-                plugin.getLogger().warning("解析惩罚规则失败: " + item);
+                plugin.getLogger().warning("Failed to parse punishment rule: " + item);
             }
         }
         // 按 VL 从小到大排序
@@ -115,11 +115,11 @@ public class PunishmentManager {
 
     private void executeCommand(String command, String playerName) {
         try {
-            plugin.getLogger().log(Level.INFO, "[Punishment] 正在对玩家 {0} 执行自动升级惩罚命令: {1}",
+            plugin.getLogger().log(Level.INFO, "[Punishment] Executing automated punishment command for {0}: {1}",
                     new Object[]{playerName, command});
             Bukkit.dispatchCommand(Bukkit.getConsoleSender(), command);
         } catch (Exception ex) {
-            plugin.getLogger().log(Level.SEVERE, "执行惩罚指令失败: " + command, ex);
+            plugin.getLogger().log(Level.SEVERE, "Failed to execute punishment command: " + command, ex);
         }
     }
 

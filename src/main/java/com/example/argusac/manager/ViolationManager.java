@@ -31,6 +31,13 @@ public class ViolationManager {
     }
 
     /**
+     * 外部与协议管线便捷标记入口 (委托调用 handleViolation)
+     */
+    public void flag(Player player, Check check, int vlAmount, String details) {
+        handleViolation(player, check, vlAmount, details, null);
+    }
+
+    /**
      * 核心违规处理方法 (支持传入 PlayerMoveEvent 用于 SOFT 模式精准取消)
      *
      * @param player 违规玩家

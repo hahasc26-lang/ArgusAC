@@ -76,10 +76,10 @@ public class AlertManager {
         double[] tpsArr = com.example.argusac.compat.VersionAdapterFactory.getAdapter().getTPS();
         String tpsStr = (tpsArr != null && tpsArr.length > 0) ? String.format("%.1f", Math.min(20.0, tpsArr[0])) : "20.0";
         var checkObj = plugin.getCheckManager().getCheck(checkName);
-        String checkType = (checkObj != null) ? checkObj.getType().name() : "OTHER";
 
         for (Player admin : Bukkit.getOnlinePlayers()) {
             if ((admin.hasPermission("argusac.alert") || admin.hasPermission("ArgusAC.alert")) && !isMuted(admin)) {
+                String checkType = (checkObj != null) ? checkObj.getType().getDisplayName(admin) : "OTHER";
                 // 基于每个管理员的客户端语言偏好渲染警报文本
                 Component baseComponent = I18n.component(admin, "alert.format",
                         "player", cheater.getName(),
@@ -108,10 +108,11 @@ public class AlertManager {
         }
 
         // 发送给控制台 (使用服务端基准语言)
+        String consoleCheckType = (checkObj != null) ? checkObj.getType().getDisplayName(Bukkit.getConsoleSender()) : "OTHER";
         Component consoleComp = I18n.component(Bukkit.getConsoleSender(), "alert.format",
                 "player", cheater.getName(),
                 "check", checkName,
-                "type", checkType,
+                "type", consoleCheckType,
                 "vl", currentVl,
                 "max_vl", maxVl,
                 "ping", displayPing,

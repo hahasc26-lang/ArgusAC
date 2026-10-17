@@ -6,7 +6,7 @@
 
     <groupId>com.example.argusac</groupId>
     <artifactId>ArgusAC</artifactId>
-    <version>1.0.0</version>
+    <version>1.1.0</version>
     <packaging>jar</packaging>
 
     <name>ArgusAC</name>
@@ -29,6 +29,12 @@
             <id>sonatype</id>
             <url>https://oss.sonatype.org/content/groups/public/</url>
         </repository>
+        <!-- CodeMC PacketEvents 官方仓库 -->
+        <repository>
+            <id>codemc-releases</id>
+            <name>CodeMC Releases</name>
+            <url>https://repo.codemc.io/repository/maven-releases/</url>
+        </repository>
     </repositories>
 
     <dependencies>
@@ -38,6 +44,13 @@
             <artifactId>paper-api</artifactId>
             <version>${paper.api.version}</version>
             <scope>provided</scope>
+        </dependency>
+        <!-- PacketEvents 跨版本数据包框架 (Spigot / Paper) -->
+        <dependency>
+            <groupId>com.github.retrooper</groupId>
+            <artifactId>packetevents-spigot</artifactId>
+            <version>2.7.0</version>
+            <scope>compile</scope>
         </dependency>
     </dependencies>
 
@@ -86,6 +99,12 @@
                         </goals>
                         <configuration>
                             <createDependencyReducedPom>false</createDependencyReducedPom>
+                            <relocations>
+                                <relocation>
+                                    <pattern>com.github.retrooper.packetevents</pattern>
+                                    <shadedPattern>com.example.argusac.shaded.packetevents</shadedPattern>
+                                </relocation>
+                            </relocations>
                         </configuration>
                     </execution>
                 </executions>

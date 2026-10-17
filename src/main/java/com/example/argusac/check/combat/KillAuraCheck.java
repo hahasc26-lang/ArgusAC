@@ -5,14 +5,12 @@ import com.example.argusac.api.CheckType;
 import com.example.argusac.check.AbstractCheck;
 import com.example.argusac.data.PlayerData;
 import com.example.argusac.util.MathUtil;
-import org.bukkit.FluidCollisionMode;
 import org.bukkit.GameMode;
 import org.bukkit.Location;
 import org.bukkit.entity.Entity;
 import org.bukkit.entity.LivingEntity;
 import org.bukkit.entity.Player;
 import org.bukkit.event.entity.EntityDamageByEntityEvent;
-import org.bukkit.util.RayTraceResult;
 import org.bukkit.util.Vector;
 
 import java.util.UUID;
@@ -67,13 +65,19 @@ public class KillAuraCheck extends AbstractCheck {
         }
 
         Location eyeLoc = attacker.getEyeLocation();
-        Location victimEye = livingVictim.getEyeLocation();
+        int ping = Math.max(0, com.example.argusac.compat.VersionAdapterFactory.getAdapter().getPing(attacker));
+
+        // 基于网络往返延迟回溯受害者在攻击者屏幕上的历史真实坐标 (GrimAC Lag Compensated Position)
+        Location victimLoc = (plugin.getHistoryTracker() != null)
+                ? plugin.getHistoryTracker().getCompensatedLocation(livingVictim, ping)
+                : livingVictim.getLocation();
+        Location victimEye = victimLoc.clone().add(0, livingVictim.getEyeHeight(), 0);
 
         if (eyeLoc.getWorld() != victimEye.getWorld()) {
             return;
         }
 
-        // 1. 视角夹角检测 (Angle Check)
+        // 1. 视角夹角检测 (Angle Check，基于回溯坐标对齐)
         Vector eyeDirection = eyeLoc.getDirection();
         Vector toTarget = victimEye.toVector().subtract(eyeLoc.toVector());
         if (toTarget.lengthSquared() < 0.01) {
@@ -86,39 +90,29 @@ public class KillAuraCheck extends AbstractCheck {
         // 仅在距离大于 1.0 格时检测极限脱节夹角 (贴脸时因碰撞箱宽大正常挥刀夹角变化剧烈)
         if (distance > 1.0 && angle > maxAngle) {
             event.setCancelled(true);
-            flag(attacker, 2, String.format("Impossible Angle angle=%.1f deg, max=%.1f", angle, maxAngle));
+            flag(attacker, 2, String.format("Impossible Angle angle=%.1f deg, max=%.1f (Backtracked)", angle, maxAngle));
             return;
         }
 
         // 2. 准星光线脱靶命中检测 (Silent Aim / Aimbot RayTrace Miss)
-        int ping = Math.max(0, com.example.argusac.compat.VersionAdapterFactory.getAdapter().getPing(attacker));
-        double pingExpansion = Math.min(0.50, (ping / 100.0) * 0.12);
         if (distance > 1.2 && angle > 55.0) {
-            com.example.argusac.compat.CompatBoundingBox expandedBox = com.example.argusac.compat.VersionAdapterFactory.getAdapter()
-                    .getEntityBoundingBox(livingVictim)
-                    .expand(0.40 + pingExpansion);
-            if (expandedBox.distanceTo(eyeLoc) > distance + 1.0) {
+            double distanceToCompensatedBox = (plugin.getHistoryTracker() != null)
+                    ? plugin.getHistoryTracker().getCompensatedMinDistance(eyeLoc, livingVictim, ping)
+                    : com.example.argusac.compat.VersionAdapterFactory.getAdapter().getEntityBoundingBox(livingVictim).distanceTo(eyeLoc);
+
+            if (distanceToCompensatedBox > distance + 0.8) {
                 event.setCancelled(true);
-                flag(attacker, 2, String.format("Aimbot Ray Miss angle=%.1f, ping=%d", angle, ping));
+                flag(attacker, 2, String.format("Aimbot Ray Miss angle=%.1f, ping=%d (Backtracked)", angle, ping));
                 return;
             }
         }
 
-        // 3. 隔墙穿透攻击检测 (RayTrace Blocks)
-        if (raytraceBlocks) {
-            if (distance > 1.2) {
-                RayTraceResult rayResult = eyeLoc.getWorld().rayTraceBlocks(
-                        eyeLoc,
-                        toTarget.clone().normalize(),
-                        distance - 0.5,
-                        FluidCollisionMode.NEVER,
-                        true
-                );
-                if (rayResult != null && rayResult.getHitBlock() != null && rayResult.getHitBlock().getType().isOccluding()) {
-                    event.setCancelled(true);
-                    flag(attacker, 2, "Attack Through Wall: " + rayResult.getHitBlock().getType());
-                    return;
-                }
+        // 3. 隔墙穿透攻击检测 (RayTrace Blocks，跨版本安全适配)
+        if (raytraceBlocks && distance > 1.2) {
+            if (com.example.argusac.compat.VersionAdapterFactory.getAdapter().isRayOccluded(eyeLoc, victimEye)) {
+                event.setCancelled(true);
+                flag(attacker, 2, "Attack Through Wall");
+                return;
             }
         }
 

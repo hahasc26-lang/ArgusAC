@@ -96,6 +96,9 @@ public class PlayerEventListener implements Listener {
 
         plugin.getPlayerManager().removePlayerData(player.getUniqueId());
         plugin.getAlertManager().clearSessionState(player);
+        if (plugin.getHistoryTracker() != null) {
+            plugin.getHistoryTracker().removeEntity(player.getUniqueId());
+        }
         if (plugin.getLanguageManager() != null) {
             plugin.getLanguageManager().invalidateCache(player.getUniqueId());
         }
@@ -106,6 +109,7 @@ public class PlayerEventListener implements Listener {
         PlayerData data = plugin.getPlayerManager().getPlayerData(event.getEntity());
         if (data != null) {
             data.getElytraData().resetAll();
+            data.getPhysicsState().reset(event.getEntity().getLocation());
         }
     }
 
@@ -114,6 +118,7 @@ public class PlayerEventListener implements Listener {
         PlayerData data = plugin.getPlayerManager().getPlayerData(event.getPlayer());
         if (data != null) {
             data.getElytraData().resetAll();
+            data.getPhysicsState().reset(event.getRespawnLocation());
         }
     }
 
@@ -123,6 +128,7 @@ public class PlayerEventListener implements Listener {
         PlayerData data = plugin.getPlayerManager().getPlayerData(player);
         if (data != null) {
             data.getElytraData().resetAll();
+            data.getPhysicsState().reset(player.getLocation());
         }
 
         // 记录跨世界 SESSION 日志
@@ -173,6 +179,9 @@ public class PlayerEventListener implements Listener {
         if (data != null) {
             data.setLastTeleportTime(System.currentTimeMillis());
             data.getElytraData().resetAll();
+            if (event.getTo() != null) {
+                data.getPhysicsState().reset(event.getTo());
+            }
 
             // 外部传送赋予合法速度豁免
             if (event.getCause() == PlayerTeleportEvent.TeleportCause.ENDER_PEARL) {
@@ -251,7 +260,15 @@ public class PlayerEventListener implements Listener {
 
         Location from = event.getFrom();
         Location to = event.getTo();
-        if (to == null || (from.getX() == to.getX() && from.getY() == to.getY() && from.getZ() == to.getZ())) {
+        if (to == null) {
+            return;
+        }
+
+        boolean posChanged = (from.getX() != to.getX() || from.getY() != to.getY() || from.getZ() != to.getZ());
+        boolean rotChanged = (from.getYaw() != to.getYaw() || from.getPitch() != to.getPitch());
+
+        // 既无位置位移也无旋转变化时直接跳过
+        if (!posChanged && !rotChanged) {
             return;
         }
 
@@ -269,10 +286,15 @@ public class PlayerEventListener implements Listener {
 
         Location originalTo = to.clone();
 
-        // 1. 数据包完整性与异常角度检测
+        // 1. 数据包完整性与异常角度检测 (即使仅原地旋转视角也必须拦截非法 Pitch/NaN)
         checkManager.getBadPacketsCheck().handleMove(player, data, event);
         if (event.isCancelled() || hasSetbackOccurred(originalTo, event.getTo())) {
             data.setToLocation(event.getTo());
+            return;
+        }
+
+        // 若无空间位置位移 (仅为视角转动)，则安全结束，无需执行后续空间物理位移检测
+        if (!posChanged) {
             return;
         }
 

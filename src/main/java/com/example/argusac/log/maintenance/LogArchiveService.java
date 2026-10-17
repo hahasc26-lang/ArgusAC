@@ -96,9 +96,9 @@ public class LogArchiveService {
             gzos.finish();
 
             source.delete();
-            plugin.getLogger().info("[LogArchive] 成功归档压缩历史文件: " + targetGz.getName());
+            plugin.getLogger().info("[LogArchive] Successfully compressed archive file: " + targetGz.getName());
         } catch (IOException e) {
-            plugin.getLogger().warning("[LogArchive] 压缩文件失败 " + source.getName() + ": " + e.getMessage());
+            plugin.getLogger().warning("[LogArchive] Failed to compress file " + source.getName() + ": " + e.getMessage());
             if (targetGz.exists()) targetGz.delete();
         }
     }
@@ -122,7 +122,7 @@ public class LogArchiveService {
         }
         boolean deleted = file.delete();
         if (deleted) {
-            plugin.getLogger().info("[LogArchive] 已清理过期日志文件: " + filename);
+            plugin.getLogger().info("[LogArchive] Cleaned up expired log file: " + filename);
             LogEntry adminLog = new LogEntry.Builder(LogType.ADMIN, logManager.getServerId())
                     .actor("SYSTEM")
                     .action("LOG_PURGE_EXPIRED")
@@ -145,7 +145,7 @@ public class LogArchiveService {
                 }
             }
         } catch (IOException e) {
-            plugin.getLogger().warning("[LogArchive] 提取永久管理员日志失败: " + e.getMessage());
+            plugin.getLogger().warning("[LogArchive] Failed to extract permanent admin logs: " + e.getMessage());
         }
     }
 

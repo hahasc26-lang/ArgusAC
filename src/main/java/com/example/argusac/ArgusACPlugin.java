@@ -42,9 +42,39 @@ public class ArgusACPlugin extends JavaPlugin {
     // 跨版本兼容性调度中心
     private com.example.argusac.compat.CompatibilityManager compatibilityManager;
 
+    // 底层数据包协议管线管理器 (PacketEvents)
+    private com.example.argusac.packet.PacketPipelineManager packetPipelineManager;
+
+    // 确定性移动模拟预测器 (Prediction Simulation)
+    private com.example.argusac.prediction.DeterministicMovePredictor movePredictor;
+
+    // 实体历史碰撞盒回溯追踪器 (Lag Compensation History)
+    private com.example.argusac.history.EntityHistoryTracker historyTracker;
+
+    @Override
+    public void onLoad() {
+        try {
+            com.github.retrooper.packetevents.PacketEvents.setAPI(
+                    io.github.retrooper.packetevents.factory.spigot.SpigotPacketEventsBuilder.build(this)
+            );
+            com.github.retrooper.packetevents.PacketEvents.getAPI().load();
+        } catch (Throwable t) {
+            getLogger().log(java.util.logging.Level.WARNING, "Failed to load PacketEvents API in onLoad", t);
+        }
+    }
+
     @Override
     public void onEnable() {
         instance = this;
+
+        // 0. 初始化底层 PacketEvents 数据包管线
+        try {
+            com.github.retrooper.packetevents.PacketEvents.getAPI().init();
+            this.packetPipelineManager = new com.example.argusac.packet.PacketPipelineManager(this);
+            this.packetPipelineManager.init();
+        } catch (Throwable t) {
+            getLogger().log(java.util.logging.Level.SEVERE, "Failed to initialize PacketEvents pipeline", t);
+        }
 
         // 1. 初始化配置文件
         saveDefaultConfig();
@@ -56,8 +86,8 @@ public class ArgusACPlugin extends JavaPlugin {
         // 2. 检查最低支持版本 (1.12.2)，过低版本安全挂起退出，不抛异常
         if (com.example.argusac.compat.ServerVersion.isOlderThan(com.example.argusac.compat.ServerVersion.V1_12_2)) {
             getLogger().severe("==================================================");
-            getLogger().severe(" [ArgusAC 兼容性拦截] 当前服务器版本过低: " + com.example.argusac.compat.ServerVersion.get().getFriendlyName());
-            getLogger().severe(" ArgusAC 架构要求最低 Minecraft 1.12.2，为保护服务器稳定性，插件已安全停用。");
+            getLogger().severe(" [ArgusAC Compatibility] Unsupported server version: " + com.example.argusac.compat.ServerVersion.get().getFriendlyName());
+            getLogger().severe(" ArgusAC requires Minecraft 1.12.2+. Plugin disabled safely for server stability.");
             getLogger().severe("==================================================");
             getServer().getPluginManager().disablePlugin(this);
             return;
@@ -83,6 +113,9 @@ public class ArgusACPlugin extends JavaPlugin {
         this.punishmentManager = new PunishmentManager(this);
         this.violationManager = new ViolationManager(this);
         this.checkManager = new CheckManager(this);
+        this.movePredictor = new com.example.argusac.prediction.DeterministicMovePredictor(this);
+        this.historyTracker = new com.example.argusac.history.EntityHistoryTracker(this);
+        this.historyTracker.start();
         this.compatibilityManager.evaluateAllChecks();
 
         // 7. 注册事件监听器 (包含主事件监听器与独立回退引擎监听器)
@@ -153,10 +186,20 @@ public class ArgusACPlugin extends JavaPlugin {
         if (checkDebugLogger != null) {
             checkDebugLogger.shutdown();
         }
+        if (packetPipelineManager != null) {
+            packetPipelineManager.shutdown();
+        }
+        if (historyTracker != null) {
+            historyTracker.stop();
+        }
+        try {
+            com.github.retrooper.packetevents.PacketEvents.getAPI().terminate();
+        } catch (Throwable ignored) {}
+
         if (auditLogManager != null) {
             auditLogManager.shutdown();
         }
-        getLogger().info("[ArgusAC] 插件已安全卸载，所有审计日志已 Flush，内存缓存已释放。");
+        getLogger().info("[ArgusAC] Plugin safely unloaded. All audit logs flushed and caches released.");
         instance = null;
     }
 
@@ -170,6 +213,7 @@ public class ArgusACPlugin extends JavaPlugin {
         if (alertManager != null) alertManager.reloadConfig();
         if (punishmentManager != null) punishmentManager.reloadConfig();
         if (checkManager != null) checkManager.reloadAll();
+        if (movePredictor != null) movePredictor.reloadConfig();
         if (violationManager != null) violationManager.startDecayTask();
     }
 
@@ -181,11 +225,12 @@ public class ArgusACPlugin extends JavaPlugin {
         getLogger().info("  / _ \\ | '__/ _` | | | / __|     / _ \\ | |     ");
         getLogger().info(" / ___ \\| | | (_| | |_| \\__ \\    / ___ \\| |___  ");
         getLogger().info("/_/   \\_\\_|  \\__, |\\__,_|___/   /_/   \\_\\\\____| ");
-        getLogger().info("             |___/    ArgusAC 反作弊 v" + this.getDescription().getVersion());
-        getLogger().info(" 目标平台: Spigot / Paper 1.12.2 ~ 1.21.x | 运行环境: Java 17");
-        getLogger().info(" 已装载检测项: " + checkManager.getAllChecks().size() + " 个独立检测模块");
-        getLogger().info(" 核心回退 (Setback): " + (setbackManager.isGlobalEnabled() ? "全局已启用" : "已就绪 (保守待命)"));
-        getLogger().info(" 统一审计日志系统: 已挂载 (长驻Writer / 链式SHA-256 / 零IO)");
+        getLogger().info("             |___/    ArgusAC AntiCheat v" + this.getDescription().getVersion());
+        getLogger().info(" Target: Spigot / Paper 1.12.2 ~ 1.21.x | Runtime: Java 17");
+        getLogger().info(" Packet Pipeline: PacketEvents v2.7.0 (Native Packet State Machine)");
+        getLogger().info(" Checks: " + checkManager.getAllChecks().size() + " registered modules");
+        getLogger().info(" Setback: " + (setbackManager.isGlobalEnabled() ? "Globally Enabled" : "Standby"));
+        getLogger().info(" Audit Log Engine: Active (Persistent Writer / SHA-256 Chain / Non-blocking)");
         getLogger().info("==================================================");
     }
 
@@ -193,6 +238,18 @@ public class ArgusACPlugin extends JavaPlugin {
 
     public static ArgusACPlugin getInstance() {
         return instance;
+    }
+
+    public com.example.argusac.packet.PacketPipelineManager getPacketPipelineManager() {
+        return packetPipelineManager;
+    }
+
+    public com.example.argusac.prediction.DeterministicMovePredictor getMovePredictor() {
+        return movePredictor;
+    }
+
+    public com.example.argusac.history.EntityHistoryTracker getHistoryTracker() {
+        return historyTracker;
     }
 
     /**

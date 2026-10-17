@@ -72,6 +72,17 @@ public class FlyCheck extends AbstractCheck {
             return;
         }
 
+        // 1. 确定性垂直物理运动模拟与重力加速度残差校验 (Deterministic Gravity Simulation)
+        com.example.argusac.prediction.DeterministicMovePredictor predictor = plugin.getMovePredictor();
+        if (predictor != null && predictor.isEnabled()) {
+            com.example.argusac.prediction.PredictionResult result = predictor.predict(
+                    player, data, to.getX(), to.getY(), to.getZ(), to.getYaw(), to.getPitch(), data.isOnGround());
+            if (!result.isValid() && result.getVerticalResidual() > 0.005) {
+                flag(player, 2, "Predict: " + result.getReason(), event);
+                return;
+            }
+        }
+
         // 检查脚下及周围是否有可支撑方块
         boolean hasGroundNear = hasBlockBelow(from, adapter);
 

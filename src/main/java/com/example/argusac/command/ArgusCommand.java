@@ -144,9 +144,9 @@ public class ArgusCommand implements CommandExecutor {
 
         com.example.argusac.compat.CompatibilityManager compatMgr = plugin.getCompatibilityManager();
         compatMgr.getAllStatus().forEach((checkName, status) -> {
-            String reason = compatMgr.getReason(checkName);
+            String reason = compatMgr.getReason(sender, checkName);
             adapter.sendMessage(sender, String.format(" &8- &b%-14s %s &8| &7%s",
-                    checkName, status.getDisplay(), reason));
+                    checkName, status.getDisplay(sender), reason));
         });
 
         I18n.send(sender, "command.compat.divider");
@@ -200,7 +200,7 @@ public class ArgusCommand implements CommandExecutor {
             return;
         }
 
-        renderLogEntries(sender, "内存快速日志 (近 " + logs.size() + " 条)", logs, page, 8);
+        renderLogEntries(sender, I18n.get(sender, "command.logs.title-memory", "count", logs.size()), logs, page, 8);
     }
 
     private void handleHistory(CommandSender sender, String label, String[] args) {
@@ -230,7 +230,7 @@ public class ArgusCommand implements CommandExecutor {
             if (results.isEmpty()) {
                 I18n.sendPrefixed(sender, "command.history.empty");
             } else {
-                renderLogEntries(sender, "历史审计档案 (共 " + results.size() + " 条)", results, page, 8);
+                renderLogEntries(sender, I18n.get(sender, "command.logs.title-history", "count", results.size()), results, page, 8);
             }
         });
     }
@@ -301,10 +301,13 @@ public class ArgusCommand implements CommandExecutor {
             I18n.send(sender, "command.status.full");
         }
 
-        I18n.send(sender, "command.status.queue", "queue_size", backlog, "capacity", cap, "memory_count", (backlog > cap * 0.5 ? "偏高" : "健康"));
+        String memStatus = backlog > cap * 0.5 
+                ? I18n.get(sender, "command.status.memory-high") 
+                : I18n.get(sender, "command.status.memory-healthy");
+        I18n.send(sender, "command.status.queue", "queue_size", backlog, "capacity", cap, "memory_count", memStatus);
         I18n.send(sender, "command.status.chain", "chain_index", dropped, "hash", (hash != null ? hash.substring(0, Math.min(hash.length(), 16)) + "..." : "None"));
         I18n.send(sender, "command.status.archive", "archive_count", 0, "size", (size / 1024) + " KB");
-        String droppedHint = dropped > 0 ? " &8(&c丢弃: " + dropped + "&8)" : "";
+        String droppedHint = dropped > 0 ? " " + I18n.get(sender, "command.status.dropped-hint", "dropped", dropped) : "";
         I18n.send(sender, "command.status.flush-time", "time", flushTime, "dropped", droppedHint);
     }
 
@@ -349,7 +352,7 @@ public class ArgusCommand implements CommandExecutor {
         }
 
         LogEntry targetLog = logs.get(logs.size() - 1);
-        List<String> rendered = replayRenderer.render(targetLog, sideView);
+        List<String> rendered = replayRenderer.render(sender, targetLog, sideView);
         for (String line : rendered) {
             sender.sendMessage(ColorUtil.toComponent(line));
         }
@@ -523,9 +526,15 @@ public class ArgusCommand implements CommandExecutor {
             } else if (e.getType() == LogType.SESSION) {
                 line = String.format("&8[%s] &6SESSION &7%s %s", timeStr, e.getSessionAction(), e.getExtra() != null ? e.getExtra() : "");
             } else if (e.getType() == LogType.ADMIN) {
-                line = String.format("&8[%s] &dADMIN &7%s 执行 &e%s &7目标:&b%s", timeStr, e.getActor(), e.getAction(), e.getTarget());
+                line = I18n.get(sender, "command.logs.admin-format",
+                        "time", timeStr,
+                        "actor", e.getActor(),
+                        "action", e.getAction(),
+                        "target", e.getTarget() != null ? e.getTarget() : "");
             } else {
-                line = String.format("&8[%s] &5INTEGRITY &7行数:&f%d", timeStr, e.getLineCount());
+                line = I18n.get(sender, "command.logs.integrity-format",
+                        "time", timeStr,
+                        "count", e.getLineCount());
             }
 
             sender.sendMessage(ColorUtil.toComponent(line));
@@ -568,3 +577,4 @@ public class ArgusCommand implements CommandExecutor {
         sender.sendMessage(I18n.component(sender, "help.footer"));
     }
 }
+

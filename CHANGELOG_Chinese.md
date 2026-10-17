@@ -5,6 +5,24 @@
 格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.0.0/)，
 并遵循 [语义化版本规范](https://semver.org/lang/zh-CN/)。
 
+## [1.1.0] - 2026-10-17
+
+### 重大架构升级 (GrimAC-Grade Architecture Evolution)
+
+- **PacketEvents 2.7.0 原生内置集成**：彻底移除了对外部 ProtocolLib 插件的依赖，改用内置嵌入与包名重定向（Shaded Relocation），实现 Spigot/Paper 1.12.2 ~ 1.21.x 零前置依赖开箱即用。
+- **确定性移动模拟预测引擎 (Prediction Simulation)**：
+  - 基于 Minecraft 原版物理运动学方程，穷举客户端 8 向按键输入组合、疾跑/走动/潜行、跳跃冲量与垂直重力方程。
+  - 仿 GrimAC 工业级标准引入理论包络残差 (Residual) 与缓冲累积 (Buffer) 判定，彻底替代传统粗糙位移阈值比对，精准抓取微速 (Mini-Speed) 与慢速微跳 (Mini-Jump)。
+- **实体历史碰撞盒回溯与延迟补偿 (Lag Compensated Entity History Tracker)**：
+  - 维护目标实体近 1000ms 内的每 tick 三维轴对齐包围盒 (AABB) 历史快照。
+  - 攻击发生时根据攻击者真实 Ping 往返延迟，精准回溯至攻击者视角所见的历史碰撞盒，彻底消灭目标被击退后退引发的虚假超距误报，将 Reach 判定严格收敛至原版理论极限 (3.00 格)。
+- **协议层 Timer 变速时钟平衡引擎 (Clock Drift Engine)**：
+  - 在数据包底层引入每 tick 50ms 的纳秒级时钟银行 (Balance) 算法，精准捕捉 1.05x ~ 2.0x 变速齿轮、快速进食与包频轰炸。
+- **战斗数据包流水线 (Combat Packet Pipeline)**：
+  - 在底层网络直接监听实体交互攻击包 (Interact Entity) 与挥臂动作包 (Animation)，彻底消除 Bukkit 主线程 tick 合并对连点器 (AutoClicker) CPS 与方差采样的失真影响。
+- **跨版本安全视线射线遮挡判定**：
+  - 在 `VersionAdapter` 中抽象多态射线检测，在 1.13+ 调用原生 `world.rayTraceBlocks`，在 1.12.2 调用安全步进光线投射，彻底杜绝低版本 `NoSuchMethodError` 崩溃风险。
+
 ## [1.0.0] - 2026-10-17
 
 ### 新增 / Added

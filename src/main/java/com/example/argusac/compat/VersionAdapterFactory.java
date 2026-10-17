@@ -14,10 +14,10 @@ public final class VersionAdapterFactory {
     static {
         if (ServerVersion.isAtLeast(ServerVersion.V1_20_4) && ServerVersion.isPaper()) {
             ADAPTER = new ModernVersionAdapter();
-            Bukkit.getLogger().info("[ArgusAC-Compat] 运行环境判定: Paper 1.20+ 架构 -> 已激活 [现代原生适配器]");
+            Bukkit.getLogger().info("[ArgusAC-Compat] Environment detected: Paper 1.20+ -> Activated [Modern Native Adapter]");
         } else {
             ADAPTER = new LegacyVersionAdapter();
-            Bukkit.getLogger().info(String.format("[ArgusAC-Compat] 运行环境判定: %s (编码: %d) -> 已激活 [跨版本兼容与降级适配器]",
+            Bukkit.getLogger().info(String.format("[ArgusAC-Compat] Environment detected: %s (Code: %d) -> Activated [Cross-Version Fallback Adapter]",
                     ServerVersion.get().getFriendlyName(), ServerVersion.getCode()));
         }
     }

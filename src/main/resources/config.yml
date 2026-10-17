@@ -268,6 +268,21 @@ punishments:
     #   command: "ban {player} 7d [ArgusAC] Persistent cheating behavior detected"
 
 # ==============================================================================
+# Deterministic Physics Prediction Engine (GrimAC-Grade Simulation)
+# ==============================================================================
+prediction:
+  # Enable deterministic movement simulation against client packets and kinematics
+  enabled: true
+  # Horizontal residual tolerance in blocks/tick (small floating tolerance against network jitters)
+  horizontal-tolerance: 0.005
+  # Vertical residual tolerance in blocks/tick
+  vertical-tolerance: 0.005
+  # Maximum buffer threshold before violation flag
+  max-buffer: 1.0
+  # Buffer decay amount per valid tick
+  buffer-decay: 0.05
+
+# ==============================================================================
 # Detection Module Threshold Configurations
 # ==============================================================================
 checks:
@@ -376,6 +391,8 @@ checks:
     strict-pitch: true
     # Check for duplicate movement packets while ascending
     check-duplicate-move: true
+    # Timer clock drift engine: detect packet rate speedup (1.05x ~ 2.0x)
+    timer-check: true
 
   # 13. ElytraFly Check
   # Analyzes elytra aerodynamics to detect hovering, unauthorized propulsion, timer, and no-fall exploits

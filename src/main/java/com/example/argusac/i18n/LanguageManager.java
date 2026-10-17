@@ -115,7 +115,7 @@ public class LanguageManager {
         loadAllLanguageFiles();
 
         plugin.getLogger().info(String.format(
-                "[LanguageManager] 多语言模块初始化完成，已载入 %d 种语言配置 (服务端默认: %s, 客户端兜底: %s, 自动识别: %b)",
+                "[LanguageManager] Initialized. Loaded %d languages (server default: %s, client fallback: %s, auto-detect: %b)",
                 languageConfigs.size(), serverLanguage, clientDefaultLanguage, autoClientLanguage
         ));
     }
@@ -127,7 +127,7 @@ public class LanguageManager {
     private void extractDefaultLanguages() {
         File langFolder = new File(plugin.getDataFolder(), "lang");
         if (!langFolder.exists() && !langFolder.mkdirs()) {
-            plugin.getLogger().warning("[LanguageManager] 无法创建语言文件夹: " + langFolder.getAbsolutePath());
+            plugin.getLogger().warning("[LanguageManager] Failed to create language folder: " + langFolder.getAbsolutePath());
         }
 
         // 动态发现或使用预设列表
@@ -137,9 +137,9 @@ public class LanguageManager {
             if (!targetFile.exists()) {
                 try {
                     plugin.saveResource("lang/" + fileName, false);
-                    plugin.getLogger().info("[LanguageManager] 已自动释放内置语言文件: " + fileName);
+                    plugin.getLogger().info("[LanguageManager] Automatically extracted default language file: " + fileName);
                 } catch (IllegalArgumentException e) {
-                    plugin.getLogger().warning("[LanguageManager] 无法提取内置资源: lang/" + fileName + " (" + e.getMessage() + ")");
+                    plugin.getLogger().warning("[LanguageManager] Failed to extract builtin resource: lang/" + fileName + " (" + e.getMessage() + ")");
                 }
             }
         }
@@ -195,14 +195,14 @@ public class LanguageManager {
 
                     languageConfigs.put(langCode, diskConfig);
                 } catch (Exception e) {
-                    plugin.getLogger().log(Level.SEVERE, "[LanguageManager] 加载语言文件失败: " + fileName, e);
+                    plugin.getLogger().log(Level.SEVERE, "[LanguageManager] Failed to load language file: " + fileName, e);
                 }
             }
         }
 
         // 极端兜底：如果磁盘上没有任何语言文件，直接将内置资源载入内存，确保插件能正常渲染消息
         if (languageConfigs.isEmpty()) {
-            plugin.getLogger().warning("[LanguageManager] 磁盘未检测到语言文件，紧急启动内存内置语言包！");
+            plugin.getLogger().warning("[LanguageManager] No language files found on disk, booting fallback memory language bundle!");
             for (String fileName : DEFAULT_BUILTIN_LANGS) {
                 String langCode = normalizeLanguageCode(fileName.substring(0, fileName.length() - 4));
                 YamlConfiguration defaults = loadResourceDefaults("lang/" + fileName);
@@ -224,7 +224,7 @@ public class LanguageManager {
                 return YamlConfiguration.loadConfiguration(reader);
             }
         } catch (Exception e) {
-            plugin.getLogger().log(Level.WARNING, "[LanguageManager] 读取内置默认资源异常: " + resourcePath, e);
+            plugin.getLogger().log(Level.WARNING, "[LanguageManager] Error reading internal resource: " + resourcePath, e);
             return null;
         }
     }

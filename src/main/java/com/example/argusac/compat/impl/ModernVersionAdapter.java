@@ -266,6 +266,17 @@ public class ModernVersionAdapter implements VersionAdapter {
         } catch (IllegalArgumentException ignored) {}
     }
 
+    @Override
+    public boolean isRayOccluded(Location from, Location to) {
+        if (from == null || to == null || from.getWorld() != to.getWorld()) return false;
+        double dist = from.distance(to);
+        if (dist <= 0.6) return false;
+        org.bukkit.util.Vector dir = to.toVector().subtract(from.toVector()).normalize();
+        org.bukkit.util.RayTraceResult result = from.getWorld().rayTraceBlocks(
+                from, dir, dist - 0.2, org.bukkit.FluidCollisionMode.NEVER, true);
+        return result != null && result.getHitBlock() != null && result.getHitBlock().getType().isOccluding();
+    }
+
     private PotionEffectType resolvePotionType(CompatPotionType type) {
         return POTION_TYPE_CACHE.get(type);
     }

@@ -17,19 +17,33 @@ public class AsciiReplayRenderer {
     private static final char[] DENSITY_MAP = {' ', '.', ':', '-', '=', '+', '*', '#', '%'};
 
     public List<String> render(LogEntry violation, boolean sideView) {
+        return render(null, violation, sideView);
+    }
+
+    public List<String> render(org.bukkit.command.CommandSender sender, LogEntry violation, boolean sideView) {
         List<String> output = new ArrayList<>();
         if (violation == null || violation.getFrom() == null || violation.getTo() == null) {
-            output.add("&c无有效轨迹坐标可回放。");
+            output.add(com.example.argusac.i18n.I18n.get(sender, "command.replay.no-coords"));
             return output;
         }
 
         CoordPoint from = violation.getFrom();
         CoordPoint to = violation.getTo();
 
-        output.add("&e=== 移动轨迹 ASCII 取证回放: &b" + violation.getPlayer() + " &e(" + (sideView ? "XY 侧视图" : "XZ 俯视图") + ") ===");
-        output.add(String.format("&7检测项: &c%s &8| &7严重度: &e%s &8| &7回退模式: &b%s",
-                violation.getCheck(), violation.getSeverity(), violation.getMode()));
-        output.add(String.format("&7起点(S): &a%s &8-> &7回退点(X): &c%s", from, to));
+        String viewType = sideView 
+                ? com.example.argusac.i18n.I18n.get(sender, "command.replay.view-side") 
+                : com.example.argusac.i18n.I18n.get(sender, "command.replay.view-top");
+
+        output.add(com.example.argusac.i18n.I18n.get(sender, "command.replay.header",
+                "player", violation.getPlayer(),
+                "view", viewType));
+        output.add(com.example.argusac.i18n.I18n.get(sender, "command.replay.info",
+                "check", violation.getCheck(),
+                "severity", violation.getSeverity() != null ? violation.getSeverity().name() : "LOW",
+                "mode", violation.getMode() != null ? violation.getMode() : "NONE"));
+        output.add(com.example.argusac.i18n.I18n.get(sender, "command.replay.coords",
+                "from", from.toString(),
+                "to", to.toString()));
 
         char[][] grid = new char[GRID_SIZE][GRID_SIZE];
         for (char[] row : grid) Arrays.fill(row, '·');
@@ -60,7 +74,7 @@ public class AsciiReplayRenderer {
         double minY = Math.min(yStart, yEnd) - 1.0;
         double maxY = Math.max(yStart, yEnd) + 1.0;
 
-        output.add("&8+-----------------+  &7[高度条]");
+        output.add("&8+-----------------+  " + com.example.argusac.i18n.I18n.get(sender, "command.replay.height-bar"));
         for (int r = 0; r < GRID_SIZE; r++) {
             StringBuilder rowBuilder = new StringBuilder("&8|");
             for (int c = 0; c < GRID_SIZE; c++) {
@@ -80,7 +94,7 @@ public class AsciiReplayRenderer {
             output.add(rowBuilder.toString());
         }
         output.add("&8+-----------------+");
-        output.add("&7图例: &aS&7=最后合法起点, &e*&7=异常越界位移, &cX&7=强制回退点");
+        output.add(com.example.argusac.i18n.I18n.get(sender, "command.replay.legend"));
 
         return output;
     }
@@ -114,3 +128,4 @@ public class AsciiReplayRenderer {
         }
     }
 }
+

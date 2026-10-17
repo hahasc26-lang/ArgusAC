@@ -93,15 +93,43 @@ public final class I18n {
     }
 
     /**
-     * 获取原始未解析的占位符替换后字符串
+     * 获取按发送者语言本地化、占位符已替换的字符串
+     *
+     * @param sender 消息接收方 (为 null 时采用服务端语言)
+     * @param key    多语言键名
+     * @param args   成对占位符 ("key", value) 或数字索引参数
+     * @return 格式化后的本地化文本
      */
-    public static String raw(CommandSender sender, String key, Object... args) {
+    public static String get(CommandSender sender, String key, Object... args) {
         if (manager == null) {
             return key != null ? key : "";
         }
         String lang = manager.resolveLanguage(sender);
         String raw = manager.getRawMessage(lang, key);
         return manager.format(raw, args);
+    }
+
+    /**
+     * 获取按服务端基准语言本地化、占位符已替换的字符串
+     *
+     * @param key  多语言键名
+     * @param args 成对占位符 ("key", value) 或数字索引参数
+     * @return 格式化后的本地化文本
+     */
+    public static String getServer(String key, Object... args) {
+        if (manager == null) {
+            return key != null ? key : "";
+        }
+        String lang = manager.getServerLanguage();
+        String raw = manager.getRawMessage(lang, key);
+        return manager.format(raw, args);
+    }
+
+    /**
+     * 获取原始未解析的占位符替换后字符串
+     */
+    public static String raw(CommandSender sender, String key, Object... args) {
+        return get(sender, key, args);
     }
 
     /**
