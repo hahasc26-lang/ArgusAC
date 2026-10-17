@@ -9,7 +9,7 @@
 language:
   # Default language code used for server console output, system logs, and global broadcasts.
   # Corresponds to filenames in the lang/ directory (lowercase without .yml extension, e.g. zh_cn).
-  server-language: "zh_cn"
+  server-language: "en_us"
 
   # Client fallback language:
   # Used when a player's client locale cannot be detected, or when their language file is missing (e.g. en_us).

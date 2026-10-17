@@ -102,8 +102,6 @@ public class ElytraFlyCheck extends AbstractCheck {
         this.timerSubCheck = new ElytraSubCheck(this, "ElytraTimer");
         this.flipSubCheck = new ElytraSubCheck(this, "ElytraFlip");
         this.noFallSubCheck = new ElytraSubCheck(this, "ElytraNoFall");
-
-        this.reloadConfig();
     }
 
     @Override

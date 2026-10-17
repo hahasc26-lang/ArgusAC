@@ -72,6 +72,8 @@ public class CheckManager {
 
         // 数据包类
         register(badPacketsCheck = new BadPacketsCheck(plugin));
+
+        reloadAll();
     }
 
     private void register(Check check) {

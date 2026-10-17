@@ -26,7 +26,6 @@ public abstract class AbstractCheck implements Check {
         this.plugin = plugin;
         this.name = name;
         this.type = type;
-        this.reloadConfig();
     }
 
     @Override
