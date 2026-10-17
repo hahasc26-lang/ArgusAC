@@ -1,11 +1,11 @@
-# ==============================================================================
-# AegisAC - English Language File (en_us.yml)
+﻿# ==============================================================================
+# ArgusAC - English Language File (en_us.yml)
 # Supports MiniMessage formatting (e.g. <red>, <bold>, <gradient:#55cdfc:#f7a8b8>)
 # as well as legacy color codes (e.g. &a, &c, &e, &#RRGGBB)
 # ==============================================================================
 
 # Global plugin prefix
-prefix: "<gradient:#00C9FF:#92FE9D>[AegisAC]</gradient>&r "
+prefix: "<gradient:#00C9FF:#92FE9D>[ArgusAC]</gradient>&r "
 
 # System and administrative console messages
 system:
@@ -13,27 +13,99 @@ system:
   reload-failed: "<red>Failed to reload configuration! Rolled back to previous version, see console for details.</red>"
   no-permission: "<red>Permission denied! You lack permission: <yellow>{permission}</yellow></red>"
   only-player: "<red>This command can only be executed by in-game players!</red>"
-  unknown-command: "<red>Unknown subcommand: <yellow>{subcommand}</yellow>. Use <gray>/aegis help</gray> for command list.</red>"
+  unknown-command: "<red>Unknown subcommand: <yellow>{subcommand}</yellow>. Use <gray>/argus help</gray> for command list.</red>"
   target-not-found: "<red>Target player not found: <yellow>{target}</yellow> (player is offline or does not exist)</red>"
 
 # Cheat detection alert messages (sent to staff)
 alert:
-  format: "<dark_gray>[</dark_gray><aqua>Aegis</aqua><dark_aqua>AC</dark_aqua><dark_gray>]</dark_gray> <gray>Player</gray> <red>{player}</red> <gray>failed</gray> <gold>{check}</gold> <dark_gray>(</dark_gray><yellow>{type}</yellow><dark_gray>)</dark_gray> <gray>VL: <red>{vl}</red>/<dark_red>{max_vl}</dark_red> <dark_gray>[<gray>Ping: <green>{ping}ms</green> <gray>TPS: <green>{tps}</green><dark_gray>]</dark_gray>"
+  format: "<dark_gray>[</dark_gray><aqua>Argus</aqua><dark_aqua>AC</dark_aqua><dark_gray>]</dark_gray> <gray>Player</gray> <red>{player}</red> <gray>failed</gray> <gold>{check}</gold> <dark_gray>(</dark_gray><yellow>{type}</yellow><dark_gray>)</dark_gray> <gray>VL: <red>{vl}</red>/<dark_red>{max_vl}</dark_red> <dark_gray>[<gray>Ping: <green>{ping}ms</green> <gray>TPS: <green>{tps}</green><dark_gray>]</dark_gray>"
   hover-details: "<yellow>Click to teleport to player</yellow>\n<gray>Details: <white>{detail}</white>"
 
-# Mitigation and punishment messages (sent to suspected player)
+# Mitigation and punishment messages
 punishment:
-  setback-notify: "<red>Irregular movement detected, your position has been setback!</red>"
-  kick-reason: "<red>[AegisAC] Irregular client behavior detected.\n<gray>Triggered Check: <yellow>{check}</yellow> <gray>(Code: <white>{code}</white>)</gray>"
-  ban-reason: "<red>[AegisAC] Your account has been permanently suspended for cheating.\n<gray>Reason: <yellow>{reason}</yellow>\n<gray>Appeal at staff support if you believe this is in error.</gray>"
+  setback-notify: "<red>Irregular movement detected, your position has been smoothly setback!</red>"
+  setback-admin: "<gold>[Setback]</gold> <yellow>{player}</yellow> <gray>set back by</gray> <red>{check}</red> <dark_gray>(</dark_gray><white>{old_loc}</white> <dark_gray>-></dark_gray> <green>{new_loc}</green><dark_gray>)</dark_gray> <dark_gray>[</dark_gray><aqua>{mode}</aqua><dark_gray>]</dark_gray>"
+  kick-reason: "<red>[ArgusAC] Irregular client behavior detected.\n<gray>Triggered Check: <yellow>{check}</yellow> <gray>(Code: <white>{code}</white>)</gray>"
+  ban-reason: "<red>[ArgusAC] Your account has been permanently suspended for cheating.\n<gray>Reason: <yellow>{reason}</yellow>\n<gray>Appeal at staff support if you believe this is in error.</gray>"
 
-# Command help menu entries (List format)
+# Command help menu entries
 help:
-  header: "<dark_gray>================= <gradient:#00C9FF:#92FE9D>AegisAC Help Menu</gradient> <dark_gray>================="
+  header: "<dark_gray>================= <gradient:#00C9FF:#92FE9D>ArgusAC Help Menu</gradient> <dark_gray>================="
   footer: "<dark_gray>====================================================="
   entries:
-    - "<yellow>/aegis help</yellow> <dark_gray>-</dark_gray> <gray>Display this help menu</gray>"
-    - "<yellow>/aegis reload</yellow> <dark_gray>-</dark_gray> <gray>Reload configuration files and language packs</gray>"
-    - "<yellow>/aegis status</yellow> <dark_gray>-</dark_gray> <gray>View current detection module status</gray>"
-    - "<yellow>/aegis vl <player></yellow> <dark_gray>-</dark_gray> <gray>Check violation level (VL) for a player</gray>"
-    - "<yellow>/aegis logs <player></yellow> <dark_gray>-</dark_gray> <gray>Query historical audit logs for a player</gray>"
+    - "<yellow>/argus help</yellow> <dark_gray>-</dark_gray> <gray>Display this help menu</gray>"
+    - "<yellow>/argus reload</yellow> <dark_gray>-</dark_gray> <gray>Reload configuration files and language packs</gray>"
+    - "<yellow>/argus status</yellow> <dark_gray>-</dark_gray> <gray>View current detection status and log metrics</gray>"
+    - "<yellow>/argus vl <player></yellow> <dark_gray>-</dark_gray> <gray>Check violation level (VL) for a player</gray>"
+    - "<yellow>/argus logs <player></yellow> <dark_gray>-</dark_gray> <gray>Query in-memory fast audit logs for a player</gray>"
+    - "<yellow>/argus history <player> <days></yellow> <dark_gray>-</dark_gray> <gray>Stream historical log archives (including .gz files)</gray>"
+    - "<yellow>/argus replay <player> [--side]</yellow> <dark_gray>-</dark_gray> <gray>ASCII lightweight movement trajectory replay</gray>"
+    - "<yellow>/argus export <player></yellow> <dark_gray>-</dark_gray> <gray>Export full audit history zip archive for a player</gray>"
+    - "<yellow>/argus top [--since <1h|24h|7d>]</yellow> <dark_gray>-</dark_gray> <gray>Show Top 10 most flagged players</gray>"
+    - "<yellow>/argus verify</yellow> <dark_gray>-</dark_gray> <gray>Verify SHA-256 hash-chain integrity asynchronously</gray>"
+    - "<yellow>/argus debug <check></yellow> <dark_gray>-</dark_gray> <gray>Toggle module-level debug telemetry output</gray>"
+    - "<yellow>/argus my-data</yellow> <dark_gray>-</dark_gray> <gray>Inspect individual GDPR privacy & retention policies</gray>"
+    - "<yellow>/argus purge <player></yellow> <dark_gray>-</dark_gray> <gray>Purge all stored audit logs for a player securely</gray>"
+    - "<yellow>/argus compat</yellow> <dark_gray>-</dark_gray> <gray>View cross-version compatibility matrix and status</gray>"
+    - "<yellow>/argus toggle <check></yellow> <dark_gray>-</dark_gray> <gray>Enable or disable a specific check in real time</gray>"
+    - "<yellow>/argus setback <player|global> <mode></yellow> <dark_gray>-</dark_gray> <gray>Diagnose and manage the setback subsystem</gray>"
+    - "<yellow>/argus alerts [on|off|status]</yellow> <dark_gray>-</dark_gray> <gray>Mute or restore personal alerts for this login session</gray>"
+
+# Detailed command feedback messages
+command:
+  vl:
+    header: "<gradient:#00C9FF:#92FE9D>=== Violations for {player} ===</gradient>"
+    summary: "<gray>Latency (Ping): <white>{ping}ms</white> <dark_gray>|</dark_gray> Total VL: <red>{total_vl}</red>"
+    clean: "<green>No active violations recorded. Clean player!</green>"
+    entry: "  <dark_gray>-</dark_gray> <gray>{check}:</gray> <red>{vl}</red><dark_gray>/</dark_gray><gray>{max_vl}</gray>"
+  logs:
+    usage: "<red>Usage: /{label} logs <player> [--check <name>] [--since <1h|24h|7d>] [--setback] [--page <n>]</red>"
+    empty: "<gray>No in-memory audit logs found for player <yellow>{player}</yellow>.</gray>"
+    header: "<yellow>=== {title} (Page {page}/{total_pages}) ===</yellow>"
+  history:
+    usage: "<red>Usage: /{label} history <player> <days> [--check <name>] [--setback] [--page <n>]</red>"
+    searching: "<gray>Streaming historical log archives (including .jsonl.gz)...</gray>"
+    empty: "<gray>No matching entries found in historical archives.</gray>"
+  export:
+    usage: "<red>Usage: /{label} export <player></red>"
+    exporting: "<gray>Packing audit data archive for <yellow>{player}</yellow>...</gray>"
+    success: "<green>Export complete! Archive generated: <yellow>{path}</yellow> ({count} entries)</green>"
+  top:
+    header: "<gradient:#00C9FF:#92FE9D>=== Recent Top 10 Violations ===</gradient>"
+    empty: "<green>No severe violation records generated within this time window!</green>"
+    entry: " <gold>#{rank}</gold> <yellow>{player}</yellow> <dark_gray>-</dark_gray> <red>{violations}</red> violations <dark_gray>(</dark_gray><gray>Peak VL: <red>{peak_vl}</red></gray><dark_gray>)</dark_gray>"
+  status:
+    header: "<gradient:#00C9FF:#92FE9D>=== ArgusAC Audit & Runtime Health Status ===</gradient>"
+    queue: "<gray>Audit queue backlog: <yellow>{queue_size}</yellow> / {capacity} <dark_gray>|</dark_gray> In-memory entries: <yellow>{memory_count}</yellow></gray>"
+    chain: "<gray>Hash chain height: <white>#{chain_index}</white> <dark_gray>|</dark_gray> Root hash: <aqua>{hash}</aqua></gray>"
+    archive: "<gray>Archived log files: <white>{archive_count}</white> <dark_gray>|</dark_gray> Storage footprint: <white>{size}</white></gray>"
+  verify:
+    running: "<yellow>Verifying audit log SHA-256 hash chain signatures in background, please wait...</yellow>"
+    success: "<green>Hash chain audit passed! All log entries are intact with zero tampering.</green>"
+    failed: "<red>Warning! Hash mismatch detected on line {line}. Logs may have been modified!</red>"
+  toggle:
+    usage: "<red>Usage: /{label} toggle <check_name></red>"
+    not-found: "<red>Check module named <yellow>{check}</yellow> was not found!</red>"
+    result: "<green>Check module <yellow>{check}</yellow> state updated to: {status}</green>"
+  setback:
+    usage: "<red>Usage: /{label} setback <player|global> <disable|soft|hard|default|now|info></red>"
+    info-header: "<gradient:#00C9FF:#92FE9D>=== Setback Diagnostics for {player} ===</gradient>"
+    info-detail: "<gray>Override: <yellow>{override}</yellow> <dark_gray>|</dark_gray> Remaining immunity: <aqua>{immunity}ms</aqua> <dark_gray>|</dark_gray> Cooldown: <yellow>{cooldown}</yellow></gray>"
+    info-last: "<gray>Latest bounded valid location: <green>{last_loc}</green></gray>"
+    override-set: "<green>Setback override for <yellow>{player}</yellow> set to: <aqua>{override}</aqua></green>"
+    global-toggle: "<green>Global setback master switch toggled to: {status}</green>"
+    triggered: "<yellow>Manually triggered an immediate smooth setback for <gold>{player}</gold>!</yellow>"
+  alerts:
+    usage: "<red>Usage: /argus alerts [on|off|status]</red>"
+    enabled: "<green>Personal alert messages are enabled for this login session.</green>"
+    muted: "<yellow>Personal alert messages are muted for this login session; server logs and console alerts remain enabled.</yellow>"
+    status-enabled: "<green>You are receiving alert messages in this session.</green>"
+    status-muted: "<yellow>Alert messages are muted for this session.</yellow>"
+  my-data:
+    header: "<gradient:#00C9FF:#92FE9D>=== ArgusAC GDPR Privacy Transparency ===</gradient>"
+    retention: "<gray>Data retention period: <yellow>{days} days</yellow> (automatically purged after expiration)</gray>"
+    anonymization: "<gray>IP Privacy: <yellow>{status}</yellow></gray>"
+    purge-hint: "<gray>To request complete data removal, contact an admin to run: <yellow>/argus purge {player}</yellow></gray>"
+  purge:
+    usage: "<red>Usage: /{label} purge <player></red>"
+    success: "<green>Successfully purged all stored audit logs for player <yellow>{player}</yellow>.</green>"

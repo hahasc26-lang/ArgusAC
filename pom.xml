@@ -4,13 +4,13 @@
          xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
     <modelVersion>4.0.0</modelVersion>
 
-    <groupId>com.example.aegisac</groupId>
-    <artifactId>AegisAC</artifactId>
+    <groupId>com.example.argusac</groupId>
+    <artifactId>ArgusAC</artifactId>
     <version>1.0.0</version>
     <packaging>jar</packaging>
 
-    <name>AegisAC</name>
-    <description>AegisAC (Aegis Anti-Cheat) - High-Performance Paper Server Anti-Cheat Plugin</description>
+    <name>ArgusAC</name>
+    <description>ArgusAC (Argus Anti-Cheat) - High-Performance Paper Server Anti-Cheat Plugin</description>
 
     <properties>
         <java.version>17</java.version>

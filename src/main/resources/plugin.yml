@@ -1,27 +1,39 @@
-name: AegisAC
+name: ArgusAC
 version: '${project.version}'
-main: com.example.aegisac.AegisACPlugin
+main: com.example.argusac.ArgusACPlugin
 api-version: '1.13'
 author: haha
-description: Industrial-grade high-performance cross-version anti-cheat plugin, supporting 1.12.2 - 1.21.x
+description: Industrial-grade high-performance cross-version anti-cheat plugin (ArgusAC), supporting 1.12.2 - 1.21.x
 softdepend:
   - ProtocolLib
 
 commands:
-  aegis:
-    description: AegisAC main command
+  argus:
+    description: ArgusAC main command
     aliases:
       - ac
-    permission: aegisac.admin
-    usage: /<command> [help|reload|vl|logs|toggle|setback]
+      - argusac
+      - aegis
+    usage: /<command> [help|reload|vl|logs|toggle|setback|alerts]
 
 permissions:
+  argusac.admin:
+    description: Allows the use of all ArgusAC admin commands
+    default: op
+  argusac.alert:
+    description: Allows receiving anti-cheat alerts and managing session alert preferences
+    default: op
+  argusac.bypass:
+    description: Bypasses anti-cheat checks and setbacks
+    default: false
+
+  # Legacy aliases for backwards compatibility
   aegisac.admin:
-    description: Allows the use of all AegisAC admin commands
+    description: Legacy permission alias for argusac.admin
     default: op
   aegisac.alert:
-    description: Allows receiving anti-cheat violation and setback alert notifications
+    description: Legacy permission alias for argusac.alert
     default: op
   aegisac.bypass:
-    description: Bypasses anti-cheat checks and setbacks
+    description: Legacy permission alias for argusac.bypass
     default: false

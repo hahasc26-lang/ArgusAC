@@ -107,7 +107,7 @@ The main command is **`/aegis`** (alias: **`/ac`**).
 
 | Command | Description | Permission |
 |---------|-------------|------------|
-| `/aegis help` | Show the command list | `aegisac.admin` |
+| `/aegis help` | Show the command list | Everyone |
 | `/aegis reload` | Reload configuration and checks | `aegisac.admin` |
 | `/aegis vl <player>` | View an online player's violation levels | `aegisac.admin` |
 | `/aegis logs <player> [options]` | Query recent logs; supports `--check`, `--since`, `--setback`, and `--page` | `aegisac.admin` |
@@ -121,7 +121,8 @@ The main command is **`/aegis`** (alias: **`/ac`**).
 | `/aegis compat` | Show check compatibility and degradation status | `aegisac.admin` |
 | `/aegis toggle <check>` | Toggle a check at runtime | `aegisac.admin` |
 | `/aegis setback <player\|global> <disable\|soft\|hard\|default\|now\|info>` | Manage or inspect setbacks | `aegisac.admin` |
-| `/aegis my-data` | View the data-retention summary | `aegisac.admin` |
+| `/aegis alerts [on\|off\|status]` | Mute or restore your staff alert messages for this login session | `aegisac.alert` |
+| `/aegis my-data` | View the data-retention summary | Everyone |
 | `/aegis purge <player>` | Delete a player's stored records and create an audit entry | `aegisac.admin` |
 
 </details>
@@ -138,7 +139,7 @@ The main command is **`/aegis`** (alias: **`/ac`**).
 | Permission | Default | Description |
 |------------|---------|-------------|
 | `aegisac.admin` | Operators | Use `/aegis` administration commands |
-| `aegisac.alert` | Operators | Receive violation and setback alerts |
+| `aegisac.alert` | Operators | Receive violation and setback alerts; `/aegis alerts` changes personal alert delivery until logout |
 | `aegisac.bypass` | Nobody | Bypass checks and setbacks |
 
 </details>
@@ -256,7 +257,7 @@ AegisAC 会在玩家移动通过配置的检测后记录其最后合法位置。
 
 | 命令 | 说明 | 权限 |
 |------|------|------|
-| `/aegis help` | 显示命令列表 | `aegisac.admin` |
+| `/aegis help` | 显示命令列表 | 所有人 |
 | `/aegis reload` | 重载配置与检测模块 | `aegisac.admin` |
 | `/aegis vl <玩家>` | 查看在线玩家的违规等级 | `aegisac.admin` |
 | `/aegis logs <玩家> [选项]` | 查询近期记录；支持 `--check`、`--since`、`--setback`、`--page` | `aegisac.admin` |
@@ -270,7 +271,8 @@ AegisAC 会在玩家移动通过配置的检测后记录其最后合法位置。
 | `/aegis compat` | 查看检测项兼容与降级状态 | `aegisac.admin` |
 | `/aegis toggle <检测项>` | 运行时开关检测项 | `aegisac.admin` |
 | `/aegis setback <玩家\|global> <disable\|soft\|hard\|default\|now\|info>` | 管理或查看状态回退 | `aegisac.admin` |
-| `/aegis my-data` | 查看数据保留策略摘要 | `aegisac.admin` |
+| `/aegis alerts [on\|off\|status]` | 本次登录期间关闭、恢复或查看个人管理员告警提示 | `aegisac.alert` |
+| `/aegis my-data` | 查看数据保留策略摘要 | 所有人 |
 | `/aegis purge <玩家>` | 删除玩家存储记录并生成审计记录 | `aegisac.admin` |
 
 </details>
@@ -287,7 +289,7 @@ AegisAC 会在玩家移动通过配置的检测后记录其最后合法位置。
 | 权限 | 默认 | 说明 |
 |------|------|------|
 | `aegisac.admin` | OP | 执行 `/aegis` 管理命令 |
-| `aegisac.alert` | OP | 接收违规与回退告警 |
+| `aegisac.alert` | OP | 接收违规与回退告警；`/aegis alerts` 可关闭本次登录期间的个人提示 |
 | `aegisac.bypass` | 无人 | 豁免检测与状态回退 |
 
 </details>

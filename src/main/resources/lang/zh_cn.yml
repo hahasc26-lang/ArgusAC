@@ -1,39 +1,111 @@
-# ==============================================================================
-# AegisAC - Simplified Chinese Language File (zh_cn.yml)
+﻿# ==============================================================================
+# ArgusAC - Simplified Chinese Language File (zh_cn.yml)
 # Supports MiniMessage formatting (e.g. <red>, <bold>, <gradient:#55cdfc:#f7a8b8>)
 # as well as legacy color codes (e.g. &a, &c, &e, &#RRGGBB)
 # ==============================================================================
 
 # Global plugin prefix
-prefix: "<gradient:#00C9FF:#92FE9D>[AegisAC]</gradient>&r "
+prefix: "<gradient:#00C9FF:#92FE9D>[ArgusAC]</gradient>&r "
 
 # System and administrative console messages
 system:
   reload-success: "<green>所有配置文件、检测规则与多语言文件已成功热重载！耗时: <yellow>{time}ms</yellow></green>"
   reload-failed: "<red>配置文件重载失败，已安全回退到此前版本，详情请查看控制台日志！</red>"
-  no-permission: "<red>权限不足！你没有执行此命令的权限: <yellow>{permission}</yellow></red>"
+  no-permission: "<red>权限不足！执行反作弊管理命令需要: <yellow>{permission}</yellow></red>"
   only-player: "<red>该命令只能由游戏内玩家执行！</red>"
-  unknown-command: "<red>未知的子命令: <yellow>{subcommand}</yellow>。输入 <gray>/aegis help</gray> 查看命令列表。</red>"
+  unknown-command: "<red>未知的子命令: <yellow>{subcommand}</yellow>。输入 <gray>/argus help</gray> 查看命令列表。</red>"
   target-not-found: "<red>未找到目标玩家: <yellow>{target}</yellow>（玩家不在线或不存在）</red>"
 
 # Cheat detection alert messages (sent to staff)
 alert:
-  format: "<dark_gray>[</dark_gray><aqua>Aegis</aqua><dark_aqua>AC</dark_aqua><dark_gray>]</dark_gray> <gray>玩家</gray> <red>{player}</red> <gray>触发检测</gray> <gold>{check}</gold> <dark_gray>(</dark_gray><yellow>{type}</yellow><dark_gray>)</dark_gray> <gray>VL: <red>{vl}</red>/<dark_red>{max_vl}</dark_red> <dark_gray>[<gray>Ping: <green>{ping}ms</green> <gray>TPS: <green>{tps}</green><dark_gray>]</dark_gray>"
+  format: "<dark_gray>[</dark_gray><aqua>Argus</aqua><dark_aqua>AC</dark_aqua><dark_gray>]</dark_gray> <gray>玩家</gray> <red>{player}</red> <gray>触发检测</gray> <gold>{check}</gold> <dark_gray>(</dark_gray><yellow>{type}</yellow><dark_gray>)</dark_gray> <gray>VL: <red>{vl}</red>/<dark_red>{max_vl}</dark_red> <dark_gray>[<gray>Ping: <green>{ping}ms</green> <gray>TPS: <green>{tps}</green><dark_gray>]</dark_gray>"
   hover-details: "<yellow>点击传送至玩家所在位置</yellow>\n<gray>详细信息: <white>{detail}</white>"
 
-# Mitigation and punishment messages (sent to suspected player)
+# Mitigation and punishment messages
 punishment:
-  setback-notify: "<red>检测到异常移动行为，位置已重置！</red>"
-  kick-reason: "<red>[AegisAC] 您的客户端行为异常，已被移出服务器。\n<gray>触发检测: <yellow>{check}</yellow> <gray>(代码: <white>{code}</white>)</gray>"
-  ban-reason: "<red>[AegisAC] 您的账户因违规行为已被封禁。\n<gray>原因: <yellow>{reason}</yellow>\n<gray>如有异议请联系管理员申诉。</gray>"
+  setback-notify: "<red>检测到异常移动行为，位置已平滑重置！</red>"
+  setback-admin: "<gold>[Setback]</gold> <yellow>{player}</yellow> <gray>因</gray> <red>{check}</red> <gray>已被回退</gray> <dark_gray>(</dark_gray><white>{old_loc}</white> <dark_gray>-></dark_gray> <green>{new_loc}</green><dark_gray>)</dark_gray> <dark_gray>[</dark_gray><aqua>{mode}</aqua><dark_gray>]</dark_gray>"
+  kick-reason: "<red>[ArgusAC] 您的客户端行为异常，已被移出服务器。\n<gray>触发检测: <yellow>{check}</yellow> <gray>(代码: <white>{code}</white>)</gray>"
+  ban-reason: "<red>[ArgusAC] 您的账户因违规行为已被封禁。\n<gray>原因: <yellow>{reason}</yellow>\n<gray>如有异议请联系管理员申诉。</gray>"
 
-# Command help menu entries (List format)
+# Command help menu entries
 help:
-  header: "<dark_gray>================= <gradient:#00C9FF:#92FE9D>AegisAC 反作弊帮助菜单</gradient> <dark_gray>================="
+  header: "<dark_gray>================= <gradient:#00C9FF:#92FE9D>ArgusAC 反作弊帮助菜单</gradient> <dark_gray>================="
   footer: "<dark_gray>====================================================="
   entries:
-    - "<yellow>/aegis help</yellow> <dark_gray>-</dark_gray> <gray>查看本帮助菜单</gray>"
-    - "<yellow>/aegis reload</yellow> <dark_gray>-</dark_gray> <gray>热重载配置文件与语言包</gray>"
-    - "<yellow>/aegis status</yellow> <dark_gray>-</dark_gray> <gray>查看服务器当前检测模块运行状态</gray>"
-    - "<yellow>/aegis vl <玩家></yellow> <dark_gray>-</dark_gray> <gray>查询指定玩家的当前违规值 (VL)</gray>"
-    - "<yellow>/aegis logs <玩家></yellow> <dark_gray>-</dark_gray> <gray>查询指定玩家的历史违规审计记录</gray>"
+    - "<yellow>/argus help</yellow> <dark_gray>-</dark_gray> <gray>查看本帮助菜单</gray>"
+    - "<yellow>/argus reload</yellow> <dark_gray>-</dark_gray> <gray>热重载配置文件与语言包</gray>"
+    - "<yellow>/argus status</yellow> <dark_gray>-</dark_gray> <gray>查看服务器当前检测模块运行状态与日志指标</gray>"
+    - "<yellow>/argus vl <玩家></yellow> <dark_gray>-</dark_gray> <gray>查询指定玩家的当前违规值 (VL)</gray>"
+    - "<yellow>/argus logs <玩家></yellow> <dark_gray>-</dark_gray> <gray>查询指定玩家的内存快速违规审计记录</gray>"
+    - "<yellow>/argus history <玩家> <天数></yellow> <dark_gray>-</dark_gray> <gray>异步流式检索历史日志文件 (含压缩包)</gray>"
+    - "<yellow>/argus replay <玩家> [--side]</yellow> <dark_gray>-</dark_gray> <gray>ASCII 轻量轨迹与高度可视化回放</gray>"
+    - "<yellow>/argus export <玩家></yellow> <dark_gray>-</dark_gray> <gray>导出指定玩家的完整审计数据 Zip 归档</gray>"
+    - "<yellow>/argus top [--since <1h|24h|7d>]</yellow> <dark_gray>-</dark_gray> <gray>查看违规次数最高的玩家 Top10 榜单</gray>"
+    - "<yellow>/argus verify</yellow> <dark_gray>-</dark_gray> <gray>异步核验全局日志链 SHA-256 签名完整性</gray>"
+    - "<yellow>/argus debug <检测项></yellow> <dark_gray>-</dark_gray> <gray>实时开关独立检测模块调试日志</gray>"
+    - "<yellow>/argus my-data</yellow> <dark_gray>-</dark_gray> <gray>查看自身反作弊数据保留策略 (GDPR)</gray>"
+    - "<yellow>/argus purge <玩家></yellow> <dark_gray>-</dark_gray> <gray>彻底安全清除指定玩家的审计记录</gray>"
+    - "<yellow>/argus compat</yellow> <dark_gray>-</dark_gray> <gray>查看多版本跨环境运行能力矩阵与降级状态</gray>"
+    - "<yellow>/argus toggle <检测项></yellow> <dark_gray>-</dark_gray> <gray>实时开启或停用单项反作弊检测</gray>"
+    - "<yellow>/argus setback <玩家|global> <模式></yellow> <dark_gray>-</dark_gray> <gray>运维控制与诊断状态回退子系统</gray>"
+    - "<yellow>/argus alerts [on|off|status]</yellow> <dark_gray>-</dark_gray> <gray>本次登录期间关闭或恢复个人告警提示</gray>"
+
+# Detailed command feedback messages
+command:
+  vl:
+    header: "<gradient:#00C9FF:#92FE9D>=== 玩家 {player} 当前违规信息 ===</gradient>"
+    summary: "<gray>延迟 (Ping): <white>{ping}ms</white> <dark_gray>|</dark_gray> 总 VL: <red>{total_vl}</red>"
+    clean: "<green>当前没有任何违规记录，状态良好！</green>"
+    entry: "  <dark_gray>-</dark_gray> <gray>{check}:</gray> <red>{vl}</red><dark_gray>/</dark_gray><gray>{max_vl}</gray>"
+  logs:
+    usage: "<red>用法: /{label} logs <玩家名> [--check <name>] [--since <1h|24h|7d>] [--setback] [--page <n>]</red>"
+    empty: "<gray>玩家 <yellow>{player}</yellow> 在内存快速缓冲中无匹配记录。</gray>"
+    header: "<yellow>=== {title} (第 {page}/{total_pages} 页) ===</yellow>"
+  history:
+    usage: "<red>用法: /{label} history <玩家名> <查询天数> [--check <name>] [--setback] [--page <n>]</red>"
+    searching: "<gray>正在异步流式检索历史日志档案 (含 .jsonl.gz)...</gray>"
+    empty: "<gray>未在历史日志归档中找到匹配记录。</gray>"
+  export:
+    usage: "<red>用法: /{label} export <玩家名></red>"
+    exporting: "<gray>正在打包玩家 <yellow>{player}</yellow> 的审计历史数据...</gray>"
+    success: "<green>导出完成！数据包已生成: <yellow>{path}</yellow> (共 {count} 条记录)</green>"
+  top:
+    header: "<gradient:#00C9FF:#92FE9D>=== 近期违规次数 TOP 10 榜单 ===</gradient>"
+    empty: "<green>在此统计时间窗口内没有产生任何严重作弊违规记录！</green>"
+    entry: " <gold>#{rank}</gold> <yellow>{player}</yellow> <dark_gray>-</dark_gray> <red>{violations}</red> 次违规 <dark_gray>(</dark_gray><gray>峰值VL: <red>{peak_vl}</red></gray><dark_gray>)</dark_gray>"
+  status:
+    header: "<gradient:#00C9FF:#92FE9D>=== ArgusAC 统一审计与运行时健康指标 ===</gradient>"
+    queue: "<gray>日志队列积压: <yellow>{queue_size}</yellow> / {capacity} <dark_gray>|</dark_gray> 内存违规条目: <yellow>{memory_count}</yellow></gray>"
+    chain: "<gray>哈希链高度: <white>#{chain_index}</white> <dark_gray>|</dark_gray> 根哈希: <aqua>{hash}</aqua></gray>"
+    archive: "<gray>历史归档文件数: <white>{archive_count}</white> <dark_gray>|</dark_gray> 存储占用: <white>{size}</white></gray>"
+  verify:
+    running: "<yellow>正在后台多线程验证审计日志 SHA-256 哈希链签名，请稍候...</yellow>"
+    success: "<green>哈希链审计验证通过！所有日志数据完整且未经任何外部篡改。</green>"
+    failed: "<red>警告！哈希链在第 {line} 行检测到签名不匹配，数据可能曾遭受非授权修改！</red>"
+  toggle:
+    usage: "<red>用法: /{label} toggle <检测名称></red>"
+    not-found: "<red>未找到名为 <yellow>{check}</yellow> 的检测模块！</red>"
+    result: "<green>检测模块 <yellow>{check}</yellow> 状态已更新为: {status}</green>"
+  setback:
+    usage: "<red>用法: /{label} setback <玩家名|global> <disable|soft|hard|default|now|info></red>"
+    info-header: "<gradient:#00C9FF:#92FE9D>=== 玩家 {player} 回退上下文诊断 ===</gradient>"
+    info-detail: "<gray>单人覆写: <yellow>{override}</yellow> <dark_gray>|</dark_gray> 免疫剩余: <aqua>{immunity}ms</aqua> <dark_gray>|</dark_gray> 独立冷却: <yellow>{cooldown}</yellow></gray>"
+    info-last: "<gray>最新有界合法点: <green>{last_loc}</green></gray>"
+    override-set: "<green>玩家 <yellow>{player}</yellow> 的单人回退覆写策略已设为: <aqua>{override}</aqua></green>"
+    global-toggle: "<green>全局回退机制总开关已切换为: {status}</green>"
+    triggered: "<yellow>已为玩家 <gold>{player}</gold> 手动触发一次立即平滑回退！</yellow>"
+  alerts:
+    usage: "<red>用法: /argus alerts [on|off|status]</red>"
+    enabled: "<green>本次登录期间已恢复接收告警提示。</green>"
+    muted: "<yellow>本次登录期间已关闭个人告警提示；服务器仍会记录日志并向控制台输出。</yellow>"
+    status-enabled: "<green>当前会话正在接收告警提示。</green>"
+    status-muted: "<yellow>当前会话已关闭告警提示。</yellow>"
+  my-data:
+    header: "<gradient:#00C9FF:#92FE9D>=== ArgusAC 个人数据合规透明度 ===</gradient>"
+    retention: "<gray>数据保存期限: <yellow>{days} 天</yellow> (期满自动执行不可逆安全清理)</gray>"
+    anonymization: "<gray>IP 隐私保护: <yellow>{status}</yellow></gray>"
+    purge-hint: "<gray>申请完全注销或彻底移除记录，请联系管理员执行: <yellow>/argus purge {player}</yellow></gray>"
+  purge:
+    usage: "<red>用法: /{label} purge <玩家名></red>"
+    success: "<green>已彻底清除玩家 <yellow>{player}</yellow> 的全部反作弊数据，并已写入系统注销审计日志。</green>"

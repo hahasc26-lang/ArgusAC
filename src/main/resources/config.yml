@@ -1,5 +1,5 @@
-# ==============================================================================
-# AegisAC - Core Configuration File
+﻿# ==============================================================================
+# ArgusAC - Core Configuration File
 # Supports Spigot / Paper 1.12.2 ~ 1.21.x Multi-Version Architecture, Powered by Java 17
 # ==============================================================================
 
@@ -31,7 +31,7 @@ compatibility-matrix:
   # false = Strict mode (directly disables checks that require native modern APIs)
   allow-feature-degradation: true
 
-  # Whether to conspicuously notify admins in console and in /aegis status when modules are degraded
+  # Whether to conspicuously notify admins in console and in /Argus status when modules are degraded
   notify-admins-on-degradation: true
 
   # Module-level version overrides and compatibility switches
@@ -57,14 +57,14 @@ compatibility-matrix:
 # Unified Lightweight Audit & Logging System Configuration
 # ==============================================================================
 audit:
-  prefix: "&8[&bAegis&3AC&8] &r"
+  prefix: "&8[&bArgus&3AC&8] &r"
   server-id: "survival-01"
   memory-buffer-size: 30
   queue-capacity: 5000
 
   hash-chain:
     enabled: true
-    seed: "AegisAC-Enterprise-Seed-2026-X99"
+    seed: "ArgusAC-Enterprise-Seed-2026-X99"
     checkpoint-interval-lines: 100
 
   archive:
@@ -76,14 +76,14 @@ audit:
   privacy:
     log-ip: false
     hash-ip: true
-    salt: "AegisAC-Privacy-Salt-Secure-8820"
+    salt: "ArgusAC-Privacy-Salt-Secure-8820"
 
 settings:
   # Plugin message prefix (supports legacy '&' color codes)
-  prefix: "&8[&bAegis&3AC&8] &r"
+  prefix: "&8[&bArgus&3AC&8] &r"
   # Enable debug mode (outputs detailed evaluation telemetry)
   debug: false
-  # Whether to automatically exempt players in Creative mode (even without aegisac.bypass permission)
+  # Whether to automatically exempt players in Creative mode (even without ArgusAC.bypass permission)
   bypass-creative: true
   # Violation Level (VL) auto-decay settings
   vl-decay:
@@ -100,7 +100,7 @@ alerts:
   enabled: true
   # Alert format: {player}=Player, {check}=Check, {vl}=VL, {max_vl}=Threshold, {details}=Data, {ping}=Ping
   format: "&c[!] &e{player} &7failed &b{check} &8(VL: &c{vl}&8/&7{max_vl}&8) &7- &f{details} &8[&7{ping}ms&8]"
-  # Play alert sound to staff with aegisac.alert permission
+  # Play alert sound to staff with ArgusAC.alert permission
   sound:
     enabled: true
     type: "BLOCK_NOTE_BLOCK_BASS"
@@ -132,24 +132,39 @@ setback:
   # World exemption list (players in these worlds will not be set back)
   exempted-worlds: []
 
-  # Boundary safety: when the last valid location is obstructed by external blocks or pistons
+  # Boundary safety & bounded setback distance (prevents unconstrained cross-region teleportation)
   boundary:
+    # Maximum horizontal distance allowed for a valid setback target snapshot (blocks)
+    # If all verified snapshots exceed this distance, safe fallback cancels the current movement rather than teleporting far away
+    max-distance: 8.0
     # Whether to disconnect the player if both current and fallback safe positions are blocked by solid blocks
     kick-when-both-blocked: false
-    kick-message: "&c[AegisAC] Irregular movement detected and previous location obstructed. Disconnected safely."
+    kick-message: "&c[ArgusAC] Irregular movement detected and previous location obstructed. Disconnected safely."
 
-  # Post-setback temporary immunity window (prevents sudden coordinate shifts from re-triggering other checks)
+  # Verified movement snapshot buffer (short sliding window for bounded, same-world setback selection)
+  snapshot:
+    # Maximum lifespan (ms) of a verified movement snapshot
+    max-age-ms: 2500
+    # Maximum number of verified snapshots cached per player
+    max-capacity: 30
+
+  # Network correction synchronization window (differentiates server setback correction from normal checks)
+  correction:
+    # Timeout in ms for the client to acknowledge and correct to the server-issued setback position
+    timeout-ms: 600
+
+  # Post-setback temporary immunity window (tightened to prevent false flags while eliminating 1.5s blind spots)
   immunity:
-    # Minimum base immunity duration in milliseconds (actual immunity = max(min-duration, 4 * ping + extra-buffer))
-    min-duration-ms: 1500
-    extra-buffer-ms: 200
+    # Base immunity duration in milliseconds (actual immunity = max(min-duration, 2 * ping + extra-buffer))
+    min-duration-ms: 400
+    extra-buffer-ms: 150
 
   # Notification settings
   notifications:
     player:
       # Notification channel: ACTIONBAR, CHAT, or NONE
       channel: "ACTIONBAR"
-      message: "&c[AegisAC] Irregular movement detected, your position has been setback!"
+      message: "&c[ArgusAC] Irregular movement detected, your position has been setback!"
       # Notification cooldown (ms) to avoid spam
       cooldown-ms: 1000
     admin:
@@ -159,10 +174,13 @@ setback:
   # Asynchronous disk audit logging (persisted as JSON Lines, one JSON object per line)
   disk-logging:
     enabled: true
-    path: "plugins/AegisAC/logs/setbacks.jsonl"
+    path: "plugins/ArgusAC/logs/setbacks.jsonl"
 
-  # Per-check setback overrides (override global defaults)
+  # Per-check setback overrides (differentiated by check categories):
+  # Movement checks: Trigger positional setback (HARD / SOFT) or in-place move cancellation
+  # Combat & World checks: Handled by cancelling interactions & escalating punishments (never teleporting)
   per-check:
+    # --- Movement Checks (Setback Enabled) ---
     Speed:
       enabled: true
       min-vl: 1
@@ -179,41 +197,47 @@ setback:
       enabled: true
       min-vl: 1
       mode: "HARD"
-    Scaffold:
-      enabled: true
-      min-vl: 1
-      mode: "HARD"
     InventoryMove:
       enabled: true
       min-vl: 1
-      mode: "SOFT"
-    BadPackets:
-      enabled: true
-      min-vl: 1
-      mode: "HARD"
-    Reach:
-      enabled: true
-      min-vl: 1
-      mode: "HARD"
-    KillAura:
-      enabled: true
-      min-vl: 1
-      mode: "HARD"
-    FastBreak:
-      enabled: true
-      min-vl: 1
-      mode: "HARD"
-    Nuker:
-      enabled: true
-      min-vl: 1
-      mode: "HARD"
-    AutoClicker:
-      enabled: true
-      min-vl: 1
-      mode: "HARD"
+      mode: "SOFT" # Prioritizes canceling the current invalid move in-place
     ElytraFly:
       enabled: true
       min-vl: 3
+      mode: "HARD"
+
+    # --- Combat Checks (Interaction Cancellation Only, No Setback Teleport) ---
+    Reach:
+      enabled: false
+      min-vl: 1
+      mode: "HARD"
+    KillAura:
+      enabled: false
+      min-vl: 1
+      mode: "HARD"
+    AutoClicker:
+      enabled: false
+      min-vl: 1
+      mode: "HARD"
+
+    # --- World & Block Checks (Block Event Cancellation Only, No Setback Teleport) ---
+    FastBreak:
+      enabled: false
+      min-vl: 1
+      mode: "HARD"
+    Nuker:
+      enabled: false
+      min-vl: 1
+      mode: "HARD"
+    Scaffold:
+      enabled: false
+      min-vl: 1
+      mode: "HARD"
+
+    # --- Packet Checks (Packet Interception Only) ---
+    BadPackets:
+      enabled: false
+      min-vl: 1
       mode: "HARD"
 
 # ==============================================================================
@@ -238,10 +262,10 @@ punishments:
   # Supported variables: {player}=Player name, {check}=Check name, {vl}=Current VL
   actions:
     - vl: 25
-      command: "kick {player} [AegisAC] Continuous irregular client behavior detected."
+      command: "kick {player} [ArgusAC] Continuous irregular client behavior detected."
     # Example ban rule (uncomment to enable):
     # - vl: 50
-    #   command: "ban {player} 7d [AegisAC] Persistent cheating behavior detected"
+    #   command: "ban {player} 7d [ArgusAC] Persistent cheating behavior detected"
 
 # ==============================================================================
 # Detection Module Threshold Configurations
