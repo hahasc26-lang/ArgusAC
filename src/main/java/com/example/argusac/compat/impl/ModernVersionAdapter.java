@@ -25,7 +25,7 @@ import java.util.Map;
 
 /**
  * 现代版本适配实现 (面向 Paper 1.20+ 原生特性，具备最高的执行效率)
- * 注意：potionType 解析使用 getByName 动态查找+缓存，适配 1.20.4 ~ 1.21.x 常量名称变更
+ * 注意：potionType 解析使用 getByName 动态查找+缓存，适配 1.20.4 ~ 26.3 常量名称变更
  */
 @SuppressWarnings("deprecation")
 public class ModernVersionAdapter implements VersionAdapter {

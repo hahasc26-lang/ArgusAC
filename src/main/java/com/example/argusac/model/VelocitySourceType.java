@@ -16,7 +16,7 @@ public enum VelocitySourceType {
     PISTON,
     /** 实体受伤害/爆炸击退 */
     EXPLOSION,
-    /** 风弹与风涌推力 (1.21+) */
+    /** 风弹与风涌推力 (1.21+ / 26.x+) */
     WIND_CHARGE,
     /** 气泡柱向上浮力 */
     BUBBLE_COLUMN,

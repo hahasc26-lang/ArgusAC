@@ -28,7 +28,7 @@ import java.util.regex.Pattern;
 
 /**
  * 现代多语言国际化管理器 (Language & i18n Manager)
- * 专为 Paper / Spigot 1.20+ 架构打造：
+ * 专为 Paper / Spigot 1.12.2 ~ 26.3 架构打造：
  * 1. 支持自动释放内置语言文件，增量补全且不覆盖服主修改
  * 2. 具备四级兜底（客户端语言 -> 客户端回退语言 -> 硬编码底线语言 -> 原始 Key）
  * 3. 完美兼容 MiniMessage 现代标签与传统颜色代码 (包含 Legacy Hex &#RRGGBB)

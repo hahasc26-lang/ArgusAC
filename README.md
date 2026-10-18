@@ -1,7 +1,7 @@
 # ArgusAC
 
 <p align="center">
-  <img src="https://img.shields.io/badge/Minecraft-1.12.2--1.26.3-brightgreen?style=flat-square&logo=minecraft" alt="Minecraft Version">
+  <img src="https://img.shields.io/badge/Minecraft-1.12.2--26.3-brightgreen?style=flat-square&logo=minecraft" alt="Minecraft Version">
   <img src="https://img.shields.io/badge/Java-17-orange?style=flat-square&logo=openjdk" alt="Java 17">
   <img src="https://img.shields.io/badge/Build-Maven-blue?style=flat-square&logo=apachemaven" alt="Maven">
   <img src="https://img.shields.io/badge/Platform-Bukkit%20%7C%20Spigot%20%7C%20Paper-purple?style=flat-square" alt="Platform">
@@ -39,7 +39,7 @@
 
 ### Requirements
 
-- Minecraft server version: **1.12.2–1.26.3 (26.3)** (Spigot / Paper)
+- Minecraft server version: **1.12.2–26.3** (Spigot / Paper)
 - **Java 17** runtime
 - **Zero external dependencies** — Self-contained with shaded PacketEvents; plug-and-play!
 
@@ -219,7 +219,7 @@ MIT License.
 
 ### 环境要求
 
-- Minecraft 服务端版本：**1.12.2–1.26.3 (26.3)** (Spigot / Paper)
+- Minecraft 服务端版本：**1.12.2–26.3** (Spigot / Paper)
 - **Java 17** 运行环境
 - **零外部前置依赖** — 网络协议引擎 PacketEvents 已内置打包，开箱即用！
 

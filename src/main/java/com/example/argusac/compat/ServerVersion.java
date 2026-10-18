@@ -28,8 +28,8 @@ public enum ServerVersion {
     V1_23(12300, "1.23"),
     V1_24(12400, "1.24"),
     V1_25(12500, "1.25"),
-    V1_26(12600, "1.26"),
-    V1_26_3(12603, "1.26.3 (26.3)");
+    V26_0(12600, "26.0"),
+    V26_3(12603, "26.3");
 
     private final int versionCode;
     private final String friendlyName;
@@ -98,7 +98,7 @@ public enum ServerVersion {
     private static int parseServerVersionCode() {
         try {
             String versionStr = Bukkit.getVersion();
-            // 兼容 (MC: 1.20.4), (MC: 1.26.3) 以及 (MC: 26.3)
+            // 兼容 (MC: 1.20.4) 以及新版 (MC: 26.3)
             Pattern pattern = Pattern.compile("(?i)\\(MC:\\s*(?:1\\.)?([0-9]+)(?:\\.([0-9]+))?(?:\\.([0-9]+))?\\)");
             Matcher matcher = pattern.matcher(versionStr);
 

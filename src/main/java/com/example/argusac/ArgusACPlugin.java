@@ -16,7 +16,7 @@ import org.bukkit.plugin.java.JavaPlugin;
 
 /**
  * ArgusAC 主插件类
- * 专为 Paper 1.20.4+ 服务端优化，采用模块化结构与原生状态回退机制
+ * 专为 Spigot / Paper 1.12.2 ~ 26.3 服务端跨版本优化，采用模块化结构与原生状态回退机制
  */
 public class ArgusACPlugin extends JavaPlugin {
 
@@ -241,7 +241,7 @@ public class ArgusACPlugin extends JavaPlugin {
         getLogger().info(" / ___ \\| | | (_| | |_| \\__ \\    / ___ \\| |___  ");
         getLogger().info("/_/   \\_\\_|  \\__, |\\__,_|___/   /_/   \\_\\\\____| ");
         getLogger().info("             |___/    ArgusAC AntiCheat v" + this.getDescription().getVersion());
-        getLogger().info(" Target: Spigot / Paper 1.12.2 ~ 1.21.x | Runtime: Java 17");
+        getLogger().info(" Target: Spigot / Paper 1.12.2 ~ 26.3 | Runtime: Java 17");
         getLogger().info(" Packet Pipeline: PacketEvents v2.7.0 (Native Packet State Machine)");
         getLogger().info(" Checks: " + checkManager.getAllChecks().size() + " registered modules");
         getLogger().info(" Setback: " + (setbackManager.isGlobalEnabled() ? "Globally Enabled" : "Standby"));

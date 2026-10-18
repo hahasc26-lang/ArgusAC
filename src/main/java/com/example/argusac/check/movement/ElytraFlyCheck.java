@@ -706,7 +706,7 @@ public class ElytraFlyCheck extends AbstractCheck {
         }
         EntityDamageEvent.DamageCause cause = event.getCause();
         String causeName = cause.name();
-        // 兼容 1.20.4 与 1.21+ 的爆炸、风弹 (WIND_CHARGE / BREEZE) 及雷击等外部推力源
+        // 兼容 1.20.4 与 1.21+ / 26.x+ 的爆炸、风弹 (WIND_CHARGE / BREEZE) 及雷击等外部推力源
         if (causeName.contains("EXPLOSION") || causeName.contains("WIND") || causeName.contains("CHARGE") || causeName.contains("LIGHTNING")) {
             data.getElytraData().setLastExternalVelocityTime(System.currentTimeMillis());
             data.grantLegalVelocity(VelocitySourceType.EXPLOSION, externalVelocityDurationMs);

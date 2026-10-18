@@ -40,7 +40,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 ## [1.1.0 - 1.1.3] - 2026-10-17
 
 ### Added
-- **Embedded PacketEvents 2.7.0 (内置数据包框架)**: Shaded protocol pipeline supporting Paper/Spigot 1.12.2 through 1.21.x.
+- **Embedded PacketEvents 2.7.0 (内置数据包框架)**: Shaded protocol pipeline supporting Paper/Spigot 1.12.2 through 26.3.
 - **Deterministic Movement Predictor (确定性物理预测引擎)**: Kinematic physics residual simulation.
 - **Lag-Compensated Entity History (时空回溯历史盒)**: 1000ms AABB snapshot rollback for accurate reach checks.
 - **JesusCheck & Timer Engine (水上行走与高精时钟检测)**: Liquid ground spoofing and nanosecond drift balance checks.
