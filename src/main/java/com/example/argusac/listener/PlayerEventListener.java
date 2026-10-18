@@ -436,7 +436,7 @@ public class PlayerEventListener implements Listener {
         // 在距最后一次取消违规一定安全窗口 (400ms) 之后，平稳解除原位锁定锚点
         if (!event.isCancelled() && !hasSetbackOccurred(originalTo, event.getTo())) {
             if (onGround) {
-                com.example.argusac.manager.SetbackManager.PlayerSetbackContext setbackContext =
+                com.example.argusac.setback.PlayerSetbackContext setbackContext =
                         plugin.getSetbackManager().getContext(player.getUniqueId());
                 if (setbackContext != null && setbackContext.getLockedAnchorLocation() != null) {
                     if (System.currentTimeMillis() - setbackContext.getLastCancellationViolationTime() > 400L) {
@@ -626,7 +626,7 @@ public class PlayerEventListener implements Listener {
                     long now = System.currentTimeMillis();
                     data.getElytraData().recordArmorSwap(now);
 
-                    boolean armorSwapCancel = checkManager.getChecksConfig().getBoolean("checks.ElytraFly.glide-state.armor-swap-cancel", true);
+                    boolean armorSwapCancel = plugin.getChecksConfig().getBoolean("checks.ElytraFly.glide-state.armor-swap-cancel", true);
                     if (isChestplateSlot && armorSwapCancel) {
                         // 正在空中滑翔时强行换脱胸甲：当帧直接阻断该交互包，剥离滑翔姿态并下发协议同步包锚定
                         event.setCancelled(true);

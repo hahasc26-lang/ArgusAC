@@ -30,6 +30,18 @@ public class ViolationManager {
         handleViolation(player, check, vlAmount, details, null);
     }
 
+    public int getViolationLevel(java.util.UUID uuid, Check check) {
+        if (uuid == null || check == null) return 0;
+        PlayerData data = plugin.getPlayerManager().getPlayerData(uuid);
+        return data != null ? data.getVl(check.getName()) : 0;
+    }
+
+    public int getViolationLevel(java.util.UUID uuid, String checkName) {
+        if (uuid == null || checkName == null) return 0;
+        PlayerData data = plugin.getPlayerManager().getPlayerData(uuid);
+        return data != null ? data.getVl(checkName) : 0;
+    }
+
     /**
      * 外部与协议管线便捷标记入口 (委托调用 handleViolation)
      */

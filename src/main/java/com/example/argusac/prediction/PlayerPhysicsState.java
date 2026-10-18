@@ -93,6 +93,13 @@ public class PlayerPhysicsState {
         pendingVelocities.removeIf(v -> v.isExpired() || v.isConsumed());
     }
 
+    /**
+     * 强行清空待处理击退队列 (用于传送与回退重置)
+     */
+    public void clearPendingVelocities() {
+        this.pendingVelocities.clear();
+    }
+
     public Deque<PendingVelocity> getPendingVelocities() {
         return pendingVelocities;
     }

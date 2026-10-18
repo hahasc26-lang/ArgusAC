@@ -251,7 +251,7 @@ public class LogQueryService {
 
         // 3. 清理回退管理器中的上下文
         if (plugin.getSetbackManager() != null && targetUuid != null) {
-            com.example.argusac.manager.SetbackManager.PlayerSetbackContext ctx = plugin.getSetbackManager().getContext(targetUuid);
+            com.example.argusac.setback.PlayerSetbackContext ctx = plugin.getSetbackManager().getContext(targetUuid);
             if (ctx != null) {
                 ctx.clear();
             }

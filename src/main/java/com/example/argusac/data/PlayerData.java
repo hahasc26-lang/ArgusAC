@@ -197,7 +197,7 @@ public class PlayerData {
     }
 
     public long getSetbackImmunityUntil() {
-        com.example.argusac.manager.SetbackManager.PlayerSetbackContext ctx =
+        com.example.argusac.setback.PlayerSetbackContext ctx =
                 com.example.argusac.ArgusACPlugin.getInstance().getSetbackManager().getContext(uuid);
         return ctx != null ? ctx.getImmunityUntil() : 0L;
     }
