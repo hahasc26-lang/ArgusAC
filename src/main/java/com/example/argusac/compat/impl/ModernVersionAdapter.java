@@ -317,6 +317,54 @@ public class ModernVersionAdapter implements VersionAdapter {
         }
     }
 
+    @Override
+    public int getSoulSpeedLevel(Player player) {
+        if (player == null) return 0;
+        try {
+            org.bukkit.inventory.ItemStack boots = player.getInventory().getBoots();
+            if (boots != null && boots.hasItemMeta()) {
+                org.bukkit.enchantments.Enchantment soulSpeed = org.bukkit.enchantments.Enchantment.getByName("SOUL_SPEED");
+                if (soulSpeed != null) {
+                    return boots.getEnchantmentLevel(soulSpeed);
+                }
+            }
+        } catch (Throwable ignored) {}
+        return 0;
+    }
+
+    @Override
+    public int getDepthStriderLevel(Player player) {
+        if (player == null) return 0;
+        try {
+            org.bukkit.inventory.ItemStack boots = player.getInventory().getBoots();
+            if (boots != null && boots.hasItemMeta()) {
+                org.bukkit.enchantments.Enchantment depthStrider = org.bukkit.enchantments.Enchantment.getByName("DEPTH_STRIDER");
+                if (depthStrider == null) {
+                    depthStrider = org.bukkit.enchantments.Enchantment.getByName("WATER_WORKER");
+                }
+                if (depthStrider != null) {
+                    return boots.getEnchantmentLevel(depthStrider);
+                }
+            }
+        } catch (Throwable ignored) {}
+        return 0;
+    }
+
+    @Override
+    public int getEfficiencyLevel(Player player) {
+        if (player == null) return 0;
+        try {
+            org.bukkit.inventory.ItemStack mainHand = player.getInventory().getItemInMainHand();
+            if (mainHand != null && mainHand.hasItemMeta()) {
+                org.bukkit.enchantments.Enchantment eff = org.bukkit.enchantments.Enchantment.DIG_SPEED;
+                if (eff != null) {
+                    return mainHand.getEnchantmentLevel(eff);
+                }
+            }
+        } catch (Throwable ignored) {}
+        return 0;
+    }
+
     private PotionEffectType resolvePotionType(CompatPotionType type) {
         return POTION_TYPE_CACHE.get(type);
     }

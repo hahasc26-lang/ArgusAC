@@ -133,6 +133,12 @@ public class JesusCheck extends AbstractCheck {
             return;
         }
 
+        // 若脚下或落足点为睡莲、脚手架、活板门、地毯、半砖等可落足方块，直接判定为合法物理踩踏，重置水面追踪
+        if (adapter.isStandable(feetBlock) || adapter.isStandable(underBlock) || adapter.isStandable(fromUnderBlock)) {
+            resetAllWaterTracking(data);
+            return;
+        }
+
         // 检查是否有物理承托方块 (荷叶、睡莲、半砖、地毯、雪片、船、脚手架等)
         boolean hasSupport = hasSupportingSurface(to, adapter);
         // 检查靴子是否带有冰霜行者附魔 (Frost Walker)

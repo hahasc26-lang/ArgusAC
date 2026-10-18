@@ -80,6 +80,13 @@ public interface VersionAdapter {
     // 方块落足站立物理判定 (包含地毯、雪片、睡莲、台阶等)
     boolean isStandable(Block block);
 
+    // 附魔等级安全获取
+    int getSoulSpeedLevel(Player player);
+
+    int getDepthStriderLevel(Player player);
+
+    int getEfficiencyLevel(Player player);
+
     // 跨版本安全获取方块硬度 (消除 1.12.2 Material.getHardness 的 NoSuchMethodError)
     float getBlockHardness(Block block);
 }

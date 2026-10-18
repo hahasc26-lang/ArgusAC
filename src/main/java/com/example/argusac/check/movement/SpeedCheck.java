@@ -70,8 +70,8 @@ public class SpeedCheck extends AbstractCheck {
             return;
         }
 
-        // 处于传送或登录豁免缓冲期，或处于回退自免疫期、合法高机动期、近期 800ms 内受到击退/伤害
-        if (data.isSetbackImmune() || data.hasAnyLegalVelocity() || data.isInGracePeriod() || data.hasRecentVelocity(800L)) {
+        // 处于传送或登录豁免缓冲期，或处于回退自免疫期、合法高机动期、近期 1200ms 内受到击退/风珠/伤害
+        if (data.isSetbackImmune() || data.hasAnyLegalVelocity() || data.isInGracePeriod() || data.hasRecentVelocity(1200L)) {
             data.setSpeedBuffer(0.0);
             return;
         }
@@ -136,24 +136,32 @@ public class SpeedCheck extends AbstractCheck {
             }
         }
 
-        // 灵魂沙与蜂蜜块减速
-        if (adapter.isSoulSand(underFrom) || adapter.isHoney(underFrom)) {
+        // 灵魂沙与灵魂土减速 / 灵魂疾行 (Soul Speed) 魔咒放行
+        if (adapter.isSoulSand(underFrom) || adapter.isSoulSand(underTo)) {
+            int soulSpeed = adapter.getSoulSpeedLevel(player);
+            if (soulSpeed > 0) {
+                baseLimit *= (1.0 + soulSpeed * 0.25);
+            } else {
+                baseLimit *= 0.65;
+            }
+        } else if (adapter.isHoney(underFrom) || adapter.isHoney(underTo)) {
             baseLimit *= 0.65;
         }
 
-        // 天花板压头跳 (Ceiling Sprint-Jump) 容差
-        Block ceilingBlock = from.clone().add(0, 2.0, 0).getBlock();
-        if (adapter.isSolidBlock(ceilingBlock)) {
-            baseLimit *= 1.25;
+        // 天花板压头跳 (Ceiling Sprint-Jump) 容差 (检测 1.8 格与 2.0 格高的压头通道，如活板门/下半砖)
+        Block ceilingBlock1 = from.clone().add(0, 1.8, 0).getBlock();
+        Block ceilingBlock2 = from.clone().add(0, 2.0, 0).getBlock();
+        if (adapter.isSolidBlock(ceilingBlock1) || adapter.isSolidBlock(ceilingBlock2)) {
+            baseLimit *= 1.35;
         }
 
         double allowedLimit = baseLimit;
 
-        // 水中物理环境：深海眷顾、游泳姿态及向上游泳/水面起跳跃升
+        // 水中物理环境：深海疾行 (Depth Strider)、海豚恩惠、游泳姿态及向上游泳跃升
         if (inLiquid) {
-            int depthStrider = getDepthStriderLevel(player);
+            int depthStrider = adapter.getDepthStriderLevel(player);
             if (depthStrider > 0) {
-                allowedLimit += depthStrider * 0.08;
+                allowedLimit += depthStrider * 0.10;
             }
             if (adapter.isSwimming(player)) {
                 allowedLimit *= 1.25;

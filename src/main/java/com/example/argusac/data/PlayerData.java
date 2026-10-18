@@ -69,6 +69,7 @@ public class PlayerData {
     private boolean inventoryOpen = false;
     private Location inventoryOpenLocation = null;
     private long inventoryOpenTime = 0L;
+    private long lastInventoryCloseTime = 0L;
 
     // 战斗相关数据 (AutoClicker, KillAura, Reach)
     private final Deque<Long> clickTimestamps = new ConcurrentLinkedDeque<>();
@@ -427,6 +428,14 @@ public class PlayerData {
 
     public Location getInventoryOpenLocation() {
         return inventoryOpenLocation;
+    }
+
+    public long getLastInventoryCloseTime() {
+        return lastInventoryCloseTime;
+    }
+
+    public void setLastInventoryCloseTime(long lastInventoryCloseTime) {
+        this.lastInventoryCloseTime = lastInventoryCloseTime;
     }
 
     public Deque<Long> getClickTimestamps() {
