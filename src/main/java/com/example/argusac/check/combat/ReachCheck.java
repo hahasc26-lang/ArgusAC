@@ -28,8 +28,8 @@ public class ReachCheck extends AbstractCheck {
     public void reloadConfig() {
         super.reloadConfig();
         String path = "checks." + name + ".";
-        this.maxReach = plugin.getConfig().getDouble(path + "max-reach", 3.10);
-        this.maxPingReach = plugin.getConfig().getDouble(path + "max-ping-reach", 3.50);
+        this.maxReach = getChecksConfig().getDouble(path + "max-reach", 3.10);
+        this.maxPingReach = getChecksConfig().getDouble(path + "max-ping-reach", 3.50);
     }
 
     public void handleAttack(Player attacker, Entity victim, EntityDamageByEntityEvent event) {
@@ -48,14 +48,6 @@ public class ReachCheck extends AbstractCheck {
         }
 
         com.example.argusac.compat.VersionAdapter adapter = com.example.argusac.compat.VersionAdapterFactory.getAdapter();
-
-        // 联动战斗抑制期绝对拦截
-        if (data.isCombatThrottled()) {
-            event.setCancelled(true);
-            adapter.resetAttackCooldown(attacker);
-            return;
-        }
-
         Location eyeLocation = attacker.getEyeLocation();
         if (eyeLocation.getWorld() != victim.getWorld()) {
             return;
@@ -78,10 +70,15 @@ public class ReachCheck extends AbstractCheck {
                 : Math.min(maxReach + Math.min(0.40, (ping / 100.0) * 0.08), maxPingReach);
 
         if (distanceToBox > dynamicLimit) {
-            // 超距攻击直接取消本次伤害事件生效并重置攻击冷却
-            event.setCancelled(true);
-            adapter.resetAttackCooldown(attacker);
-            flag(attacker, 1, String.format("dist=%.3f, limit=%.2f, ping=%d (Backtracked)", distanceToBox, dynamicLimit, ping));
+            // 超距攻击由 CombatMitigationHandler 进行统一即时纯静默拦截
+            plugin.getCombatMitigationHandler().mitigateDamage(
+                    event,
+                    attacker,
+                    victim,
+                    this,
+                    1,
+                    String.format("dist=%.3f, limit=%.2f, ping=%d (Backtracked)", distanceToBox, dynamicLimit, ping)
+            );
         }
     }
 }

@@ -119,7 +119,7 @@ setback:
   global-enabled: true
 
   # Default setback execution mode:
-  # CANCEL: GrimAC-style direct in-event cancellation, zero latency, no immunity windows, instant lock
+  # CANCEL: GrimAC-style direct in-event cancellation with packet sync, zero latency, locked anchor (推荐 / Recommended)
   # SOFT: Smoothly overrides movement destination inside PlayerMoveEvent without jarring rubberbands
   # HARD: Schedules synchronous teleport on main thread, canceling velocity and fall distance
   default-mode: "CANCEL"
@@ -179,30 +179,30 @@ setback:
     path: "plugins/ArgusAC/logs/setbacks.jsonl"
 
   # Per-check setback overrides (differentiated by check categories):
-  # Movement checks: Trigger positional setback (HARD / SOFT) or in-place move cancellation
+  # Movement checks: Trigger positional setback (CANCEL / HARD / SOFT) or in-place move cancellation
   # Combat & World checks: Handled by cancelling interactions & escalating punishments (never teleporting)
   per-check:
     # --- Movement Checks (Setback Enabled) ---
     Speed:
       enabled: true
       min-vl: 1
-      mode: "HARD"
+      mode: "CANCEL"
     Fly:
       enabled: true
       min-vl: 1
-      mode: "HARD"
+      mode: "CANCEL"
     NoFall:
       enabled: true
       min-vl: 1
-      mode: "HARD"
+      mode: "CANCEL"
     Velocity:
       enabled: true
       min-vl: 1
-      mode: "HARD"
+      mode: "CANCEL"
     InventoryMove:
       enabled: true
       min-vl: 1
-      mode: "SOFT" # Prioritizes canceling the current invalid move in-place
+      mode: "CANCEL" # Prioritizes canceling the current invalid move in-place
     ElytraFly:
       enabled: true
       min-vl: 3
@@ -210,7 +210,7 @@ setback:
     Jesus:
       enabled: true
       min-vl: 1
-      mode: "HARD"
+      mode: "CANCEL"
 
     # --- Combat Checks (Interaction Cancellation Only, No Setback Teleport) ---
     Reach:
@@ -290,241 +290,7 @@ prediction:
 
 # ==============================================================================
 # Detection Module Threshold Configurations
+# All checks configurations have been decoupled to checks.yml!
+# Please configure check modules, limits, and parameters in checks.yml.
 # ==============================================================================
-checks:
-  # 1. Speed Check
-  Speed:
-    enabled: true
-    max-vl: 15
-    # Base maximum horizontal distance per 50 ms movement tick; briefly coalesced events
-    # scale this limit by elapsed time (capped at four ticks).
-    max-horizontal-speed: 0.65
-    # Additional velocity multiplier for ice/packed ice friction
-    ice-modifier: 1.45
-    # Speed potion bonus multiplier per potion amplifier level
-    speed-potion-multiplier: 0.20
-    # Violation buffer capacity to absorb single-tick packet jitters and network burst
-    speed-buffer-max: 0.40
-    # Buffer decay per legitimate tick
-    speed-buffer-decay: 0.08
 
-  # 2. Fly Check
-  Fly:
-    enabled: true
-    max-vl: 12
-    # Maximum allowed air tick count without collision, elytra, or flight ability
-    max-air-ticks: 25
-    # Illegal upwards ascent threshold without jump boost effects
-    vertical-ascent-threshold: 0.42
-
-  # 3. NoFall Check (Spoofed onGround packets)
-  NoFall:
-    enabled: true
-    max-vl: 15
-    # Tolerance distance when client declares onGround=true but no solid blocks are beneath
-    ground-check-tolerance: 0.001
-
-  # 4. Reach Check (Combat distance)
-  Reach:
-    enabled: true
-    max-vl: 15
-    # Maximum base reach distance in blocks for Survival mode
-    max-reach: 3.10
-    # Maximum reach threshold with ping compensation and knockback margins
-    max-ping-reach: 3.50
-
-  # 5. AutoClicker Check (Click speed and regularity)
-  AutoClicker:
-    enabled: true
-    max-vl: 15
-    # Maximum allowed clicks per second (CPS)
-    max-cps: 18
-    # Minimum standard deviation threshold (detects mechanical uniformity from macro/autoclickers)
-    min-std-deviation: 4.5
-
-  # 6. KillAura Check (Combat angles, raytracing, and active combat mitigations)
-  KillAura:
-    enabled: true
-    max-vl: 18
-    # Maximum allowed field-of-view angle (degrees) away from target when attacking
-    max-angle: 68.0
-    # Check for solid block obstruction between attacker eyes and target eyes
-    raytrace-blocks: true
-    # Maximum target-switching interval in milliseconds for rapid aura attacks
-    target-switch-ms: 80
-    # Immediately reset attacker's attack strength cooldown upon cheat flag
-    reset-cooldown: true
-    # Active combat throttle: temporarily disarm melee damage when continuous aura is detected
-    combat-throttle-enabled: true
-    # Combat throttle duration in milliseconds (default 1500ms)
-    combat-throttle-ms: 1500
-    # Minimum KillAura VL threshold to activate combat throttle
-    combat-throttle-min-vl: 3
-    # Check for impossible backward/blindspot attacks (> 90 degrees)
-    blindspot-check: true
-    # Check for sudden snap aimbots where yaw jerks sharply towards target
-    snap-check: true
-    # Minimum yaw angle jerk in degrees to flag snap aimbot
-    snap-angle-threshold: 45.0
-
-  # 7. Velocity Check (Knockback modification / Anti-KB)
-  Velocity:
-    enabled: true
-    max-vl: 15
-    # Expected vertical knockback ratio (values below this threshold indicate anti-knockback)
-    vertical-ratio: 0.85
-    # Expected horizontal knockback ratio
-    horizontal-ratio: 0.80
-
-  # 8. FastBreak Check
-  FastBreak:
-    enabled: true
-    max-vl: 15
-    # Percentage threshold for digging faster than theoretical duration (0.20 = 20% faster)
-    time-leniency: 0.20
-
-  # 9. Nuker Check (Mass block breaking)
-  Nuker:
-    enabled: true
-    max-vl: 12
-    # Maximum blocks broken per tick (vanilla clients break at most 1 per tick)
-    max-breaks-per-tick: 2
-    # Maximum blocks broken per second without Haste II
-    max-breaks-per-second: 15
-
-  # 10. Scaffold Check (Automated bridging)
-  Scaffold:
-    enabled: true
-    max-vl: 15
-    # Minimum downward pitch angle when placing blocks beneath feet
-    min-pitch: 70.0
-
-  # 11. InventoryMove Check
-  InventoryMove:
-    enabled: true
-    max-vl: 10
-    # Maximum allowed distance moved while viewing inventory or container screens
-    max-distance-while-open: 0.15
-
-  # 12. BadPackets Check
-  BadPackets:
-    enabled: true
-    max-vl: 10
-    # Strict pitch constraint: pitch must remain within [-90.0, 90.0] (prevents Derp / HeadRoll)
-    strict-pitch: true
-    # Check for duplicate movement packets while ascending
-    check-duplicate-move: true
-    # Timer clock drift engine: detect packet rate speedup (1.05x ~ 2.0x)
-    timer-check: true
-
-  # 13. ElytraFly Check
-  # Analyzes elytra aerodynamics to detect hovering, unauthorized propulsion, timer, and no-fall exploits
-  ElytraFly:
-    enabled: true
-    max-vl: 15
-
-    # Exemption and physical environment parameters
-    exemptions:
-      # Firework rocket boost grace window (ms)
-      firework-boost-duration-ms: 1500
-      # Riptide trident grace window (ms)
-      riptide-duration-ms: 2000
-      # External velocity grace window for explosions, pistons, and wind charges (ms)
-      external-velocity-duration-ms: 1200
-      # Takeoff grace duration during initial jump glide (ms)
-      takeoff-grace-duration-ms: 1000
-      # Minimum server TPS threshold before relaxing strict checks
-      min-server-tps: 17.5
-
-    # Sub-Check 1: Gliding Speed Limit (ElytraSpeed)
-    speed:
-      enabled: true
-      # Maximum horizontal speed in unboosted level flight (blocks/tick, vanilla is ~1.35)
-      max-unboosted-speed: 1.45
-      # Maximum allowed horizontal speed during rocket propulsion (blocks/tick)
-      max-boosted-speed: 2.60
-      # Dive speed multiplier based on downward viewing angle (pitch > 0)
-      pitch-dive-multiplier: 0.55
-      min-vl: 3
-      setback-mode: "HARD"
-
-    # Sub-Check 2: Unpropelled Ascent (ElytraAscend)
-    ascend:
-      enabled: true
-      # Maximum vertical ascent speed per tick without fireworks, riptide, or bubble columns
-      max-vertical-ascent: 0.15
-      # Consecutive ascent tick threshold (tolerates 1-2 ticks of network interpolation jitter)
-      ascend-ticks-threshold: 4
-      min-vl: 3
-      setback-mode: "HARD"
-
-    # Sub-Check 3: Mid-Air Hovering (ElytraHover)
-    hover:
-      enabled: true
-      # Maximum horizontal speed threshold for hovering (blocks/tick)
-      max-horizontal-speed: 0.08
-      # Maximum vertical speed threshold for hovering (blocks/tick)
-      max-vertical-speed: 0.05
-      # Consecutive hovering ticks required to trigger violation
-      hover-ticks-threshold: 15
-      min-vl: 3
-      setback-mode: "HARD"
-
-    # Sub-Check 4: Firework Acceleration Alignment (ElytraFirework)
-    firework:
-      enabled: true
-      # Minimum unauthorized forward acceleration without firework rocket consumption
-      min-unpropelled-accel: 0.12
-      # Consecutive ticks sustaining theoretical maximum velocity without fireworks
-      continuous-high-speed-ticks: 50
-      min-vl: 3
-      setback-mode: "HARD"
-
-    # Sub-Check 5: Glide State Consistency (ElytraGlideState)
-    glide-state:
-      enabled: true
-      # Validate whether chestplate elytra has depleted durability (durability 0 cannot glide)
-      check-chestplate-durability: true
-      min-vl: 1
-      setback-mode: "HARD"
-
-    # Sub-Check 6: Tick Rate Timer Anomaly (ElytraTimer)
-    timer:
-      enabled: true
-      # Sliding window sample size (average interval across last N move packets)
-      sample-window-size: 20
-      # Minimum average interval lower bound (ms, normal is ~50ms per tick)
-      min-average-interval-ms: 44.0
-      min-vl: 3
-      setback-mode: "SOFT"
-
-    # Sub-Check 7: Rapid State Toggling (ElytraFlip)
-    flip:
-      enabled: true
-      # Sliding statistical window in milliseconds
-      window-ms: 1000
-      # Maximum allowed glide state toggles within the statistical window
-      max-toggles: 4
-      min-vl: 3
-      setback-mode: "SOFT"
-
-    # Sub-Check 8: Ground Proximity Fall Damage Exploit (ElytraNoFall)
-    nofall:
-      enabled: true
-      # Fall distance threshold prior to touching ground (blocks)
-      min-fall-distance: 3.0
-      # Proximity threshold to solid ground beneath feet (blocks)
-      ground-proximity-distance: 1.8
-      min-vl: 3
-      setback-mode: "HARD"
-
-  # 14. Jesus Check (Water walk, ground spoof, and liquid hover exploitation)
-  Jesus:
-    enabled: true
-    max-vl: 12
-    # Flag water ground spoof immediately (0-tick setback)
-    detect-ground-spoof: true
-    # Maximum allowed horizontal speed on water surface (blocks/tick)
-    max-water-speed: 0.28
-    # Max ticks allowed with locked vertical zero displacement while moving on water
-    max-solid-hover-ticks: 4

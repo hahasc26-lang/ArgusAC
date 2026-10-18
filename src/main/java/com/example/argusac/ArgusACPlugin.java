@@ -42,6 +42,13 @@ public class ArgusACPlugin extends JavaPlugin {
     // 跨版本兼容性调度中心
     private com.example.argusac.compat.CompatibilityManager compatibilityManager;
 
+    // 独立检测配置 (checks.yml)
+    private org.bukkit.configuration.file.FileConfiguration checksConfig;
+    private java.io.File checksConfigFile;
+
+    // 独立战斗交互与伤害拦截处理器
+    private com.example.argusac.combat.CombatMitigationHandler combatMitigationHandler;
+
     // 底层数据包协议管线管理器 (PacketEvents)
     private com.example.argusac.packet.PacketPipelineManager packetPipelineManager;
 
@@ -50,6 +57,7 @@ public class ArgusACPlugin extends JavaPlugin {
 
     // 实体历史碰撞盒回溯追踪器 (Lag Compensation History)
     private com.example.argusac.history.EntityHistoryTracker historyTracker;
+
 
     @Override
     public void onLoad() {
@@ -69,8 +77,13 @@ public class ArgusACPlugin extends JavaPlugin {
 
         // 0. 初始化配置文件与多语言国际化系统 (i18n) 并注册全局门面
         saveDefaultConfig();
+        saveDefaultChecksConfig();
         this.languageManager = new com.example.argusac.i18n.LanguageManager(this);
         com.example.argusac.i18n.I18n.init(this.languageManager);
+
+        // 初始化独立战斗拦截处理器
+        this.combatMitigationHandler = new com.example.argusac.combat.CombatMitigationHandler(this);
+
 
         // 1. 初始化底层 PacketEvents 数据包管线
         try {
@@ -169,6 +182,9 @@ public class ArgusACPlugin extends JavaPlugin {
 
     @Override
     public void onDisable() {
+        if (combatMitigationHandler != null) {
+            combatMitigationHandler.clearAll();
+        }
         if (violationManager != null) {
             violationManager.stopDecayTask();
         }
@@ -206,6 +222,7 @@ public class ArgusACPlugin extends JavaPlugin {
      */
     public void reloadAll() {
         reloadConfig();
+        reloadChecksConfig();
         if (languageManager != null) languageManager.reload();
         if (setbackManager != null) setbackManager.reloadConfig();
         if (alertManager != null) alertManager.reloadConfig();
@@ -311,4 +328,45 @@ public class ArgusACPlugin extends JavaPlugin {
     public com.example.argusac.i18n.LanguageManager getLanguageManager() {
         return languageManager;
     }
+
+    public com.example.argusac.combat.CombatMitigationHandler getCombatMitigationHandler() {
+        return combatMitigationHandler;
+    }
+
+    // ==================== checks.yml 独立配置文件管理 ====================
+
+    public void saveDefaultChecksConfig() {
+        if (checksConfigFile == null) {
+            checksConfigFile = new java.io.File(getDataFolder(), "checks.yml");
+        }
+        if (!checksConfigFile.exists()) {
+            saveResource("checks.yml", false);
+        }
+    }
+
+    public org.bukkit.configuration.file.FileConfiguration getChecksConfig() {
+        if (checksConfig == null) {
+            reloadChecksConfig();
+        }
+        return checksConfig;
+    }
+
+    public void reloadChecksConfig() {
+        if (checksConfigFile == null) {
+            checksConfigFile = new java.io.File(getDataFolder(), "checks.yml");
+        }
+        checksConfig = org.bukkit.configuration.file.YamlConfiguration.loadConfiguration(checksConfigFile);
+    }
+
+    public void saveChecksConfig() {
+        if (checksConfig == null || checksConfigFile == null) {
+            return;
+        }
+        try {
+            checksConfig.save(checksConfigFile);
+        } catch (java.io.IOException e) {
+            getLogger().log(java.util.logging.Level.SEVERE, "Could not save checks.yml to " + checksConfigFile, e);
+        }
+    }
 }
+

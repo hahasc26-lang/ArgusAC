@@ -3,6 +3,49 @@
 本文件记录本项目所有重要变更。
 格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.0.0/)，并遵循 [语义化版本规范](https://semver.org/lang/zh-CN/)。
 
+## [1.2.0] - 2026-10-18
+
+### Added
+
+- **检测模块独立配置文件解耦 (`checks.yml`)**：
+  1. **独立配置文件**：在插件数据目录下新增独立的 `checks.yml` 配置文件，完整收拢全部 14 个检测模块的所有参数与阈值；
+  2. **主配置瘦身**：彻底剥离了 `config.yml` 中的 `checks:` 节点，使主配置专注于基础设置、Setback 回退模式、阶梯惩罚、审计日志与多语言；
+  3. **生命周期完全绑定**：将 `checksConfig` 的加载与保存逻辑全量绑定至 `/argus reload` 与 `/argus toggle` 命令流中。
+- **独立战斗交互与伤害拦截类 (`CombatMitigationHandler`)**：
+  1. **收拢战斗防御**：引入 `com.example.argusac.combat.CombatMitigationHandler` 独立类，统一处理近战伤害与攻击交互拦截；
+  2. **双重事件与数据包拦截**：同时在 Bukkit `EntityDamageByEntityEvent` 事件与 PacketEvents 底层 `WrapperPlayClientInteractEntity (ATTACK)` 数据包实施双重即时阻断；
+  3. **伤害彻底归零**：当帧 `event.setCancelled(true)` 并结合 `event.setDamage(0.0)` 兜底，消灭伤害穿透、击退、耐久扣除与横扫扩散；
+  4. **纯静默防御**：取消非法攻击时不在作弊者屏幕弹出 ActionBar 或播放音效，仅记录违规点数、向管理发送告警并记入防伪审计日志。
+- **取消型回退机制重大强化 (CANCEL Mode Hardening & Dual Instant Blocking)**：
+  1. **双重即时阻断 (Dual Instant Mitigation)**：升级 `SetbackManager.directCancel` 机制，在 Bukkit 事件层同时设置 `moveEvent.setTo(cancelTarget)` 与 `moveEvent.setCancelled(true)`，彻底截断服务端物理管线；同时在底层协议层新增 `sendPositionSyncPacket`，通过 PacketEvents 管道向玩家通道立即推送位置重置报文，强行打断作弊客户端本地物理预测；
+  2. **持续当帧强行原位锚定 (Continuous Locked Anchor)**：在 `PlayerSetbackContext` 中建立锁定锚点追踪状态机；对于短时间内（4 秒内）持续尝试冲破取消阻断或强行开启飞行外挂的玩家，当帧无冷却强制将其绝对锚定在初次违规的原始坐标，彻底杜绝利用微小位移逐步向前推进（蠕动/钻空子 / Inchworming）；
+  3. **合法移动安全解锁机制**：玩家恢复合法移动并在地面持续稳定站立超过 400ms 后平滑释放原位锁定；玩家下线、死亡、重生、换界或外部合法传送时自动安全重置锚点上下文；
+  4. **空中强行飞行自然重力压制**：空中强行飞行与反重力作弊时，水平 X/Z 轴绝对死锁在原位，垂直 Y 轴严格压制向上拔高，并按滞空时间动态施加原版自然下坠重力衰减，坚决将违规玩家拖向地面，绝不在空中形成任何伪悬停平台；
+  5. **README 与配置推荐标识**：在 `README.md` 与 `config.yml` 回退模式一栏中将 `CANCEL` 正式添加 `(推荐 / Recommended)` 标识，推荐服主作为首选回退防御模式。
+
+### Changed
+
+- **彻底废除战斗抑制与武器蓄力清零**：
+  1. 从 `KillAuraCheck`、`ReachCheck` 与 `PlayerData` 中完全删除侵入式的 `combat-throttle`（战斗抑制/缴械）与 `reset-cooldown`（武器蓄力清零）逻辑；
+  2. 保护原汁原味的原版 PVP 战斗手感，杜绝误判导致玩家数秒无法挥刀。
+
+### Fixed
+
+- **取消型回退反应慢与被钻空子漏洞修复**：
+  1. 修复了旧版取消机制仅修改事件未下发协议级同步包，导致客户端利用发包时差偷跑位移的漏洞；
+  2. 修复了 `PlayerEventListener` 在事件取消时回退目标坐标判断失真，统一传递 `event.getTo()` 矫正坐标，彻底避免因坐标残差导致下一帧判定异常；
+  3. 修复了载具状态下取消回退时载具动量未同步清零的问题，杜绝乘骑载具冲击阻断墙。
+- **飞行与滞空检测零延迟优化 (Zero-Latency Fly & Anti-Gravity Hover Detection)**：
+  1. **非法垂直飞升首帧即判**：首帧起跳允许合法冲量与台阶步进，跳跃达到最高点后（`airTicks >= 5`）严格限制垂直速度（`<= 0.001`），一旦检测到反重力持续拔高，首帧即判定并阻断；
+  2. **根治 600ms (12 ticks) 悬停滞后漏洞**：原版跳跃顶点仅能维持 1 tick 瞬时零点，将平飞悬空拦截灵敏度大幅提升至 `airTicks >= 4`（`|deltaY| < 0.005`）即刻阻断；慢速反重力漂浮（`airTicks >= 6` 且 `deltaY > -0.05`）即刻阻断，彻底消除空中飞行外挂反应迟缓问题。
+- **搭路与跳跃放方块 (Jump-Place / Scaffold) Fly 误报彻底修复与优化**：
+  1. 补全放方块时间戳实时追踪 (`lastPlaceTime`)，提升反作弊核心对方块交互运动的感知敏锐度；
+  2. 拓展 `FlyCheck` 脚下支撑面探针深度至 0.60 格，支持多点边界采样与碰撞盒比对；
+  3. 修复踩上新方块及台阶 Step-Up 升空当帧被强制抹去接地的漏洞，允许平滑接地与 step 上升；
+  4. 赋予最近放置方块（1200ms 内）1.2 格支撑面滞空计数重置与合法上升宽限，彻底杜绝边走/边跳边放方块触发 Fly 误报与硬回退。
+
+
+
 ## [1.1.4] - 2026-10-17
 
 ### Fixed

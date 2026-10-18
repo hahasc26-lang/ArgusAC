@@ -106,7 +106,7 @@ public class ElytraFlyCheck extends AbstractCheck {
     @Override
     public void reloadConfig() {
         super.reloadConfig();
-        FileConfiguration config = plugin.getConfig();
+        FileConfiguration config = getChecksConfig();
         String basePath = "checks.ElytraFly.";
 
         // 全局豁免与环境配置

@@ -48,11 +48,11 @@ public class JesusCheck extends AbstractCheck {
     public void reloadConfig() {
         super.reloadConfig();
         String path = "checks." + name + ".";
-        this.detectGroundSpoof = plugin.getConfig().getBoolean(path + "detect-ground-spoof", true);
-        this.maxWaterSpeed = plugin.getConfig().getDouble(path + "max-water-speed", 0.28);
-        this.maxSolidHoverTicks = plugin.getConfig().getInt(path + "max-solid-hover-ticks", 4);
-        this.maxWaterSurfaceTicks = plugin.getConfig().getInt(path + "max-water-surface-ticks", 15);
-        this.verticalResetThreshold = plugin.getConfig().getDouble(path + "vertical-reset-threshold", 0.12);
+        this.detectGroundSpoof = getChecksConfig().getBoolean(path + "detect-ground-spoof", true);
+        this.maxWaterSpeed = getChecksConfig().getDouble(path + "max-water-speed", 0.28);
+        this.maxSolidHoverTicks = getChecksConfig().getInt(path + "max-solid-hover-ticks", 4);
+        this.maxWaterSurfaceTicks = getChecksConfig().getInt(path + "max-water-surface-ticks", 15);
+        this.verticalResetThreshold = getChecksConfig().getDouble(path + "vertical-reset-threshold", 0.12);
     }
 
     public void handleMove(Player player, PlayerData data, PlayerMoveEvent event) {

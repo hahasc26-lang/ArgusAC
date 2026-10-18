@@ -28,8 +28,8 @@ public class NukerCheck extends AbstractCheck {
     public void reloadConfig() {
         super.reloadConfig();
         String path = "checks." + name + ".";
-        this.maxBreaksPerTick = plugin.getConfig().getInt(path + "max-breaks-per-tick", 2);
-        this.maxBreaksPerSecond = plugin.getConfig().getInt(path + "max-breaks-per-second", 15);
+        this.maxBreaksPerTick = getChecksConfig().getInt(path + "max-breaks-per-tick", 2);
+        this.maxBreaksPerSecond = getChecksConfig().getInt(path + "max-breaks-per-second", 15);
     }
 
     public void handleBreak(Player player, BlockBreakEvent event) {

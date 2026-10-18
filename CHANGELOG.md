@@ -3,6 +3,49 @@
 All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.2.0] - 2026-10-18
+
+### Added
+
+- **Independent Check Configuration Decoupling (`checks.yml`)**:
+  1. **Decoupled Checks Configuration**: Created an independent `checks.yml` file under the plugin data directory containing complete settings and thresholds for all 14 detection modules;
+  2. **Config Structure Cleanup**: Removed the redundant `checks:` block from `config.yml`, keeping `config.yml` focused strictly on core system settings, setback modes, punishment escalation, audit logging, and i18n;
+  3. **Full Lifecycle Integration**: Integrated `checksConfig` loading and saving directly into `/argus reload` and `/argus toggle` command workflows.
+- **Dedicated Double-Layer Combat Mitigation Handler (`CombatMitigationHandler`)**:
+  1. **Centralized Combat Defense**: Introduced `com.example.argusac.combat.CombatMitigationHandler` for unified, double-layer combat attack and damage cancellation;
+  2. **Bukkit & Netty Dual Protection**: Simultaneously intercepts Bukkit `EntityDamageByEntityEvent` and PacketEvents `WrapperPlayClientInteractEntity (ATTACK)` packets;
+  3. **Zero-Damage Defense**: Enforces当帧 `event.setCancelled(true)` and sets `event.setDamage(0.0)` defensively to eliminate damage leaks, knockback, armor durability loss, and sweep attacks;
+  4. **Pure Silent Cancellation**: Cancels illegal combat interactions silently without sending disruptive ActionBar warnings or sounds to attackers, maintaining clean staff alerts and audit logs.
+- **CANCEL Mode Hardening & Dual Instant Mitigation**:
+  1. **Dual Instant Mitigation**: Upgraded `SetbackManager.directCancel` to simultaneously set `moveEvent.setTo(cancelTarget)` and `moveEvent.setCancelled(true)` at the Bukkit event layer, cleanly severing the server physics pipeline; concurrently added `sendPositionSyncPacket` sending protocol-level position reset packets via PacketEvents to forcefully break client-side physical prediction;
+  2. **Continuous Locked Anchor**: Introduced a locked anchor state machine in `PlayerSetbackContext`; players repeatedly attempting to break through cancellation barriers or force-fly within a short window (4 seconds) are strictly locked to their initial violation coordinate frame-by-frame with zero cooldown, completely closing inchworming exploits;
+  3. **Legitimate Movement Safe Release**: Smoothly releases the locked anchor once a player resumes clean movement and stands solidly grounded for over 400ms; automatically clears anchor state upon disconnect, death, respawn, world transfer, or external legitimate teleports;
+  4. **Natural Gravity Drag for Airborne Force-Fly**: For airborne fly and anti-gravity cheats, horizontally locks X/Z axes to the initial anchor while strictly suppressing upward vertical climbs and applying natural vanilla gravity descent, dragging cheaters toward the ground rather than creating pseudo-platforms;
+  5. **README & Config Recommended Badging**: Formally added the `(Recommended)` label to `CANCEL` setback mode in `README.md` and `config.yml`.
+
+### Changed
+
+- **Abolished Combat Throttle & Weapon Cooldown Resets**:
+  1. Completely removed invasive `combat-throttle` (disarm/temporary attack ban) and `reset-cooldown` (forced weapon charge reset) from `KillAuraCheck`, `ReachCheck`, and `PlayerData`;
+  2. Preserved authentic vanilla PvP mechanics and hit feeling without false disarm penalties.
+
+### Fixed
+
+- **Cancellation Latency & Exploit Loophole Fixes**:
+  1. Fixed loopholes where the previous cancellation mechanism did not send immediate packet-level synchronization, allowing cheats to creep forward during packet round-trip delays;
+  2. Fixed target location inaccuracy in `PlayerEventListener` upon cancellation, standardizing on `event.getTo()` to eliminate lingering residuals;
+  3. Zeroed vehicle velocity during cancellation setbacks to prevent vehicles from breaching barriers.
+- **Zero-Latency Fly & Anti-Gravity Hover Detection**:
+  1. **Instant Illegal Ascent Detection**: Enforced theoretical jump decay curves; vertical climb past peak jump trajectory (`airTicks >= 5`) is capped at `<= 0.001`, instantly flagging and blocking jetpack/fly cheats on the very first frame;
+  2. **Eliminated 600ms (12 ticks) Hover Lag**: Reduced flat hover detection threshold to `airTicks >= 4` (`|deltaY| < 0.005`) and anti-gravity drift to `airTicks >= 6` (`deltaY > -0.05`), providing near-instant blocking against flight cheats.
+- **Block Placement & Jump-Place Scaffold Fly False Positive Fix & Optimization**:
+  1. Recorded real-time block placement timestamps (`lastPlaceTime`) for responsive movement analysis;
+  2. Expanded `FlyCheck` ground probe depth to 0.60 blocks with multi-point boundary sampling;
+  3. Fixed false ground stripping on step-up and newly placed block ascents;
+  4. Granted 1.2-block supporting surface grace and airTicks reset for recent block placements (1200ms window), completely eliminating Fly false positives during scaffold/jump-placing.
+
+
+
 ## [1.1.4] - 2026-10-17
 
 ### Fixed

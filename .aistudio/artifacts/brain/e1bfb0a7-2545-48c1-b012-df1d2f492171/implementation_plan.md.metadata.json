@@ -1,0 +1,6 @@
+{
+  "summary": "ArgusAC 反作弊配置解耦、战斗抑制清理与独立战斗伤害拦截机制重构实施计划：\n1. 建立独立的 checks.yml 配置文件，将全部 14 项检测模块参数从 config.yml 彻底剥离并统一管理。\n2. 彻底移除 KillAura 中的动态战斗抑制（Combat Throttle/缴械）与武器蓄力充能清零机制（resetCooldown）。\n3. 构建全新的专用类 CombatMitigationHandler，实现 Bukkit 伤害事件与 PacketEvents 底层网络攻击包的双重静默拦截体系。",
+  "updatedAt": "2026-10-18T03:01:47.860504297Z",
+  "requestFeedback": true,
+  "userFacing": true
+}

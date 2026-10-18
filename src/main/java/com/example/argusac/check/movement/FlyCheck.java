@@ -30,8 +30,8 @@ public class FlyCheck extends AbstractCheck {
     public void reloadConfig() {
         super.reloadConfig();
         String path = "checks." + name + ".";
-        this.maxAirTicks = plugin.getConfig().getInt(path + "max-air-ticks", 25);
-        this.verticalAscentThreshold = plugin.getConfig().getDouble(path + "vertical-ascent-threshold", 0.42);
+        this.maxAirTicks = getChecksConfig().getInt(path + "max-air-ticks", 25);
+        this.verticalAscentThreshold = getChecksConfig().getDouble(path + "vertical-ascent-threshold", 0.42);
     }
 
     public void handleMove(Player player, PlayerData data, PlayerMoveEvent event) {
@@ -84,6 +84,14 @@ public class FlyCheck extends AbstractCheck {
         // 检查脚下及周围是否有物理支撑面
         boolean hasGroundNear = data.isOnGround() || hasBlockBelow(from, adapter) || hasBlockBelow(to, adapter);
 
+        // 放置方块/搭路 (Scaffold / Jump-Place) 宽限判定：
+        // 玩家最近放置方块 (1200ms 内) 且脚下 1.2 格内存在实体支撑面
+        boolean recentlyPlacedBlock = (System.currentTimeMillis() - data.getLastPlaceTime() < 1200L);
+        if (recentlyPlacedBlock && (hasGroundNear || hasBlockBelow(to, adapter, 1.20) || hasBlockBelow(from, adapter, 1.20))) {
+            hasGroundNear = true;
+            data.setAirTicks(0);
+        }
+
         if (!hasGroundNear) {
             double elapsedTicks = data.incrementAirTicks();
             if (elapsedTicks == 0.0) {
@@ -99,33 +107,43 @@ public class FlyCheck extends AbstractCheck {
 
             // 1. 非法垂直向上飞升检测 (IllegalAscent)
             // 首帧起跳 (airTicks <= 1) 允许正常起跳冲量 (包含台阶/坡度起跳 Step-up，容差放宽至 0.65+);
-            // 滞空升空中期 (airTicks > 1) 必须遵循重力递减衰减，无药水/飘浮/激流下持续暴冲 (> 0.42) 判定为反重力喷气飞升
+            // 升空中期严格按原版重力递减衰减：跳跃第 5 tick 达到最高点后垂直速度必定转为负值 (下落)；
+            // 若 airTicks >= 5 仍持续向上拔高 (> 0.001)，或在滞空中期垂直冲量超出递减包络线，首帧即判定为反重力/喷气飞升作弊
             boolean hasAscentExemption = adapter.hasPotionEffect(player, CompatPotionType.LEVITATION)
                     || adapter.isRiptiding(player)
                     || data.hasAnyLegalVelocity()
-                    || data.hasRecentVelocity(1000L);
+                    || data.hasRecentVelocity(1000L)
+                    || (recentlyPlacedBlock && hasBlockBelow(to, adapter, 1.20));
             if (!hasAscentExemption && !data.isSetbackImmune()) {
                 if (airTicks <= 1 && deltaY > maxAllowedLaunchAscent) {
                     flag(player, 2, String.format("IllegalAscent (Launch) deltaY=%.3f, max=%.3f", deltaY, maxAllowedLaunchAscent), event);
                     return;
-                } else if (airTicks > 1 && deltaY > maxAllowedAirAscent) {
-                    flag(player, 2, String.format("IllegalAscent (Air) airTicks=%d, deltaY=%.3f, threshold=%.3f", airTicks, deltaY, maxAllowedAirAscent), event);
-                    return;
+                } else if (airTicks > 1) {
+                    double allowedAscent = (airTicks >= 5)
+                            ? (jumpAmp >= 0 ? (jumpAmp + 1) * 0.10 : 0.001)
+                            : (Math.max(0.0, 0.42 - (airTicks - 1) * 0.08) + (jumpAmp >= 0 ? (jumpAmp + 1) * 0.15 : 0.0)) * elapsedTicks;
+                    if (deltaY > allowedAscent) {
+                        flag(player, 2, String.format("IllegalAscent (Air) airTicks=%d, deltaY=%.3f, maxAllowed=%.3f", airTicks, deltaY, allowedAscent), event);
+                        return;
+                    }
                 }
             }
 
-            // 2. 长时间悬空滞空与异常重力下坠检测 (Hover & Anti-Gravity)
-            // 原版跳跃总滞空时长通常为 10~12 ticks，第 6 tick 达到最高点后必须以 -0.08, -0.156... 加速下落。
-            // 滞空超出正常周期 (airTicks > hoverThreshold) 时，若无上升/飘浮/缓降等合法效果，且垂直位移未能维持正常下落 (deltaY > -0.05)，判定为悬空/慢飞作弊
-            int hoverThreshold = Math.min(maxAirTicks, 12);
-            boolean isAbnormalFall = deltaY > -0.05;
-            if (airTicks > hoverThreshold && isAbnormalFall
-                    && !hasAscentExemption
+            // 2. 悬空滞空与异常重力下坠检测 (Hover & Anti-Gravity)
+            // 解决旧版本 12 ticks (600ms) 滞后漏洞：
+            // A. 完全平飞悬空 (Math.abs(deltaY) < 0.005)：原版跳跃顶点仅能维持 1 tick 瞬时零点，airTicks >= 4 持续水平滞空即刻判定悬空
+            // B. 慢速反重力漂浮 (deltaY > -0.05)：原版跳跃在第 5 tick 之后必定加速下坠 (第 6 tick -0.078, 第 7 tick -0.155)；
+            //    airTicks >= 6 仍未维持正常重力下坠者，直接阻断并当帧拉回锚点
+            if (!hasAscentExemption
                     && !adapter.hasPotionEffect(player, CompatPotionType.SLOW_FALLING)
                     && !adapter.hasPotionEffect(player, CompatPotionType.LEVITATION)) {
-                plugin.getSetbackManager().applySafeAirCancellation(event);
-                flag(player, 2, String.format("Hover airTicks=%d, deltaY=%.3f", airTicks, deltaY), event);
-                return;
+                if (airTicks >= 4 && Math.abs(deltaY) < 0.005) {
+                    flag(player, 2, String.format("Hover (Flat) airTicks=%d, deltaY=%.4f", airTicks, deltaY), event);
+                    return;
+                } else if (airTicks >= 6 && deltaY > -0.05) {
+                    flag(player, 2, String.format("Hover (Anti-Gravity) airTicks=%d, deltaY=%.3f", airTicks, deltaY), event);
+                    return;
+                }
             }
 
         } else {
@@ -177,6 +195,10 @@ public class FlyCheck extends AbstractCheck {
     }
 
     private boolean hasBlockBelow(Location loc, VersionAdapter adapter) {
+        return hasBlockBelow(loc, adapter, 0.60);
+    }
+
+    private boolean hasBlockBelow(Location loc, VersionAdapter adapter, double maxDepth) {
         if (loc == null || loc.getWorld() == null) return false;
         // 探测中心及边缘四角，防止方块边缘悬空误判
         double[][] points = {
@@ -188,7 +210,7 @@ public class FlyCheck extends AbstractCheck {
         };
         for (double[] p : points) {
             Location checkLoc = loc.clone().add(p[0], 0, p[1]);
-            for (double yOffset = -0.05; yOffset >= -0.15; yOffset -= 0.1) {
+            for (double yOffset = -0.05; yOffset >= -maxDepth; yOffset -= 0.15) {
                 Block b = checkLoc.clone().add(0, yOffset, 0).getBlock();
                 if (adapter.isStandable(b)) {
                     return true;

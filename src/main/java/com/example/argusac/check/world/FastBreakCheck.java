@@ -29,7 +29,7 @@ public class FastBreakCheck extends AbstractCheck {
     @Override
     public void reloadConfig() {
         super.reloadConfig();
-        this.timeLeniency = plugin.getConfig().getDouble("checks." + name + ".time-leniency", 0.20);
+        this.timeLeniency = getChecksConfig().getDouble("checks." + name + ".time-leniency", 0.20);
     }
 
     public void handleBreak(Player player, BlockBreakEvent event) {

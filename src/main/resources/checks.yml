@@ -1,0 +1,220 @@
+# ==============================================================================
+# ArgusAC - 独立检测项配置文件 (checks.yml)
+# 集中管理所有移动、战斗、世界交互及数据包检测模块的参数与阈值
+# ==============================================================================
+
+checks:
+  # 1. 移动速度检测 (Speed)
+  Speed:
+    enabled: true
+    max-vl: 15
+    # 基础每 50ms 移动 tick 最大允许水平位移 (原版正常疾跑跳跃约为 0.61)
+    max-horizontal-speed: 0.65
+    # 冰面 / 浮冰摩擦额外加速系数
+    ice-modifier: 1.45
+    # 速度药水每级效果加成系数
+    speed-potion-multiplier: 0.20
+    # 违规缓冲区容量 (用于吸收单 tick 网络微弱抖动)
+    speed-buffer-max: 0.40
+    # 每次合法移动 tick 的缓冲区衰减量
+    speed-buffer-decay: 0.08
+
+  # 2. 飞行与重力检测 (Fly)
+  Fly:
+    enabled: true
+    max-vl: 12
+    # 允许的最大滞空 tick 数 (超出且未下落即判定为滞空悬停)
+    max-air-ticks: 25
+    # 无跳跃提升药水效果时的异常向上垂直位移阈值
+    vertical-ascent-threshold: 0.42
+
+  # 3. 虚假落地检测 (NoFall)
+  NoFall:
+    enabled: true
+    max-vl: 15
+    # 客户端声明 onGround=true 但脚下无实体方块时的容差距离
+    ground-check-tolerance: 0.001
+
+  # 4. 攻击距离检测 (Reach)
+  Reach:
+    enabled: true
+    max-vl: 15
+    # 生存模式最大攻击距离理论极限 (格)
+    max-reach: 3.10
+    # 结合 Ping 延迟补偿和击退余量的最大允许距离
+    max-ping-reach: 3.50
+
+  # 5. 自动连点器检测 (AutoClicker)
+  AutoClicker:
+    enabled: true
+    max-vl: 15
+    # 允许的最大每秒点击数 (CPS)
+    max-cps: 18
+    # 最小点击时间差标准差 (用于检测宏无抖动的机械均匀点击)
+    min-std-deviation: 4.5
+
+  # 6. 杀戮光环检测 (KillAura)
+  # 采用纯静默即时取消机制，杜绝伤害穿透，无侵入式缴械
+  KillAura:
+    enabled: true
+    max-vl: 18
+    # 攻击时视线中心与目标允许的最大夹角 (度)
+    max-angle: 68.0
+    # 检测攻击者与受害者视线之间是否有实体方块遮挡 (防隔墙打击)
+    raytrace-blocks: true
+    # 极速切换不同受击目标的最短允许毫秒间隔 (防 1vN 瞬转群殴)
+    target-switch-ms: 80
+    # 盲区与背身反向攻击拦截 (> 90.0 度)
+    blindspot-check: true
+    # 瞬间自瞄偏转检测
+    snap-check: true
+    # 判定为瞬间自瞄的偏航角突变阈值 (度)
+    snap-angle-threshold: 45.0
+
+  # 7. 击退动量响应检测 (Velocity / Anti-KB)
+  Velocity:
+    enabled: true
+    max-vl: 15
+    # 预期受击退后的垂直响应比率 (低于此值视为垂直反击退)
+    vertical-ratio: 0.85
+    # 预期受击退后的水平响应比率
+    horizontal-ratio: 0.80
+
+  # 8. 快速挖掘检测 (FastBreak)
+  FastBreak:
+    enabled: true
+    max-vl: 15
+    # 超出理论方块硬度挖掘耗时的容许百分比 (0.20 = 允许快 20%)
+    time-leniency: 0.20
+
+  # 9. 暴拆/群破坏检测 (Nuker)
+  Nuker:
+    enabled: true
+    max-vl: 12
+    # 单 tick 允许破坏的最大方块数 (原版客户端为 1)
+    max-breaks-per-tick: 2
+    # 无急迫 II 效果下每秒破坏的最大方块数
+    max-breaks-per-second: 15
+
+  # 10. 自动搭桥检测 (Scaffold)
+  Scaffold:
+    enabled: true
+    max-vl: 15
+    # 脚下铺路时的异常低头俯仰角阈值 (度)
+    min-pitch: 70.0
+
+  # 11. 界面移动检测 (InventoryMove)
+  InventoryMove:
+    enabled: true
+    max-vl: 10
+    # 在打开背包、箱子等容器界面时允许的最大移动距离
+    max-distance-while-open: 0.15
+
+  # 12. 协议与数据包异常检测 (BadPackets)
+  BadPackets:
+    enabled: true
+    max-vl: 10
+    # 严格俯仰角约束 [-90.0, 90.0] (防 Derp / 倒立仰角外挂)
+    strict-pitch: true
+    # 检测上升过程中的重复冗余位置包
+    check-duplicate-move: true
+    # 协议级 50ms 时钟漂移平衡检测 (防 1.05x ~ 2.0x 变速齿轮与发包轰炸)
+    timer-check: true
+
+  # 13. 鞘翅飞行物理检测 (ElytraFly)
+  ElytraFly:
+    enabled: true
+    max-vl: 15
+
+    # 物理环境与合法推进豁免时长
+    exemptions:
+      # 烟花火箭推进豁免期 (毫秒)
+      firework-boost-duration-ms: 1500
+      # 激流三叉戟豁免期 (毫秒)
+      riptide-duration-ms: 2000
+      # 爆炸与外部动量冲击豁免期 (毫秒)
+      external-velocity-duration-ms: 1200
+      # 初始起飞滑翔保护期 (毫秒)
+      takeoff-grace-duration-ms: 1000
+      # 服务端 TPS 跌落至此阈值以下时自动放宽判定
+      min-server-tps: 17.5
+
+    # 子项 1: 滑翔最大水平速度
+    speed:
+      enabled: true
+      max-unboosted-speed: 1.45
+      max-boosted-speed: 2.60
+      pitch-dive-multiplier: 0.55
+      min-vl: 3
+      setback-mode: "HARD"
+
+    # 子项 2: 无动力异常爬升
+    ascend:
+      enabled: true
+      max-vertical-ascent: 0.15
+      ascend-ticks-threshold: 4
+      min-vl: 3
+      setback-mode: "HARD"
+
+    # 子项 3: 空中零动量滞空悬停
+    hover:
+      enabled: true
+      max-horizontal-speed: 0.08
+      max-vertical-speed: 0.05
+      hover-ticks-threshold: 15
+      min-vl: 3
+      setback-mode: "HARD"
+
+    # 子项 4: 烟花持续高速异常
+    firework:
+      enabled: true
+      min-unpropelled-accel: 0.12
+      continuous-high-speed-ticks: 50
+      min-vl: 3
+      setback-mode: "HARD"
+
+    # 子项 5: 鞘翅装备耐久与滑翔状态校验
+    glide-state:
+      enabled: true
+      check-chestplate-durability: true
+      min-vl: 1
+      setback-mode: "HARD"
+
+    # 子项 6: 滑翔高频发包间隔检测
+    timer:
+      enabled: true
+      sample-window-size: 20
+      min-average-interval-ms: 44.0
+      min-vl: 3
+      setback-mode: "SOFT"
+
+    # 子项 7: 极速开关鞘翅姿态切换
+    flip:
+      enabled: true
+      window-ms: 1000
+      max-toggles: 4
+      min-vl: 3
+      setback-mode: "SOFT"
+
+    # 子项 8: 临地切滑翔免除坠落伤害漏洞
+    nofall:
+      enabled: true
+      min-fall-distance: 3.0
+      ground-proximity-distance: 1.8
+      min-vl: 3
+      setback-mode: "HARD"
+
+  # 14. 水上行走与水面虚假悬浮检测 (Jesus)
+  Jesus:
+    enabled: true
+    max-vl: 12
+    # 水面虚假接地立即拦截
+    detect-ground-spoof: true
+    # 水面移动最大允许水平速度 (格/tick)
+    max-water-speed: 0.28
+    # 水面上锁死垂直零位移的最大允许 tick 数
+    max-solid-hover-ticks: 4
+    # 水面持续停留累积判定上限 tick 数
+    max-water-surface-ticks: 15
+    # 垂直振荡重置阈值
+    vertical-reset-threshold: 0.12

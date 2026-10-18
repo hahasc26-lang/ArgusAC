@@ -25,8 +25,8 @@ public class BadPacketsCheck extends AbstractCheck {
     public void reloadConfig() {
         super.reloadConfig();
         String path = "checks." + name + ".";
-        this.strictPitch = plugin.getConfig().getBoolean(path + "strict-pitch", true);
-        this.checkDuplicateMove = plugin.getConfig().getBoolean(path + "check-duplicate-move", true);
+        this.strictPitch = getChecksConfig().getBoolean(path + "strict-pitch", true);
+        this.checkDuplicateMove = getChecksConfig().getBoolean(path + "check-duplicate-move", true);
     }
 
     public void handleMove(Player player, PlayerData data, PlayerMoveEvent event) {

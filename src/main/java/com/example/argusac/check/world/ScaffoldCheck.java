@@ -26,7 +26,7 @@ public class ScaffoldCheck extends AbstractCheck {
     public void reloadConfig() {
         super.reloadConfig();
         String path = "checks." + name + ".";
-        this.minPitch = plugin.getConfig().getDouble(path + "min-pitch", 60.0);
+        this.minPitch = getChecksConfig().getDouble(path + "min-pitch", 70.0);
     }
 
     public void handlePlace(Player player, BlockPlaceEvent event) {

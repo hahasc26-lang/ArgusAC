@@ -18,22 +18,15 @@ import org.bukkit.util.Vector;
 import java.util.UUID;
 
 /**
- * 杀戮光环检测与主动防御响应机制 (KillAuraCheck)
- * 具备健全合理的实战处置手段：
- * 1. 取消非法攻击交互与伤害判定 (Cancel Damage)
- * 2. 武器蓄力充能清零 (Reset Attack Cooldown)
- * 3. 连续违规激活战斗抑制/缴械惩罚 (Combat Throttle / Disarm)
- * 4. 盲区背身攻击 (Blindspot)、瞬间自瞄偏转 (Snap) 与极速目标切换全链路拦截
+ * 杀戮光环检测 (KillAuraCheck)
+ * 采用多维度算法矩阵检测异常攻击视角、盲区发包、穿墙透打与自瞄突变，
+ * 由 CombatMitigationHandler 执行即时纯静默伤害与交互阻断，取消非原版侵入式缴械。
  */
 public class KillAuraCheck extends AbstractCheck {
 
     private double maxAngle;
     private boolean raytraceBlocks;
     private long targetSwitchMs;
-    private boolean resetCooldown;
-    private boolean combatThrottleEnabled;
-    private long combatThrottleMs;
-    private int combatThrottleMinVl;
     private boolean blindspotCheck;
     private boolean snapCheck;
     private double snapAngleThreshold;
@@ -46,16 +39,12 @@ public class KillAuraCheck extends AbstractCheck {
     public void reloadConfig() {
         super.reloadConfig();
         String path = "checks." + name + ".";
-        this.maxAngle = plugin.getConfig().getDouble(path + "max-angle", 68.0);
-        this.raytraceBlocks = plugin.getConfig().getBoolean(path + "raytrace-blocks", true);
-        this.targetSwitchMs = plugin.getConfig().getLong(path + "target-switch-ms", 80L);
-        this.resetCooldown = plugin.getConfig().getBoolean(path + "reset-cooldown", true);
-        this.combatThrottleEnabled = plugin.getConfig().getBoolean(path + "combat-throttle-enabled", true);
-        this.combatThrottleMs = plugin.getConfig().getLong(path + "combat-throttle-ms", 1500L);
-        this.combatThrottleMinVl = plugin.getConfig().getInt(path + "combat-throttle-min-vl", 3);
-        this.blindspotCheck = plugin.getConfig().getBoolean(path + "blindspot-check", true);
-        this.snapCheck = plugin.getConfig().getBoolean(path + "snap-check", true);
-        this.snapAngleThreshold = plugin.getConfig().getDouble(path + "snap-angle-threshold", 45.0);
+        this.maxAngle = getChecksConfig().getDouble(path + "max-angle", 68.0);
+        this.raytraceBlocks = getChecksConfig().getBoolean(path + "raytrace-blocks", true);
+        this.targetSwitchMs = getChecksConfig().getLong(path + "target-switch-ms", 80L);
+        this.blindspotCheck = getChecksConfig().getBoolean(path + "blindspot-check", true);
+        this.snapCheck = getChecksConfig().getBoolean(path + "snap-check", true);
+        this.snapAngleThreshold = getChecksConfig().getDouble(path + "snap-angle-threshold", 45.0);
     }
 
     public void handleAttack(Player attacker, Entity victim, EntityDamageByEntityEvent event) {
@@ -65,13 +54,11 @@ public class KillAuraCheck extends AbstractCheck {
 
         // 死亡状态攻击与攻击自身漏洞拦截
         if (attacker.isDead() || livingVictim.isDead()) {
-            event.setCancelled(true);
-            flag(attacker, 3, "Attack while dead");
+            plugin.getCombatMitigationHandler().mitigateDamage(event, attacker, livingVictim, this, 3, "Attack while dead");
             return;
         }
         if (attacker.equals(livingVictim)) {
-            event.setCancelled(true);
-            flag(attacker, 3, "Self damage packet exploit");
+            plugin.getCombatMitigationHandler().mitigateDamage(event, attacker, livingVictim, this, 3, "Self damage packet exploit");
             return;
         }
 
@@ -85,17 +72,6 @@ public class KillAuraCheck extends AbstractCheck {
         }
 
         VersionAdapter adapter = VersionAdapterFactory.getAdapter();
-
-        // 核心反应手段 1：处于战斗抑制期 (Combat Throttle) 时的绝对拦截
-        if (data.isCombatThrottled()) {
-            event.setCancelled(true);
-            if (resetCooldown) {
-                adapter.resetAttackCooldown(attacker);
-            }
-            adapter.sendActionBar(attacker, "§c[ArgusAC] 战斗异常，近战攻击能力已被暂时抑制！");
-            return;
-        }
-
         Location eyeLoc = attacker.getEyeLocation();
         int ping = Math.max(0, adapter.getPing(attacker));
 
@@ -120,7 +96,7 @@ public class KillAuraCheck extends AbstractCheck {
 
         // 1. 盲区与背身反向攻击拦截 (Blindspot Check: 完全背对或偏离超过 90 度发包攻击)
         if (blindspotCheck && distance > 0.8 && angle > 90.0) {
-            applyMitigation(attacker, data, event, 3,
+            plugin.getCombatMitigationHandler().mitigateDamage(event, attacker, livingVictim, this, 3,
                     String.format("Blindspot Attack angle=%.1f deg (>90.0) (Backtracked)", angle));
             return;
         }
@@ -128,7 +104,7 @@ public class KillAuraCheck extends AbstractCheck {
         // 2. 视角夹角检测 (Angle Check，基于回溯坐标对齐)
         // 仅在距离大于 1.0 格时检测极限脱节夹角 (贴脸时因碰撞箱宽大正常挥刀夹角变化剧烈)
         if (distance > 1.0 && angle > maxAngle) {
-            applyMitigation(attacker, data, event, 2,
+            plugin.getCombatMitigationHandler().mitigateDamage(event, attacker, livingVictim, this, 2,
                     String.format("Impossible Angle angle=%.1f deg, max=%.1f (Backtracked)", angle, maxAngle));
             return;
         }
@@ -140,7 +116,7 @@ public class KillAuraCheck extends AbstractCheck {
                     : adapter.getEntityBoundingBox(livingVictim).distanceTo(eyeLoc);
 
             if (distanceToCompensatedBox > distance + 0.8) {
-                applyMitigation(attacker, data, event, 2,
+                plugin.getCombatMitigationHandler().mitigateDamage(event, attacker, livingVictim, this, 2,
                         String.format("Aimbot Ray Miss angle=%.1f, ping=%d (Backtracked)", angle, ping));
                 return;
             }
@@ -149,7 +125,7 @@ public class KillAuraCheck extends AbstractCheck {
         // 4. 隔墙穿透攻击检测 (RayTrace Blocks，跨版本安全适配)
         if (raytraceBlocks && distance > 1.2) {
             if (adapter.isRayOccluded(eyeLoc, victimEye)) {
-                applyMitigation(attacker, data, event, 2, "Attack Through Wall");
+                plugin.getCombatMitigationHandler().mitigateDamage(event, attacker, livingVictim, this, 2, "Attack Through Wall");
                 return;
             }
         }
@@ -163,7 +139,7 @@ public class KillAuraCheck extends AbstractCheck {
 
             // 攻击瞬间产生大跨度偏转且立刻命中
             if (yawDelta > snapAngleThreshold && angle < 25.0) {
-                applyMitigation(attacker, data, event, 2,
+                plugin.getCombatMitigationHandler().mitigateDamage(event, attacker, livingVictim, this, 2,
                         String.format("Aimbot Snap deltaYaw=%.1f, angle=%.1f", yawDelta, angle));
                 return;
             }
@@ -177,8 +153,7 @@ public class KillAuraCheck extends AbstractCheck {
         if (lastTarget != null && !lastTarget.equals(victim.getUniqueId())) {
             long switchInterval = now - lastAttack;
             if (switchInterval < targetSwitchMs) {
-                // 关键修复：极速切换目标同样必须取消攻击事件并重置冷却，阻止秒杀群殴外挂
-                applyMitigation(attacker, data, event, 2,
+                plugin.getCombatMitigationHandler().mitigateDamage(event, attacker, livingVictim, this, 2,
                         String.format("Rapid Switch interval=%dms", switchInterval));
                 return;
             }
@@ -187,31 +162,4 @@ public class KillAuraCheck extends AbstractCheck {
         data.setLastAttackedTarget(victim.getUniqueId());
         data.setLastAttackTime(now);
     }
-
-    /**
-     * 实施合理的反作弊实战反应与防御惩戒
-     */
-    private void applyMitigation(Player attacker, PlayerData data, EntityDamageByEntityEvent event, int vl, String reason) {
-        // 1. 取消当前伤害与交互
-        event.setCancelled(true);
-
-        VersionAdapter adapter = VersionAdapterFactory.getAdapter();
-
-        // 2. 核心反应手段：重置攻击者武器充能冷却 (将蓄力攻击伤害削减归零)
-        if (resetCooldown) {
-            adapter.resetAttackCooldown(attacker);
-        }
-
-        // 3. 标记违规
-        flag(attacker, vl, reason);
-
-        // 4. 核心反应手段：达到阈值时施加战斗抑制 (Combat Throttle)，短时间封印近战输出
-        int currentVl = data.getVl(name);
-        if (combatThrottleEnabled && currentVl >= combatThrottleMinVl) {
-            data.setCombatThrottled(combatThrottleMs);
-            adapter.sendActionBar(attacker, "§c[ArgusAC] 检测到异常战斗行为，近战攻击已被暂时抑制！");
-            adapter.playSound(attacker, attacker.getLocation(), "BLOCK_ANVIL_LAND", 0.8f, 1.6f);
-        }
-    }
 }
-

@@ -25,7 +25,7 @@ public class InventoryMoveCheck extends AbstractCheck {
     @Override
     public void reloadConfig() {
         super.reloadConfig();
-        this.maxDistanceWhileOpen = plugin.getConfig().getDouble("checks." + name + ".max-distance-while-open", 0.15);
+        this.maxDistanceWhileOpen = getChecksConfig().getDouble("checks." + name + ".max-distance-while-open", 0.15);
     }
 
     public void handleMove(Player player, PlayerData data, PlayerMoveEvent event) {

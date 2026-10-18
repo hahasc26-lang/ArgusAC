@@ -35,11 +35,11 @@ public class SpeedCheck extends AbstractCheck {
     public void reloadConfig() {
         super.reloadConfig();
         String path = "checks." + name + ".";
-        this.maxHorizontalSpeed = plugin.getConfig().getDouble(path + "max-horizontal-speed", 0.65);
-        this.iceModifier = plugin.getConfig().getDouble(path + "ice-modifier", 1.45);
-        this.speedPotionMultiplier = plugin.getConfig().getDouble(path + "speed-potion-multiplier", 0.20);
-        this.speedBufferMax = plugin.getConfig().getDouble(path + "speed-buffer-max", 0.25);
-        this.speedBufferDecay = plugin.getConfig().getDouble(path + "speed-buffer-decay", 0.05);
+        this.maxHorizontalSpeed = getChecksConfig().getDouble(path + "max-horizontal-speed", 0.65);
+        this.iceModifier = getChecksConfig().getDouble(path + "ice-modifier", 1.45);
+        this.speedPotionMultiplier = getChecksConfig().getDouble(path + "speed-potion-multiplier", 0.20);
+        this.speedBufferMax = getChecksConfig().getDouble(path + "speed-buffer-max", 0.40);
+        this.speedBufferDecay = getChecksConfig().getDouble(path + "speed-buffer-decay", 0.08);
     }
 
     /**

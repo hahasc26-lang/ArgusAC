@@ -75,7 +75,6 @@ public class PlayerData {
     private long lastClickTimestamp = 0L;
     private UUID lastAttackedTarget = null;
     private long lastAttackTime = 0L;
-    private long combatThrottledUntil = 0L;
     private float lastLookYaw = 0.0f;
     private float lastLookPitch = 0.0f;
 
@@ -565,16 +564,7 @@ public class PlayerData {
         timerTracker.reset();
         speedBuffer = 0.0;
         lastSpeedCheckNanos = 0L;
-        combatThrottledUntil = 0L;
         iceTicks = 0;
-    }
-
-    public boolean isCombatThrottled() {
-        return System.currentTimeMillis() < combatThrottledUntil;
-    }
-
-    public void setCombatThrottled(long durationMs) {
-        this.combatThrottledUntil = Math.max(this.combatThrottledUntil, System.currentTimeMillis() + durationMs);
     }
 
     public double getSpeedBuffer() {

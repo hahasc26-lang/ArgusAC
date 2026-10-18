@@ -29,8 +29,8 @@ public class AutoClickerCheck extends AbstractCheck {
     public void reloadConfig() {
         super.reloadConfig();
         String path = "checks." + name + ".";
-        this.maxCps = plugin.getConfig().getInt(path + "max-cps", 18);
-        this.minStdDeviation = plugin.getConfig().getDouble(path + "min-std-deviation", 4.5);
+        this.maxCps = getChecksConfig().getInt(path + "max-cps", 18);
+        this.minStdDeviation = getChecksConfig().getDouble(path + "min-std-deviation", 4.5);
     }
 
     /**

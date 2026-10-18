@@ -19,6 +19,9 @@ import org.bukkit.scheduler.BukkitTask;
 import com.example.argusac.compat.CompatBoundingBox;
 import com.example.argusac.compat.CompatPotionType;
 import com.example.argusac.compat.VersionAdapterFactory;
+import com.github.retrooper.packetevents.PacketEvents;
+import com.github.retrooper.packetevents.protocol.player.User;
+import com.github.retrooper.packetevents.wrapper.play.server.WrapperPlayServerPlayerPositionAndLook;
 import org.bukkit.configuration.file.FileConfiguration;
 import org.bukkit.entity.Player;
 import org.bukkit.event.EventHandler;
@@ -341,6 +344,77 @@ public class SetbackManager implements Listener {
      * @param moveEvent 移动事件
      * @return 是否成功取消
      */
+    /**
+     * 底层数据包协议级即时发包同步 (向客户端强制推送当前位置重置报文，打断客户端本地物理预测)
+     */
+    public void sendPositionSyncPacket(Player player, Location target) {
+        if (player == null || !player.isOnline() || target == null || target.getWorld() == null) {
+            return;
+        }
+
+        boolean packetSent = false;
+        try {
+            if (PacketEvents.getAPI() != null && PacketEvents.getAPI().getPlayerManager() != null) {
+                User user = PacketEvents.getAPI().getPlayerManager().getUser(player);
+                if (user != null) {
+                    try {
+                        // PacketEvents 2.x 标准构造: (x, y, z, yaw, pitch, relativeFlags, teleportId)
+                        WrapperPlayServerPlayerPositionAndLook packet =
+                                new WrapperPlayServerPlayerPositionAndLook(
+                                        target.getX(), target.getY(), target.getZ(),
+                                        target.getYaw(), target.getPitch(),
+                                        (byte) 0, 0
+                                );
+                        user.sendPacket(packet);
+                        packetSent = true;
+                    } catch (Throwable t) {
+                        // 备用兼容构造器: (x, y, z, yaw, pitch, relativeFlags, teleportId, dismountVehicle)
+                        try {
+                            java.lang.reflect.Constructor<?> ctor = WrapperPlayServerPlayerPositionAndLook.class.getConstructor(
+                                    double.class, double.class, double.class, float.class, float.class, byte.class, int.class, boolean.class
+                            );
+                            Object packet = ctor.newInstance(
+                                    target.getX(), target.getY(), target.getZ(),
+                                    target.getYaw(), target.getPitch(),
+                                    (byte) 0, 0, false
+                            );
+                            user.sendPacket((com.github.retrooper.packetevents.wrapper.PacketWrapper<?>) packet);
+                            packetSent = true;
+                        } catch (Throwable ignored) {}
+                    }
+                }
+            }
+        } catch (Throwable ignored) {}
+
+        if (!packetSent) {
+            // 底层包发送未命中时的服务端硬重置备选保证：通过自传送向客户端推送官方同步报文
+            try {
+                selfTeleportingPlayers.add(player.getUniqueId());
+                player.teleport(target, PlayerTeleportEvent.TeleportCause.UNKNOWN);
+            } catch (Throwable ignored) {
+            } finally {
+                selfTeleportingPlayers.remove(player.getUniqueId());
+            }
+        }
+    }
+
+    /**
+     * 零延迟当帧直接取消 (Direct Cancellation) 核心机制
+     * <p>
+     * 【强化双重即时阻断与持续原位锚定】：
+     * 1. 当帧 Bukkit 移动事件双保险：同时设置 setTo(target) 与 setCancelled(true)，彻底截断服务端物理管线；
+     * 2. 底层数据包协议级发包即时同步：向玩家网络通道立即写入客户端位置重置包，强行打断客户端预测与发包冲卡；
+     * 3. 持续当帧强行锚定原位 (Locked Anchor)：在短时间内多次尝试冲破阻断的玩家，持续将其锁定在初次违规锚点，杜绝前进蠕动 (Inchworming)；
+     * 4. 空中飞行外挂严格向下施加自然重力衰减，绝不在空中形成悬停平台；
+     * 5. 彻底清除自免疫期与冷却限制，当帧 0ms 绝对物理阻断。
+     *
+     * @param player 违规玩家
+     * @param check 触发检测项
+     * @param currentVl 当前违规值
+     * @param reason 违规详情
+     * @param moveEvent 移动事件
+     * @return 是否成功取消
+     */
     public boolean directCancel(Player player, Check check, int currentVl, String reason, PlayerMoveEvent moveEvent) {
         if (player == null || check == null || moveEvent == null) {
             return false;
@@ -355,6 +429,7 @@ public class SetbackManager implements Listener {
         }
 
         long now = System.currentTimeMillis();
+        context.incrementConsecutiveCancellationViolations();
         context.setLastSetbackTimestamp(check.getName(), now);
 
         // 判断是否属于空中/滞空异常位移 (Fly, Hover, Jesus 等)
@@ -364,34 +439,55 @@ public class SetbackManager implements Listener {
                 || checkLower.contains("hover")
                 || checkLower.contains("jesus");
 
+        Location lockedAnchor = context.getLockedAnchorLocation();
         Location cancelTarget;
 
-        if (isAirborne || isFlightOrWaterCheck) {
-            // 【核心防悬停对齐 GrimAC】：
-            // 1. 若处于近地面 (1.5 格内有承托地面，如踩水面 Jesus 或方块边缘悬空)，贴回近处稳固地面
-            Location nearGround = findSafeGroundNear(from, 1.5);
-            if (nearGround != null) {
-                cancelTarget = nearGround.clone();
-            } else {
-                // 2. 处于中高空滞空或远距离飞行违规：绝不凭空瞬移穿透几十格深渊地面 (杜绝 Downward Phase / 免跌落瞬移漏洞)
-                // 像 GrimAC 一样直接截断水平速度，并严格施加原版自然重力下坠衰减！
-                applySafeAirCancellation(moveEvent);
-                if (data != null && data.getPhysicsState() != null) {
-                    data.getPhysicsState().reset(moveEvent.getTo());
-                }
-                postSetbackSuccess(player, context, check.getName(), currentVl, reason, "GRIM_AIR_CANCEL",
-                        formatLoc(from), formatLoc(moveEvent.getTo()), true, null);
-                return true;
-            }
+        // 【持续当帧强行原位锚定】：若在近 4 秒内已存在锁定锚点且在同世界，绝对锁定回该锚点！杜绝利用连续发包钻空子微小向前位移
+        if (lockedAnchor != null && from.getWorld() != null && from.getWorld().equals(lockedAnchor.getWorld())
+                && (now - context.getLastCancellationViolationTime() < 4000L)) {
+            cancelTarget = lockedAnchor.clone();
         } else {
-            // 地面常规移动违规 (Speed, Step, InventoryMove 等)：原位直接取消本次位移
-            cancelTarget = from.clone();
+            // 初次违规：确定初始锚定坐标
+            if (isAirborne || isFlightOrWaterCheck) {
+                Location nearGround = findSafeGroundNear(from, 1.5);
+                if (nearGround != null) {
+                    cancelTarget = nearGround.clone();
+                } else {
+                    cancelTarget = from.clone();
+                }
+            } else {
+                cancelTarget = from.clone();
+            }
+            context.setLockedAnchorLocation(cancelTarget);
         }
 
         // 严格保留玩家当前朝向 (Yaw/Pitch)，杜绝视角扭转眩晕
         if (to != null) {
             cancelTarget.setYaw(to.getYaw());
             cancelTarget.setPitch(to.getPitch());
+        }
+
+        // 空中强行飞行与滞空物理约束：
+        if (isAirborne || isFlightOrWaterCheck) {
+            // 水平 X/Z 绝对死锁在锁定锚点的原位坐标，不允许任何前进蠕动！
+            // 垂直 Y 轴：
+            // 1. 绝对压制向上拔高位移：
+            if (to != null && to.getY() > cancelTarget.getY()) {
+                cancelTarget.setY(Math.min(cancelTarget.getY(), from.getY()));
+            }
+            // 2. 针对强行飞行/悬空外挂，施加自然重力下坠衰减，坚决拽向地面，杜绝空中悬停平台
+            int airTicks = (data != null) ? data.getAirTicks() : 1;
+            int consec = context.getConsecutiveCancellationViolations();
+            double expectedFall = computeVanillaGravityFall(Math.max(airTicks, consec));
+            double currentDeltaY = (to != null) ? (to.getY() - from.getY()) : 0.0;
+            if (currentDeltaY > expectedFall) {
+                double newY = Math.min(cancelTarget.getY(), from.getY() + expectedFall);
+                cancelTarget.setY(newY);
+                // 同步更新锁定锚点的 Y 轴使之下沉，但 X/Z 依旧稳固锁在最初原位！
+                if (context.getLockedAnchorLocation() != null) {
+                    context.getLockedAnchorLocation().setY(newY);
+                }
+            }
         }
 
         // 若玩家坐在载具中 (船、矿车、坐骑等)：同步修正载具实体速度与位移，保持乘骑连续性
@@ -403,8 +499,12 @@ public class SetbackManager implements Listener {
             }
         }
 
-        // 像 GrimAC 一样直接重写事件目标点，当帧物理截断
+        // 【双重即时阻断 - 第一重】：当帧 Bukkit 移动事件双保险截断
         moveEvent.setTo(cancelTarget);
+        moveEvent.setCancelled(true);
+
+        // 【双重即时阻断 - 第二重】：底层数据包协议级即时发包同步
+        sendPositionSyncPacket(player, cancelTarget);
 
         // 物理状态重置，防止下一帧因残差继承产生误报
         if (data != null && data.getPhysicsState() != null) {
@@ -412,7 +512,7 @@ public class SetbackManager implements Listener {
         }
 
         postSetbackSuccess(player, context, check.getName(), currentVl, reason, "DIRECT_CANCEL",
-                formatLoc(from), formatLoc(cancelTarget), false,
+                formatLoc(from), formatLoc(cancelTarget), isAirborne,
                 LegitimateLocation.from(cancelTarget, null, isGrounded(player, cancelTarget), false, null));
         return true;
     }
@@ -1166,6 +1266,12 @@ public class SetbackManager implements Listener {
         // P1: 待确认网络坐标校正
         private volatile PendingCorrection pendingCorrection = null;
 
+        // 持续当帧强行原位锁定锚点状态追踪 (Locked Anchor State)
+        private volatile Location lockedAnchorLocation = null;
+        private volatile long lockedAnchorTimestamp = 0L;
+        private volatile int consecutiveCancellationViolations = 0;
+        private volatile long lastCancellationViolationTime = 0L;
+
         private final Deque<ViolationLog> logs = new ConcurrentLinkedDeque<>();
         private final Deque<SetbackFailureLog> failureLogs = new ConcurrentLinkedDeque<>();
         private final ActiveHoverTracker hoverTracker = new ActiveHoverTracker();
@@ -1420,6 +1526,38 @@ public class SetbackManager implements Listener {
 
         public List<SetbackFailureLog> getFailureLogs() {
             return new ArrayList<>(failureLogs);
+        }
+
+        public Location getLockedAnchorLocation() {
+            return lockedAnchorLocation;
+        }
+
+        public void setLockedAnchorLocation(Location loc) {
+            this.lockedAnchorLocation = (loc != null) ? loc.clone() : null;
+            this.lockedAnchorTimestamp = System.currentTimeMillis();
+        }
+
+        public void clearLockedAnchor() {
+            this.lockedAnchorLocation = null;
+            this.lockedAnchorTimestamp = 0L;
+            this.consecutiveCancellationViolations = 0;
+        }
+
+        public int getConsecutiveCancellationViolations() {
+            return consecutiveCancellationViolations;
+        }
+
+        public void incrementConsecutiveCancellationViolations() {
+            this.consecutiveCancellationViolations++;
+            this.lastCancellationViolationTime = System.currentTimeMillis();
+        }
+
+        public long getLastCancellationViolationTime() {
+            return lastCancellationViolationTime;
+        }
+
+        public long getLockedAnchorTimestamp() {
+            return lockedAnchorTimestamp;
         }
     }
 

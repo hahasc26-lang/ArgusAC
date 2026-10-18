@@ -96,16 +96,25 @@ public class PlayerEventListener implements Listener {
 
         plugin.getPlayerManager().removePlayerData(player.getUniqueId());
         plugin.getAlertManager().clearSessionState(player);
+        if (plugin.getSetbackManager() != null) {
+            plugin.getSetbackManager().getContext(player.getUniqueId()).clearLockedAnchor();
+        }
         if (plugin.getHistoryTracker() != null) {
             plugin.getHistoryTracker().removeEntity(player.getUniqueId());
         }
         if (plugin.getLanguageManager() != null) {
             plugin.getLanguageManager().invalidateCache(player.getUniqueId());
         }
+        if (plugin.getCombatMitigationHandler() != null) {
+            plugin.getCombatMitigationHandler().clearPlayer(player.getUniqueId());
+        }
     }
 
     @EventHandler(priority = EventPriority.MONITOR)
     public void onPlayerDeath(PlayerDeathEvent event) {
+        if (plugin.getSetbackManager() != null) {
+            plugin.getSetbackManager().getContext(event.getEntity().getUniqueId()).clearLockedAnchor();
+        }
         PlayerData data = plugin.getPlayerManager().getPlayerData(event.getEntity());
         if (data != null) {
             data.getElytraData().resetAll();
@@ -115,6 +124,9 @@ public class PlayerEventListener implements Listener {
 
     @EventHandler(priority = EventPriority.MONITOR)
     public void onPlayerRespawn(PlayerRespawnEvent event) {
+        if (plugin.getSetbackManager() != null) {
+            plugin.getSetbackManager().getContext(event.getPlayer().getUniqueId()).clearLockedAnchor();
+        }
         PlayerData data = plugin.getPlayerManager().getPlayerData(event.getPlayer());
         if (data != null) {
             data.getElytraData().resetAll();
@@ -125,6 +137,9 @@ public class PlayerEventListener implements Listener {
     @EventHandler(priority = EventPriority.MONITOR)
     public void onPlayerChangedWorld(PlayerChangedWorldEvent event) {
         Player player = event.getPlayer();
+        if (plugin.getSetbackManager() != null) {
+            plugin.getSetbackManager().getContext(player.getUniqueId()).clearLockedAnchor();
+        }
         PlayerData data = plugin.getPlayerManager().getPlayerData(player);
         if (data != null) {
             data.getElytraData().resetAll();
@@ -174,6 +189,8 @@ public class PlayerEventListener implements Listener {
         if (plugin.getSetbackManager().isSelfTeleport(player.getUniqueId())) {
             return;
         }
+
+        plugin.getSetbackManager().getContext(player.getUniqueId()).clearLockedAnchor();
 
         PlayerData data = plugin.getPlayerManager().getPlayerData(player);
         if (data != null) {
@@ -306,8 +323,8 @@ public class PlayerEventListener implements Listener {
             }
         }
 
-        // 如果客户端声明离地且正在垂直向上起跳/升空，决不可标记为接地状态
-        if (!player.isOnGround() && (to.getY() - from.getY()) > 0.05) {
+        // 如果客户端声明离地且正在垂直向上起跳/升空，仅在脚下没有紧贴实体方块时认定为离地
+        if (!player.isOnGround() && (to.getY() - from.getY()) > 0.05 && !hasSupportingBlockBelow(to, adapter, 0.15)) {
             onGround = false;
         }
         data.setOnGround(onGround);
@@ -333,7 +350,7 @@ public class PlayerEventListener implements Listener {
         // 1. 数据包完整性与异常角度检测 (即使仅原地旋转视角也必须拦截非法 Pitch/NaN)
         checkManager.getBadPacketsCheck().handleMove(player, data, event);
         if (event.isCancelled() || hasSetbackOccurred(originalTo, event.getTo())) {
-            handleSetbackOrCancellation(player, data, event.isCancelled() ? from : event.getTo());
+            handleSetbackOrCancellation(player, data, event.getTo() != null ? event.getTo() : from);
             return;
         }
 
@@ -345,7 +362,7 @@ public class PlayerEventListener implements Listener {
             if (!onGround && !checkManager.isGlidingExempt(player, data)) {
                 checkManager.getFlyCheck().handleMove(player, data, event);
                 if (event.isCancelled() || hasSetbackOccurred(originalTo, event.getTo())) {
-                    handleSetbackOrCancellation(player, data, event.isCancelled() ? from : event.getTo());
+                    handleSetbackOrCancellation(player, data, event.getTo() != null ? event.getTo() : from);
                 }
             }
             return;
@@ -357,28 +374,28 @@ public class PlayerEventListener implements Listener {
             // ElytraTimer 等)
             checkManager.getElytraFlyCheck().handleMove(player, data, event);
             if (event.isCancelled() || hasSetbackOccurred(originalTo, event.getTo())) {
-                handleSetbackOrCancellation(player, data, event.isCancelled() ? from : event.getTo());
+                handleSetbackOrCancellation(player, data, event.getTo() != null ? event.getTo() : from);
                 return;
             }
         } else {
             // 2. 移动速度检测
             checkManager.getSpeedCheck().handleMove(player, data, event);
             if (event.isCancelled() || hasSetbackOccurred(originalTo, event.getTo())) {
-                handleSetbackOrCancellation(player, data, event.isCancelled() ? from : event.getTo());
+                handleSetbackOrCancellation(player, data, event.getTo() != null ? event.getTo() : from);
                 return;
             }
 
             // 3. 飞行与非法滞空检测
             checkManager.getFlyCheck().handleMove(player, data, event);
             if (event.isCancelled() || hasSetbackOccurred(originalTo, event.getTo())) {
-                handleSetbackOrCancellation(player, data, event.isCancelled() ? from : event.getTo());
+                handleSetbackOrCancellation(player, data, event.getTo() != null ? event.getTo() : from);
                 return;
             }
 
             // 4. 水上行走与水面虚假悬浮检测 (JesusCheck)
             checkManager.getJesusCheck().handleMove(player, data, event);
             if (event.isCancelled() || hasSetbackOccurred(originalTo, event.getTo())) {
-                handleSetbackOrCancellation(player, data, event.isCancelled() ? from : event.getTo());
+                handleSetbackOrCancellation(player, data, event.getTo() != null ? event.getTo() : from);
                 return;
             }
 
@@ -387,12 +404,27 @@ public class PlayerEventListener implements Listener {
         // 5. 背包移动检测
         checkManager.getInventoryMoveCheck().handleMove(player, data, event);
         if (event.isCancelled() || hasSetbackOccurred(originalTo, event.getTo())) {
-            handleSetbackOrCancellation(player, data, event.isCancelled() ? from : event.getTo());
+            handleSetbackOrCancellation(player, data, event.getTo() != null ? event.getTo() : from);
             return;
         }
 
         // 6. 击退位移追踪
         checkManager.getVelocityCheck().handleMove(player, data, event);
+
+        // 7. 合法移动状态更新与锁定锚点解除：
+        // 若本 tick 移动完全合法且未触发任何取消/回退，且玩家安全处于稳固地面上，
+        // 在距最后一次取消违规一定安全窗口 (400ms) 之后，平稳解除原位锁定锚点
+        if (!event.isCancelled() && !hasSetbackOccurred(originalTo, event.getTo())) {
+            if (onGround) {
+                com.example.argusac.manager.SetbackManager.PlayerSetbackContext setbackContext =
+                        plugin.getSetbackManager().getContext(player.getUniqueId());
+                if (setbackContext != null && setbackContext.getLockedAnchorLocation() != null) {
+                    if (System.currentTimeMillis() - setbackContext.getLastCancellationViolationTime() > 400L) {
+                        setbackContext.clearLockedAnchor();
+                    }
+                }
+            }
+        }
     }
 
     private void handleSetbackOrCancellation(Player player, PlayerData data, Location finalLoc) {
@@ -440,6 +472,15 @@ public class PlayerEventListener implements Listener {
         }
 
         if (plugin.isPlayerExempt(attacker)) {
+            return;
+        }
+
+        // 核心战斗拦截保护器：若玩家在微时钟内已有攻击被阻断，立即取消本次伤害
+        if (plugin.getCombatMitigationHandler() != null && plugin.getCombatMitigationHandler().isAttackSuppressed(attacker)) {
+            event.setCancelled(true);
+            try {
+                event.setDamage(0.0);
+            } catch (Throwable ignored) {}
             return;
         }
 
@@ -510,6 +551,10 @@ public class PlayerEventListener implements Listener {
         Player player = event.getPlayer();
         if (plugin.isPlayerExempt(player)) {
             return;
+        }
+        PlayerData data = plugin.getPlayerManager().getPlayerData(player);
+        if (data != null) {
+            data.setLastPlaceTime(System.currentTimeMillis());
         }
         checkManager.getScaffoldCheck().handlePlace(player, event);
     }

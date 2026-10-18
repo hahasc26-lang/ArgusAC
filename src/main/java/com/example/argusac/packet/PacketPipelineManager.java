@@ -210,7 +210,15 @@ public class PacketPipelineManager extends PacketListenerAbstract {
      * 客户端实体交互包 (Interact Entity) 捕获
      */
     private void handleIncomingInteractEntityPacket(Player player, PlayerData data, PacketReceiveEvent event) {
-        // 原版客户端物理左键必定发出 ANIMATION 包，实体交互包无需重复统计点击，避免双倍 CPS 误报
+        try {
+            com.github.retrooper.packetevents.wrapper.play.client.WrapperPlayClientInteractEntity interactWrapper =
+                    new com.github.retrooper.packetevents.wrapper.play.client.WrapperPlayClientInteractEntity(event);
+            if (interactWrapper.getAction() == com.github.retrooper.packetevents.wrapper.play.client.WrapperPlayClientInteractEntity.InteractAction.ATTACK) {
+                if (plugin.getCombatMitigationHandler() != null) {
+                    plugin.getCombatMitigationHandler().handlePacketAttack(player, data, interactWrapper.getEntityId(), event);
+                }
+            }
+        } catch (Throwable ignored) {}
     }
 
     /**

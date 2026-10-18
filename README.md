@@ -31,7 +31,7 @@
 - **Lag-Compensated Entity Hitbox Backtracking** — Stores per-tick AABB hitboxes over a 1,000 ms sliding window, rewinding to the attacker's perspective to enforce the 3.00-block theoretical reach limit without false flags on knockback.
 - **Protocol-Level Clock-Drift & Timer Engine** — Enforces a 50 ms per-tick nanosecond balance at the network layer to eliminate 1.05x–2.0x timer speedups, packet floods, and fast item consumption.
 - **Zero External Dependencies** — PacketEvents 2.7.0 is shaded and relocated directly into the JAR; plug-and-play out of the box.
-- **Dual Setbacks & Tamper-Evident Logs** — Smooth `SOFT` and authoritative `HARD` setbacks, paired with SHA-256 cryptographic audit logs and ASCII motion trace replays.
+- **Triple Setbacks & Tamper-Evident Logs** — Instant `CANCEL` (Recommended) with packet-level sync and locked anchor state, smooth `SOFT` correction, and authoritative `HARD` teleport setbacks, paired with SHA-256 cryptographic audit logs and ASCII motion trace replays.
 
 ---
 
@@ -102,7 +102,7 @@ ArgusAC provides comprehensive, non-intrusive cheat coverage across 25 dedicated
 | `BadPackets (Actions)` | State Sequence | Detects conflicting entity actions (e.g., instant sneak-sprint exploits) and moving while asleep |
 | `BadPackets (Duplicate)` | Packet Redundancy | Filters duplicate position packets sent within the same tick |
 
-Check parameters can be tuned in [`config.yml`](src/main/resources/config.yml). Use `/argus compat` to verify compatibility across versions.
+Check parameters can be tuned in [`checks.yml`](src/main/resources/checks.yml). Use `/argus compat` to verify compatibility across versions.
 
 ---
 
@@ -110,6 +110,7 @@ Check parameters can be tuned in [`config.yml`](src/main/resources/config.yml). 
 
 ArgusAC caches a player's last validated location after passing check evaluations:
 
+- **`CANCEL` (Recommended)** — Directly cancels the illegal move event in real-time within the tick for instant, zero-latency mitigation without rubberbanding.
 - **`HARD`** — Teleports the player to the validated location on the main thread, resetting velocity and fall distance.
 - **`SOFT`** — Corrects the movement destination within the move event for a smooth, rubberband-free correction.
 
@@ -141,7 +142,7 @@ Main command: **`/argus`** (aliases: **`/ac`**, **`/argusac`**).
 | `/argus debug <check>` | Toggle live debug logging for a check | `argusac.admin` |
 | `/argus compat` | Display multi-version capability matrix and active tiers | `argusac.admin` |
 | `/argus toggle <check>` | Toggle a check module on/off at runtime | `argusac.admin` |
-| `/argus setback <player\|global> <disable\|soft\|hard\|default\|now\|info>` | Inspect or configure setback engine modes | `argusac.admin` |
+| `/argus setback <player\|global> <disable\|cancel\|soft\|hard\|default\|now\|info>` | Inspect or configure setback engine modes | `argusac.admin` |
 | `/argus alerts [on\|off\|status]` | Mute or restore personal staff alerts for this login session | `argusac.alert` |
 | `/argus my-data` | View GDPR data retention and anonymization policies | Everyone |
 | `/argus purge <player>` | Safely delete a player's stored logs and generate an audit record | `argusac.admin` |
@@ -198,7 +199,7 @@ MIT License.
 - **实体历史碰撞盒延迟补偿回溯 (Lag Backtracking)** — 维护 1000ms 碰撞盒快照，攻击时根据 Ping 回溯历史视野，消灭击退误报并将 Reach 严格锁定在 3.00 格物理极限。
 - **协议级 Timer 时钟平衡引擎 (Clock Drift Engine)** — 50ms/tick 纳秒时钟银行追踪发包时钟漂移，秒级拦截 1.05x ~ 2.0x 变速齿轮、快速进食与发包轰炸。
 - **开箱即用，零外部依赖** — PacketEvents 2.7.0 原生嵌入并包重定向（Shaded Relocation），无需额外安装任何前置插件。
-- **双模回退与防篡改审计** — `HARD`（瞬移）与 `SOFT`（平滑修正）自适应回退，辅以 SHA-256 密码学防篡改日志与 ASCII 轨迹回放。
+- **三模回退与防篡改审计** — `CANCEL`（推荐，当帧双重即时阻断、底层发包同步与原位强行锚定）、`HARD`（瞬移）与 `SOFT`（平滑修正），辅以 SHA-256 密码学防篡改日志与 ASCII 轨迹回放。
 
 ---
 
@@ -269,14 +270,15 @@ ArgusAC 构建了四层纵深防御体系，共计 25 个独立检测模块与�
 | `BadPackets (Actions)` | 状态时序冲突 | 拦截潜行疾跑瞬时矛盾动作包与睡眠状态异常移动包 |
 | `BadPackets (Duplicate)` | 数据包冗余 | 过滤客户端同 tick 内发送的重复冗余位置包 |
 
-检测阈值与参数均可在 [`config.yml`](src/main/resources/config.yml) 中细致调节。使用 `/argus compat` 查看跨版本能力分配。
+检测阈值与参数均可在 [`checks.yml`](src/main/resources/checks.yml) 中细致调节。使用 `/argus compat` 查看跨版本能力分配。
 
 ---
 
-## 状态回退系统
+## 状态回退与取消系统 (Setback System)
 
 ArgusAC 在玩家通过移动验证后记录其最后合法位置：
 
+- **`CANCEL` (推荐)** — 当帧零延迟直接在事件内取消违规移动，实现类似 GrimAC 的瞬时精准阻断，无拉扯感。
 - **`HARD`** — 主线程传送回已记录位置，清空动量速度与坠落距离。
 - **`SOFT`** — 在移动事件中修正目标坐标，提供无拉扯感平滑修正。
 
@@ -308,7 +310,7 @@ ArgusAC 在玩家通过移动验证后记录其最后合法位置：
 | `/argus debug <检测项>` | 实时开关指定检测项的调试控制台日志 | `argusac.admin` |
 | `/argus compat` | 查看跨版本能力矩阵与降级自检报告 | `argusac.admin` |
 | `/argus toggle <检测项>` | 运行时热开关指定检测模块 | `argusac.admin` |
-| `/argus setback <玩家\|global> <disable\|soft\|hard\|default\|now\|info>` | 管理或诊断状态回退子系统模式 | `argusac.admin` |
+| `/argus setback <玩家\|global> <disable\|cancel\|soft\|hard\|default\|now\|info>` | 管理或诊断状态回退子系统模式 | `argusac.admin` |
 | `/argus alerts [on\|off\|status]` | 本次登录会话期间关闭、恢复或查看个人管理员告警提示 | `argusac.alert` |
 | `/argus my-data` | 查看 GDPR 个人数据保留策略与匿名化透明度 | 所有人 |
 | `/argus purge <玩家>` | 彻底删除玩家存储记录并生成系统注销审计条目 | `argusac.admin` |

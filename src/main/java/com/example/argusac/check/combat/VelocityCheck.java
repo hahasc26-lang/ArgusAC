@@ -29,8 +29,8 @@ public class VelocityCheck extends AbstractCheck {
     public void reloadConfig() {
         super.reloadConfig();
         String path = "checks." + name + ".";
-        this.verticalRatio = plugin.getConfig().getDouble(path + "vertical-ratio", 0.85);
-        this.horizontalRatio = plugin.getConfig().getDouble(path + "horizontal-ratio", 0.80);
+        this.verticalRatio = getChecksConfig().getDouble(path + "vertical-ratio", 0.85);
+        this.horizontalRatio = getChecksConfig().getDouble(path + "horizontal-ratio", 0.80);
     }
 
     /**

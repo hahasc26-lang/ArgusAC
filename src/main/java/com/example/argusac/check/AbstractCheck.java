@@ -46,8 +46,8 @@ public abstract class AbstractCheck implements Check {
     @Override
     public void setEnabled(boolean enabled) {
         this.enabled = enabled;
-        plugin.getConfig().set("checks." + name + ".enabled", enabled);
-        plugin.saveConfig();
+        plugin.getChecksConfig().set("checks." + name + ".enabled", enabled);
+        plugin.saveChecksConfig();
     }
 
     @Override
@@ -72,10 +72,11 @@ public abstract class AbstractCheck implements Check {
 
     @Override
     public void reloadConfig() {
+        FileConfiguration checksConfig = plugin.getChecksConfig();
         FileConfiguration config = plugin.getConfig();
         String path = "checks." + name + ".";
-        this.enabled = config.getBoolean(path + "enabled", true);
-        this.maxVl = config.getInt(path + "max-vl", 15);
+        this.enabled = checksConfig.getBoolean(path + "enabled", true);
+        this.maxVl = checksConfig.getInt(path + "max-vl", 15);
 
         // 回退模块配置覆写 (回退作为默认处罚手段，默认 min-vl 为全局 default-min-vl: 1)
         int defaultMinVl = config.getInt("setback.default-min-vl", 1);
@@ -83,6 +84,13 @@ public abstract class AbstractCheck implements Check {
         this.setbackEnabled = config.getBoolean(setbackPath + "enabled", true);
         this.setbackMinVl = config.getInt(setbackPath + "min-vl", defaultMinVl);
         this.setbackMode = config.getString(setbackPath + "mode", plugin.getSetbackManager().getDefaultMode()).toUpperCase();
+    }
+
+    /**
+     * 获取 checks.yml 独立配置对象
+     */
+    protected FileConfiguration getChecksConfig() {
+        return plugin.getChecksConfig();
     }
 
     /**
