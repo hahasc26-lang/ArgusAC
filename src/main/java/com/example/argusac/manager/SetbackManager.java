@@ -358,12 +358,12 @@ public class SetbackManager implements Listener {
                 User user = PacketEvents.getAPI().getPlayerManager().getUser(player);
                 if (user != null) {
                     try {
-                        // PacketEvents 2.x 标准构造: (x, y, z, yaw, pitch, relativeFlags, teleportId)
+                        // PacketEvents 2.x 标准构造: (x, y, z, yaw, pitch, relativeFlags, teleportId, dismountVehicle)
                         WrapperPlayServerPlayerPositionAndLook packet =
                                 new WrapperPlayServerPlayerPositionAndLook(
                                         target.getX(), target.getY(), target.getZ(),
                                         target.getYaw(), target.getPitch(),
-                                        (byte) 0, 0
+                                        (byte) 0, 0, false
                                 );
                         user.sendPacket(packet);
                         packetSent = true;
