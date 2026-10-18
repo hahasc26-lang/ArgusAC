@@ -89,7 +89,7 @@ public class ViolationManager {
         boolean defaultPunishmentTriggered = false;
         String logMode = "LOG_ONLY";
 
-        if (check.getType() == com.example.argusac.api.CheckType.MOVEMENT) {
+        if (check.getType() == com.example.argusac.api.CheckType.MOVEMENT || (check.isSetbackEnabled() && moveEvent != null)) {
             String mode = check.getSetbackMode();
             if ("CANCEL".equalsIgnoreCase(mode) && moveEvent != null) {
                 // CANCEL 模式：达到 min-vl 门槛后立即在当前游戏刻直接阻断本次移动，无冷却无缝锚定
