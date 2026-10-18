@@ -198,9 +198,27 @@ public class SpeedCheck extends AbstractCheck {
             double previousBuffer = data.getSpeedBuffer();
             double currentBuffer = previousBuffer + diff;
 
-            // 优化：低 VL 与轻微网络抖动平滑过渡 (Ping-Adaptive Jitter Smoothing)
-            // 当超出量极小且未达到处罚阈值时，不强制原地急刹，而是将位移矢量等比截断至合法极值，保持前行顺畅！
-            if (diff < 0.08 && currentBuffer < speedBufferMax) {
+            if (currentBuffer > speedBufferMax) {
+                // 超出平滑缓冲容限，判定蓄意超速作弊：达到 min-vl 门槛后方才直接取消事件，未达门槛则平滑截断，杜绝误触回退
+                int currentVl = plugin.getViolationManager().getViolationLevel(player.getUniqueId(), this);
+                if (currentVl + 1 >= getSetbackMinVl()) {
+                    event.setCancelled(true);
+                } else {
+                    double ratio = allowedLimit / distance;
+                    Location clampedTo = from.clone();
+                    clampedTo.setX(from.getX() + (to.getX() - from.getX()) * ratio);
+                    clampedTo.setZ(from.getZ() + (to.getZ() - from.getZ()) * ratio);
+                    clampedTo.setY(to.getY());
+                    clampedTo.setYaw(to.getYaw());
+                    clampedTo.setPitch(to.getPitch());
+                    event.setTo(clampedTo);
+                }
+                String details = String.format("dist=%.3f, max=%.3f, buf=%.3f, onIce=%b, airTicks=%d",
+                        distance, allowedLimit, currentBuffer, onIce, airTicks);
+                flag(player, 1, details, event);
+                data.setSpeedBuffer(currentBuffer - (speedBufferMax * 0.5));
+            } else {
+                // 仍在缓冲区容差之内 (轻微网络抖动/台阶起跳)：平滑截断多余矢量，保持玩家前行连贯，彻底消除误报卡顿
                 double ratio = allowedLimit / distance;
                 Location clampedTo = from.clone();
                 clampedTo.setX(from.getX() + (to.getX() - from.getX()) * ratio);
@@ -209,19 +227,6 @@ public class SpeedCheck extends AbstractCheck {
                 clampedTo.setYaw(to.getYaw());
                 clampedTo.setPitch(to.getPitch());
                 event.setTo(clampedTo);
-                data.setSpeedBuffer(currentBuffer);
-                return;
-            }
-
-            // 像 GrimAC 一样，一旦检测到蓄意超速或达到阈值，当帧立即在事件内直接取消！
-            event.setCancelled(true);
-
-            if (currentBuffer > speedBufferMax) {
-                String details = String.format("dist=%.3f, max=%.3f, buf=%.3f, onIce=%b, airTicks=%d",
-                        distance, allowedLimit, currentBuffer, onIce, airTicks);
-                flag(player, 1, details, event);
-                data.setSpeedBuffer(currentBuffer - (speedBufferMax * 0.5));
-            } else {
                 data.setSpeedBuffer(currentBuffer);
             }
         } else {

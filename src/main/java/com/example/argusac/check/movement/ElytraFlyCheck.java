@@ -69,6 +69,7 @@ public class ElytraFlyCheck extends AbstractCheck {
     private double hoverMaxHorizontalSpeed;
     private double hoverMaxVerticalSpeed;
     private int hoverTicksThreshold;
+    private int hoverMaxUnpoweredLevelTicks;
 
     // 4. ElytraFirework 参数
     private double fireworkMinUnpropelledAccel;
@@ -76,6 +77,12 @@ public class ElytraFlyCheck extends AbstractCheck {
 
     // 5. ElytraGlideState 参数
     private boolean glideStateCheckDurability;
+    private boolean glideStateArmorSwapCancel;
+    private long glideStateRapidSwapThresholdMs;
+
+    // 2. ElytraAscend 补充动能参数
+    private double ascendLawfulMinPriorSpeed;
+    private double ascendLawfulMinDecay;
 
     // 6. ElytraTimer 参数
     private int timerSampleWindowSize;
@@ -120,7 +127,7 @@ public class ElytraFlyCheck extends AbstractCheck {
         this.speedSubCheck.reload(
                 config.getBoolean(basePath + "speed.enabled", true),
                 config.getInt(basePath + "speed.min-vl", 3),
-                config.getString(basePath + "speed.setback-mode", "HARD")
+                config.getString(basePath + "speed.setback-mode", "CANCEL")
         );
         this.speedMaxUnboosted = config.getDouble(basePath + "speed.max-unboosted-speed", 1.45);
         this.speedMaxBoosted = config.getDouble(basePath + "speed.max-boosted-speed", 2.60);
@@ -130,43 +137,48 @@ public class ElytraFlyCheck extends AbstractCheck {
         this.ascendSubCheck.reload(
                 config.getBoolean(basePath + "ascend.enabled", true),
                 config.getInt(basePath + "ascend.min-vl", 3),
-                config.getString(basePath + "ascend.setback-mode", "HARD")
+                config.getString(basePath + "ascend.setback-mode", "CANCEL")
         );
         this.ascendMaxVertical = config.getDouble(basePath + "ascend.max-vertical-ascent", 0.15);
-        this.ascendTicksThreshold = config.getInt(basePath + "ascend.ascend-ticks-threshold", 4);
+        this.ascendTicksThreshold = config.getInt(basePath + "ascend.ascend-ticks-threshold", 3);
+        this.ascendLawfulMinPriorSpeed = config.getDouble(basePath + "ascend.lawful-min-prior-speed", 0.70);
+        this.ascendLawfulMinDecay = config.getDouble(basePath + "ascend.lawful-min-decay", 0.015);
 
         // 子项三: ElytraHover
         this.hoverSubCheck.reload(
                 config.getBoolean(basePath + "hover.enabled", true),
                 config.getInt(basePath + "hover.min-vl", 3),
-                config.getString(basePath + "hover.setback-mode", "HARD")
+                config.getString(basePath + "hover.setback-mode", "CANCEL")
         );
         this.hoverMaxHorizontalSpeed = config.getDouble(basePath + "hover.max-horizontal-speed", 0.08);
         this.hoverMaxVerticalSpeed = config.getDouble(basePath + "hover.max-vertical-speed", 0.05);
-        this.hoverTicksThreshold = config.getInt(basePath + "hover.hover-ticks-threshold", 15);
+        this.hoverTicksThreshold = config.getInt(basePath + "hover.hover-ticks-threshold", 12);
+        this.hoverMaxUnpoweredLevelTicks = config.getInt(basePath + "hover.max-unpowered-level-ticks", 12);
 
         // 子项四: ElytraFirework
         this.fireworkSubCheck.reload(
                 config.getBoolean(basePath + "firework.enabled", true),
                 config.getInt(basePath + "firework.min-vl", 3),
-                config.getString(basePath + "firework.setback-mode", "HARD")
+                config.getString(basePath + "firework.setback-mode", "CANCEL")
         );
-        this.fireworkMinUnpropelledAccel = config.getDouble(basePath + "firework.min-unpropelled-accel", 0.12);
-        this.fireworkContinuousHighSpeedTicks = config.getInt(basePath + "firework.continuous-high-speed-ticks", 50);
+        this.fireworkMinUnpropelledAccel = config.getDouble(basePath + "firework.min-unpropelled-accel", 0.08);
+        this.fireworkContinuousHighSpeedTicks = config.getInt(basePath + "firework.continuous-high-speed-ticks", 20);
 
         // 子项五: ElytraGlideState (伪造鞘翅状态默认 min-vl 调低至 1，置信度极高)
         this.glideStateSubCheck.reload(
                 config.getBoolean(basePath + "glide-state.enabled", true),
                 config.getInt(basePath + "glide-state.min-vl", 1),
-                config.getString(basePath + "glide-state.setback-mode", "HARD")
+                config.getString(basePath + "glide-state.setback-mode", "CANCEL")
         );
         this.glideStateCheckDurability = config.getBoolean(basePath + "glide-state.check-chestplate-durability", true);
+        this.glideStateArmorSwapCancel = config.getBoolean(basePath + "glide-state.armor-swap-cancel", true);
+        this.glideStateRapidSwapThresholdMs = config.getLong(basePath + "glide-state.rapid-swap-threshold-ms", 150L);
 
         // 子项六: ElytraTimer
         this.timerSubCheck.reload(
                 config.getBoolean(basePath + "timer.enabled", true),
                 config.getInt(basePath + "timer.min-vl", 3),
-                config.getString(basePath + "timer.setback-mode", "SOFT")
+                config.getString(basePath + "timer.setback-mode", "CANCEL")
         );
         this.timerSampleWindowSize = config.getInt(basePath + "timer.sample-window-size", 20);
         this.timerMinAverageIntervalMs = config.getDouble(basePath + "timer.min-average-interval-ms", 44.0);
@@ -175,7 +187,7 @@ public class ElytraFlyCheck extends AbstractCheck {
         this.flipSubCheck.reload(
                 config.getBoolean(basePath + "flip.enabled", true),
                 config.getInt(basePath + "flip.min-vl", 3),
-                config.getString(basePath + "flip.setback-mode", "SOFT")
+                config.getString(basePath + "flip.setback-mode", "CANCEL")
         );
         this.flipWindowMs = config.getLong(basePath + "flip.window-ms", 1000L);
         this.flipMaxToggles = config.getInt(basePath + "flip.max-toggles", 4);
@@ -184,7 +196,7 @@ public class ElytraFlyCheck extends AbstractCheck {
         this.noFallSubCheck.reload(
                 config.getBoolean(basePath + "nofall.enabled", true),
                 config.getInt(basePath + "nofall.min-vl", 3),
-                config.getString(basePath + "nofall.setback-mode", "HARD")
+                config.getString(basePath + "nofall.setback-mode", "CANCEL")
         );
         this.noFallMinFallDistance = (float) config.getDouble(basePath + "nofall.min-fall-distance", 3.0);
         this.noFallGroundProximityDistance = config.getDouble(basePath + "nofall.ground-proximity-distance", 1.8);
@@ -252,31 +264,41 @@ public class ElytraFlyCheck extends AbstractCheck {
         elytraData.incrementGlideTicks();
 
         // ==============================================================================
-        // 子项五: ElytraGlideState (滑翔装备与耐久状态一致性检测)
-        // 限频检测，避免每 tick 调用 getInventory()
+        // 子项五: ElytraGlideState (滑翔装备与耐久状态实时逐 Tick 强校验)
+        // 彻底根除“换甲-开伞-换回胸甲”发包与 0 耐久滑翔作弊
         // ==============================================================================
         if (glideStateSubCheck.isEnabled()) {
-            if (now - elytraData.getLastChestplateCheckTime() > 1000L || elytraData.getGlideTicks() == 1) {
-                elytraData.setLastChestplateCheckTime(now);
-                ItemStack chest = player.getInventory().getChestplate();
-                if (chest == null || chest.getType() != Material.ELYTRA) {
+            ItemStack chest = player.getInventory().getChestplate();
+            if (chest == null || chest.getType() != Material.ELYTRA) {
+                flagSubCheck(player, data, glideStateSubCheck, 5,
+                        String.format("[ElytraGlideState] Spoofed glide: player is gliding without elytra in slot 38 (item=%s)",
+                                chest != null ? chest.getType().name() : "EMPTY"), event);
+                player.setGliding(false);
+                elytraData.resetGlideState();
+                return;
+            }
+            if (glideStateCheckDurability && chest.getItemMeta() instanceof Damageable damageable) {
+                if (damageable.getDamage() >= Material.ELYTRA.getMaxDurability() - 1) {
                     flagSubCheck(player, data, glideStateSubCheck, 5,
-                            "[ElytraGlideState] Spoofed glide: player is gliding without elytra chestplate", event);
+                            "[ElytraGlideState] Spoofed glide: elytra durability is broken (<=1 durability)", event);
                     player.setGliding(false);
                     elytraData.resetGlideState();
                     return;
                 }
-                if (glideStateCheckDurability && chest.getItemMeta() instanceof Damageable damageable) {
-                    if (damageable.getDamage() >= Material.ELYTRA.getMaxDurability() - 1) {
-                        flagSubCheck(player, data, glideStateSubCheck, 5,
-                                "[ElytraGlideState] Spoofed glide: elytra durability is 0 (broken)", event);
-                        player.setGliding(false);
-                        elytraData.resetGlideState();
-                        return;
-                    }
-                }
-                elytraData.setElytraEquipped(true);
             }
+            // 换甲瞬发作弊校验：若在滑翔移动中检测到近期刚刚发生换甲交互且换甲频次异常
+            if (now - elytraData.getLastArmorSwapTime() < glideStateRapidSwapThresholdMs) {
+                if (elytraData.getArmorSwapCount() >= 2) {
+                    flagSubCheck(player, data, glideStateSubCheck, 4,
+                            String.format("[ElytraGlideState] Rapid armor hot-swap while gliding (swaps=%d, timeDiff=%dms)",
+                                    elytraData.getArmorSwapCount(), (now - elytraData.getLastArmorSwapTime())), event);
+                    player.setGliding(false);
+                    elytraData.resetGlideState();
+                    return;
+                }
+            }
+            elytraData.setElytraEquipped(true);
+            elytraData.setLastChestplateCheckTime(now);
         }
 
         // 计算当前 Tick 基础运动学参量
@@ -287,7 +309,8 @@ public class ElytraFlyCheck extends AbstractCheck {
         float pitch = to.getPitch();
 
         // 判断环境与推进状态
-        boolean fireworkBoosted = (now - elytraData.getLastFireworkTime()) < fireworkBoostDurationMs;
+        boolean fireworkBoosted = (now - elytraData.getLastFireworkTime()) < fireworkBoostDurationMs
+                || data.hasLegalVelocity(VelocitySourceType.FIREWORK);
         var adapter = com.example.argusac.compat.VersionAdapterFactory.getAdapter();
         boolean riptideActive = (now - elytraData.getLastRiptideTime()) < riptideDurationMs || adapter.isRiptiding(player);
         boolean externalVelocityActive = (now - elytraData.getLastExternalVelocityTime()) < externalVelocityDurationMs
@@ -319,7 +342,7 @@ public class ElytraFlyCheck extends AbstractCheck {
         }
 
         // ==============================================================================
-        // 子项一: ElytraSpeed (滑翔速度上限)
+        // 子项一: ElytraSpeed (滑翔速度上限与俯冲动能换算)
         // ==============================================================================
         if (speedSubCheck.isEnabled() && !riptideActive && !externalVelocityActive) {
             double allowedSpeed;
@@ -331,6 +354,9 @@ public class ElytraFlyCheck extends AbstractCheck {
                 if (pitch > 0.0f) {
                     double diveBonus = Math.sin(Math.toRadians(pitch)) * speedPitchDiveMultiplier;
                     allowedSpeed += diveBonus;
+                    elytraData.setPeakDiveSpeed(Math.max(elytraData.getPeakDiveSpeed(), horizontalDistance));
+                } else {
+                    elytraData.setPeakDiveSpeed(Math.max(0.0, elytraData.getPeakDiveSpeed() * 0.98));
                 }
             }
 
@@ -352,22 +378,46 @@ public class ElytraFlyCheck extends AbstractCheck {
         }
 
         // ==============================================================================
-        // 子项二: ElytraAscend (无推进上升)
+        // 子项二: ElytraAscend (无推进上升与机械能守恒仿真)
         // ==============================================================================
         if (ascendSubCheck.isEnabled()) {
-            if (deltaY > ascendMaxVertical && !fireworkBoosted && !riptideActive && !externalVelocityActive
+            boolean takeoffGrace = (now - elytraData.getGlideStartTime()) < takeoffGraceDurationMs || elytraData.getGlideTicks() <= 8;
+            if (deltaY > ascendMaxVertical && !fireworkBoosted && !takeoffGrace && !riptideActive && !externalVelocityActive
                     && !inBubbleColumn && !adapter.hasPotionEffect(player, com.example.argusac.compat.CompatPotionType.LEVITATION)) {
-                // 原版物理仰角拉升爬升判定：前一 tick 拥有充沛初速度且当前水平速度正急剧衰减失速 (能量守恒)
-                boolean lawfulPullUpClimb = elytraData.getLastHorizontalSpeed() > 0.75
-                        && (horizontalDistance < elytraData.getLastHorizontalSpeed() - 0.02)
+                // 超越任何原版俯冲换能极限的巨额瞬间飞升（> 0.35格/tick）：首帧秒截断
+                if (deltaY > 0.35) {
+                    String details = String.format("[ElytraAscend] Impossible vertical surge: deltaY=%.3f (> 0.35), pitch=%.1f, no-boost", deltaY, pitch);
+                    flagSubCheck(player, data, ascendSubCheck, 4, details, event);
+                    if (hasSetbackOccurred(to, event.getTo())) {
+                        elytraData.resetGlideState();
+                        return;
+                    }
+                }
+
+                // 机械能守恒定律严密仿真：向上爬升 (deltaY > 0) 仅允许由俯冲动能向势能转换 (E = mgh + 0.5mv^2)
+                double prevSpeed = elytraData.getLastHorizontalSpeed();
+                double speedLoss = prevSpeed - horizontalDistance;
+                boolean lawfulPullUpClimb = prevSpeed >= ascendLawfulMinPriorSpeed
+                        && speedLoss >= ascendLawfulMinDecay
                         && elytraData.getAscendTicks() < 3;
+
+                // 若在无推进情况下向上爬升，且水平速度不但未衰减反而维持或增加（能量凭空生成，违背物理法则），首帧直接加权违规
+                if (deltaY > 0.08 && speedLoss < -0.01) {
+                    String details = String.format("[ElytraAscend] Kinetic energy violation: climbing upwards (deltaY=%.3f) with acceleration (diff=%+.3f, speed=%.2f, pitch=%.1f)",
+                            deltaY, -speedLoss, horizontalDistance, pitch);
+                    flagSubCheck(player, data, ascendSubCheck, 3, details, event);
+                    if (hasSetbackOccurred(to, event.getTo())) {
+                        elytraData.resetGlideState();
+                        return;
+                    }
+                }
 
                 if (!lawfulPullUpClimb) {
                     elytraData.incrementAscendTicks();
                     if (elytraData.getAscendTicks() >= ascendTicksThreshold) {
-                        String details = String.format("[ElytraAscend] deltaY=%.3f (> %.2f), ascendTicks=%d, speed=%.2f, pitch=%.1f, no-boost",
-                                deltaY, ascendMaxVertical, elytraData.getAscendTicks(), horizontalDistance, pitch);
-                        flagSubCheck(player, data, ascendSubCheck, 2, details, event);
+                        String details = String.format("[ElytraAscend] Unpowered continuous climb: deltaY=%.3f (> %.2f), ascendTicks=%d, speed=%.2f, loss=%.3f, pitch=%.1f",
+                                deltaY, ascendMaxVertical, elytraData.getAscendTicks(), horizontalDistance, speedLoss, pitch);
+                        flagSubCheck(player, data, ascendSubCheck, 3, details, event);
                         if (hasSetbackOccurred(to, event.getTo())) {
                             elytraData.resetGlideState();
                             return;
@@ -382,19 +432,20 @@ public class ElytraFlyCheck extends AbstractCheck {
         }
 
         // ==============================================================================
-        // 子项三: ElytraHover (空中悬停)
+        // 子项三: ElytraHover (空中悬停与无动力无限平飞)
         // ==============================================================================
         if (hoverSubCheck.isEnabled()) {
             long glideDuration = now - elytraData.getGlideStartTime();
             // 起跳瞬间豁免、缓降/悬浮药水豁免、贴墙/方块碰撞豁免
             if (glideDuration >= takeoffGraceDurationMs && !hasLevitationOrSlowFall
                     && !isInLiquidOrClimbableOrNearWall(player, to) && !inBubbleColumn) {
+                // 1. 零动量空中悬停 (Zero-motion stall / PacketFly)
                 if (horizontalDistance < hoverMaxHorizontalSpeed && Math.abs(deltaY) < hoverMaxVerticalSpeed) {
                     elytraData.incrementHoverTicks();
                     if (elytraData.getHoverTicks() >= hoverTicksThreshold) {
-                        String details = String.format("[ElytraHover] speed=%.3f, deltaY=%.3f, hoverTicks=%d, duration=%dms",
+                        String details = String.format("[ElytraHover] Zero-motion mid-air hover: speed=%.3f, deltaY=%.3f, hoverTicks=%d, duration=%dms",
                                 horizontalDistance, deltaY, elytraData.getHoverTicks(), glideDuration);
-                        flagSubCheck(player, data, hoverSubCheck, 2, details, event);
+                        flagSubCheck(player, data, hoverSubCheck, 3, details, event);
                         if (hasSetbackOccurred(to, event.getTo())) {
                             elytraData.resetGlideState();
                             return;
@@ -403,8 +454,30 @@ public class ElytraFlyCheck extends AbstractCheck {
                 } else {
                     elytraData.setHoverTicks(0);
                 }
+
+                // 2. 无动力无限平飞/定高巡航 (Unpowered Infinite Flat Cruise / Control Mode)
+                // 原版滑翔中无推进时必须伴随垂直高度下降 (vY <= -0.02)；若 deltaY >= -0.015 且保持高水平速度，即判定伪造动力
+                if (!fireworkBoosted && !riptideActive && !externalVelocityActive) {
+                    if (deltaY >= -0.015 && horizontalDistance >= 0.45) {
+                        elytraData.incrementConsecutiveLevelTicks();
+                        if (elytraData.getConsecutiveLevelTicks() >= hoverMaxUnpoweredLevelTicks) {
+                            String details = String.format("[ElytraHover] Unpowered infinite flat cruise: deltaY=%.3f, speed=%.2f, levelTicks=%d, pitch=%.1f",
+                                    deltaY, horizontalDistance, elytraData.getConsecutiveLevelTicks(), pitch);
+                            flagSubCheck(player, data, hoverSubCheck, 3, details, event);
+                            if (hasSetbackOccurred(to, event.getTo())) {
+                                elytraData.resetGlideState();
+                                return;
+                            }
+                        }
+                    } else {
+                        elytraData.setConsecutiveLevelTicks(0);
+                    }
+                } else {
+                    elytraData.setConsecutiveLevelTicks(0);
+                }
             } else {
                 elytraData.setHoverTicks(0);
+                elytraData.setConsecutiveLevelTicks(0);
             }
         }
 
@@ -475,23 +548,54 @@ public class ElytraFlyCheck extends AbstractCheck {
         long now = System.currentTimeMillis();
 
         if (willGlide) {
+            // 校验地面状态：站立于实体方块上时无法开启滑翔姿态
+            if (player.isOnGround()) {
+                Block under = player.getLocation().clone().subtract(0, 0.1, 0).getBlock();
+                if (under.getType().isSolid()) {
+                    flagSubCheck(player, data, glideStateSubCheck, 2,
+                            "[ElytraGlideState] Toggle rejected: cannot start gliding while standing on solid ground", null);
+                    event.setCancelled(true);
+                    player.setGliding(false);
+                    elytraData.resetGlideState();
+                    plugin.getSetbackManager().sendPositionSyncPacket(player, player.getLocation());
+                    return;
+                }
+            }
+
             // 校验鞘翅装备
             ItemStack chest = player.getInventory().getChestplate();
             if (chest == null || chest.getType() != Material.ELYTRA) {
                 flagSubCheck(player, data, glideStateSubCheck, 5,
-                        "[ElytraGlideState] Toggle rejected: no elytra equipped", null);
+                        String.format("[ElytraGlideState] Toggle rejected: no elytra equipped in chestplate slot (item=%s)",
+                                chest != null ? chest.getType().name() : "EMPTY"), null);
                 event.setCancelled(true);
+                player.setGliding(false);
                 elytraData.resetGlideState();
+                plugin.getSetbackManager().sendPositionSyncPacket(player, player.getLocation());
                 return;
             }
             if (glideStateCheckDurability && chest.getItemMeta() instanceof Damageable damageable) {
                 if (damageable.getDamage() >= Material.ELYTRA.getMaxDurability() - 1) {
                     flagSubCheck(player, data, glideStateSubCheck, 5,
-                            "[ElytraGlideState] Toggle rejected: elytra broken (0 durability)", null);
+                            "[ElytraGlideState] Toggle rejected: elytra broken (<=1 durability)", null);
                     event.setCancelled(true);
+                    player.setGliding(false);
                     elytraData.resetGlideState();
+                    plugin.getSetbackManager().sendPositionSyncPacket(player, player.getLocation());
                     return;
                 }
+            }
+
+            // 换甲后极速开伞作弊拦截 (防“换甲-开伞-换回胸甲”发包时序穿透)
+            if (now - elytraData.getLastArmorSwapTime() < glideStateRapidSwapThresholdMs) {
+                flagSubCheck(player, data, glideStateSubCheck, 4,
+                        String.format("[ElytraGlideState] Toggle rejected: rapid glide toggle %dms after armor swap (Armor-spoof exploit)",
+                                (now - elytraData.getLastArmorSwapTime())), null);
+                event.setCancelled(true);
+                player.setGliding(false);
+                elytraData.resetGlideState();
+                plugin.getSetbackManager().sendPositionSyncPacket(player, player.getLocation());
+                return;
             }
 
             // 子项八: ElytraNoFall (触地瞬间频繁开关滑翔免摔滥用)
@@ -526,11 +630,14 @@ public class ElytraFlyCheck extends AbstractCheck {
             elytraData.recordToggle(now, player.getLocation());
             int toggleCount = elytraData.getToggleCountInWindow(flipWindowMs);
             if (toggleCount > flipMaxToggles) {
+                event.setCancelled(true);
+                player.setGliding(false);
+                elytraData.clearToggleTimestamps();
+                elytraData.resetGlideState();
+                plugin.getSetbackManager().sendPositionSyncPacket(player, player.getLocation());
                 String details = String.format("[ElytraFlip] High frequency glide toggle: %d toggles in %dms (max=%d)",
                         toggleCount, flipWindowMs, flipMaxToggles);
                 flagSubCheck(player, data, flipSubCheck, 3, details, null);
-                elytraData.clearToggleTimestamps();
-                elytraData.resetGlideState();
             }
         }
     }
@@ -551,16 +658,26 @@ public class ElytraFlyCheck extends AbstractCheck {
         ItemStack item = event.getItem();
         ItemStack mainHand = player.getInventory().getItemInMainHand();
         ItemStack offHand = player.getInventory().getItemInOffHand();
-        boolean isFirework = (item != null && item.getType() == Material.FIREWORK_ROCKET)
-                || (mainHand != null && mainHand.getType() == Material.FIREWORK_ROCKET)
-                || (offHand != null && offHand.getType() == Material.FIREWORK_ROCKET);
+        ItemStack fireworkStack = null;
+        if (item != null && item.getType() == Material.FIREWORK_ROCKET) {
+            fireworkStack = item;
+        } else if (mainHand != null && mainHand.getType() == Material.FIREWORK_ROCKET) {
+            fireworkStack = mainHand;
+        } else if (offHand != null && offHand.getType() == Material.FIREWORK_ROCKET) {
+            fireworkStack = offHand;
+        }
 
-        if (isFirework) {
+        if (fireworkStack != null) {
             if (player.isGliding() || data.isElytraGliding()) {
                 long now = System.currentTimeMillis();
+                long effectiveDuration = fireworkBoostDurationMs;
+                if (fireworkStack.getItemMeta() instanceof org.bukkit.inventory.meta.FireworkMeta fm) {
+                    int power = Math.max(1, Math.min(3, fm.getPower()));
+                    effectiveDuration = Math.max(fireworkBoostDurationMs, power * 950L + 500L);
+                }
                 data.getElytraData().setLastFireworkTime(now);
                 data.getElytraData().setLastFireworkLocation(player.getLocation().clone());
-                data.grantLegalVelocity(VelocitySourceType.FIREWORK, fireworkBoostDurationMs);
+                data.grantLegalVelocity(VelocitySourceType.FIREWORK, effectiveDuration);
                 data.getElytraData().setAscendTicks(0);
             }
         }

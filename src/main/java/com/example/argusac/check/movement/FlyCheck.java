@@ -111,6 +111,8 @@ public class FlyCheck extends AbstractCheck {
             // 若 airTicks >= 5 仍持续向上拔高 (> 0.001)，或在滞空中期垂直冲量超出递减包络线，首帧即判定为反重力/喷气飞升作弊
             boolean hasAscentExemption = adapter.hasPotionEffect(player, CompatPotionType.LEVITATION)
                     || adapter.isRiptiding(player)
+                    || adapter.isGliding(player)
+                    || data.isElytraGliding()
                     || data.hasAnyLegalVelocity()
                     || data.hasRecentVelocity(1000L)
                     || (recentlyPlacedBlock && hasBlockBelow(to, adapter, 1.20));
@@ -130,24 +132,44 @@ public class FlyCheck extends AbstractCheck {
             }
 
             // 2. 悬空滞空与异常重力下坠检测 (Hover & Anti-Gravity)
-            // 解决旧版本 12 ticks (600ms) 滞后漏洞：
-            // A. 完全平飞悬空 (Math.abs(deltaY) < 0.005)：原版跳跃顶点仅能维持 1 tick 瞬时零点，airTicks >= 4 持续水平滞空即刻判定悬空
-            // B. 慢速反重力漂浮 (deltaY > -0.05)：原版跳跃在第 5 tick 之后必定加速下坠 (第 6 tick -0.078, 第 7 tick -0.155)；
-            //    airTicks >= 6 仍未维持正常重力下坠者，直接阻断并当帧拉回锚点
+            // A. 完全平飞悬空：原版跳跃顶点仅能维持 1 tick 瞬时零点 (deltaY ~ 0.003)，必须连续 3 tick 以上滞空方才判定悬空
+            // B. 慢速反重力漂浮：原版跳跃在第 5 tick 之后必定加速下坠 (第 6 tick -0.078, 第 7 tick -0.155)；
+            //    必须连续 4 tick 以上未维持正常重力下坠且排除蜘蛛网、缓降、蜂蜜块、粘液反弹方可判定
+            boolean slowingBlockOrBounce = isSlowingOrBounceBlock(from) || isSlowingOrBounceBlock(to) || data.getSlimeTicks() > 0;
             if (!hasAscentExemption
+                    && !slowingBlockOrBounce
                     && !adapter.hasPotionEffect(player, CompatPotionType.SLOW_FALLING)
                     && !adapter.hasPotionEffect(player, CompatPotionType.LEVITATION)) {
-                if (airTicks >= 4 && Math.abs(deltaY) < 0.005) {
-                    flag(player, 2, String.format("Hover (Flat) airTicks=%d, deltaY=%.4f", airTicks, deltaY), event);
-                    return;
-                } else if (airTicks >= 6 && deltaY > -0.05) {
-                    flag(player, 2, String.format("Hover (Anti-Gravity) airTicks=%d, deltaY=%.3f", airTicks, deltaY), event);
-                    return;
+                if (Math.abs(deltaY) < 0.006) {
+                    data.incrementFlatHoverTicks();
+                    if (data.getFlatHoverTicks() >= 3 && airTicks >= 4) {
+                        flag(player, 2, String.format("Hover (Flat) airTicks=%d, hoverTicks=%d, deltaY=%.4f",
+                                airTicks, data.getFlatHoverTicks(), deltaY), event);
+                        return;
+                    }
+                } else {
+                    data.resetFlatHoverTicks();
                 }
+
+                if (deltaY > -0.05 && deltaY <= 0.0) {
+                    data.incrementAntiGravityTicks();
+                    if (data.getAntiGravityTicks() >= 4 && airTicks >= 6) {
+                        flag(player, 2, String.format("Hover (Anti-Gravity) airTicks=%d, antiGravTicks=%d, deltaY=%.3f",
+                                airTicks, data.getAntiGravityTicks(), deltaY), event);
+                        return;
+                    }
+                } else if (deltaY < -0.05) {
+                    data.resetAntiGravityTicks();
+                }
+            } else {
+                data.resetFlatHoverTicks();
+                data.resetAntiGravityTicks();
             }
 
         } else {
             data.setAirTicks(0);
+            data.resetFlatHoverTicks();
+            data.resetAntiGravityTicks();
         }
     }
 
@@ -218,5 +240,22 @@ public class FlyCheck extends AbstractCheck {
             }
         }
         return false;
+    }
+
+    private boolean isSlowingOrBounceBlock(Location loc) {
+        if (loc == null || loc.getWorld() == null) return false;
+        Block b = loc.getBlock();
+        String name = b.getType().name();
+        if (name.contains("COBWEB") || name.contains("WEB")
+                || name.contains("POWDER_SNOW")
+                || name.contains("BERRY")
+                || name.contains("HONEY")
+                || name.contains("BUBBLE")
+                || name.contains("SLIME")) {
+            return true;
+        }
+        Block under = loc.clone().subtract(0, 0.5, 0).getBlock();
+        String underName = under.getType().name();
+        return underName.contains("HONEY") || underName.contains("SLIME") || underName.contains("BUBBLE");
     }
 }

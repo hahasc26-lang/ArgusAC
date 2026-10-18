@@ -19,6 +19,8 @@ public class ElytraData {
     private boolean elytraEquipped = false;
     private boolean elytraBroken = false;
     private long lastChestplateCheckTime = 0L;
+    private long lastArmorSwapTime = 0L;
+    private int armorSwapCount = 0;
 
     // 上一 Tick 运动学状态
     private Location lastLocation = null;
@@ -44,6 +46,8 @@ public class ElytraData {
     // 物理子项连续异常计数器
     private int ascendTicks = 0;
     private int hoverTicks = 0;
+    private int consecutiveLevelTicks = 0;
+    private double peakDiveSpeed = 0.0;
 
     // 滑翔移动 Tick 速率追踪 (Timer)
     private long lastMoveTimestamp = 0L;
@@ -66,6 +70,8 @@ public class ElytraData {
         this.glideTicks = 0;
         this.ascendTicks = 0;
         this.hoverTicks = 0;
+        this.consecutiveLevelTicks = 0;
+        this.peakDiveSpeed = 0.0;
         this.consecutiveHighSpeedTicks = 0;
         this.lastHorizontalSpeed = 0.0;
         this.lastDeltaY = 0.0;
@@ -387,5 +393,51 @@ public class ElytraData {
 
     public void setGlideStartTimeForNoFall(long glideStartTimeForNoFall) {
         this.glideStartTimeForNoFall = glideStartTimeForNoFall;
+    }
+
+    public long getLastArmorSwapTime() {
+        return lastArmorSwapTime;
+    }
+
+    public void setLastArmorSwapTime(long lastArmorSwapTime) {
+        this.lastArmorSwapTime = lastArmorSwapTime;
+    }
+
+    public int getArmorSwapCount() {
+        return armorSwapCount;
+    }
+
+    public void setArmorSwapCount(int armorSwapCount) {
+        this.armorSwapCount = armorSwapCount;
+    }
+
+    public int recordArmorSwap(long now) {
+        if (now - this.lastArmorSwapTime < 1500L) {
+            this.armorSwapCount++;
+        } else {
+            this.armorSwapCount = 1;
+        }
+        this.lastArmorSwapTime = now;
+        return this.armorSwapCount;
+    }
+
+    public int getConsecutiveLevelTicks() {
+        return consecutiveLevelTicks;
+    }
+
+    public void setConsecutiveLevelTicks(int consecutiveLevelTicks) {
+        this.consecutiveLevelTicks = consecutiveLevelTicks;
+    }
+
+    public void incrementConsecutiveLevelTicks() {
+        this.consecutiveLevelTicks++;
+    }
+
+    public double getPeakDiveSpeed() {
+        return peakDiveSpeed;
+    }
+
+    public void setPeakDiveSpeed(double peakDiveSpeed) {
+        this.peakDiveSpeed = peakDiveSpeed;
     }
 }

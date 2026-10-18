@@ -58,27 +58,23 @@ public class BadPacketsCheck extends AbstractCheck {
             }
         }
 
-        // 3. 冲突状态检测：常规站姿潜行下强开疾跑 (Sneak-Sprint Exploit，排除 1 格高爬行模式)
+        // 3. 冲突状态检测：常规站姿潜行下强开疾跑 (Sneak-Sprint Exploit，排除 1 格高爬行模式并容忍单 tick 状态切换延迟)
         boolean gliding = com.example.argusac.compat.VersionAdapterFactory.getAdapter().isGliding(player);
         boolean swimming = com.example.argusac.compat.VersionAdapterFactory.getAdapter().isSwimming(player);
         if (player.isSneaking() && player.isSprinting() && !gliding && !swimming && player.getEyeHeight() >= 1.4) {
-            flag(player, 1, "Sneak-Sprint Conflicting State");
-            player.setSprinting(false);
+            data.incrementSneakSprintTicks();
+            if (data.getSneakSprintTicks() >= 2) {
+                flag(player, 1, "Sneak-Sprint Conflicting State");
+                player.setSprinting(false);
+            }
+        } else {
+            data.resetSneakSprintTicks();
         }
 
         // 4. 睡眠状态异常移动检测 (Sleep-Move)
         if (player.isSleeping() && (event.getFrom().distanceSquared(to) > 0.05)) {
             event.setCancelled(true);
             flag(player, 2, "Moving while sleeping", event);
-        }
-
-        // 5. 重复移动包检测：客户端在同 tick 内发送两个位置完全相同的包
-        if (checkDuplicateMove) {
-            Location from = event.getFrom();
-            if (from.getX() == to.getX() && from.getY() == to.getY() && from.getZ() == to.getZ()
-                    && from.getYaw() == to.getYaw() && from.getPitch() == to.getPitch()) {
-                flag(player, 1, "Duplicate Move Packet");
-            }
         }
     }
 }

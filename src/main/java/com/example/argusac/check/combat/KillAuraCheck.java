@@ -110,12 +110,12 @@ public class KillAuraCheck extends AbstractCheck {
         }
 
         // 3. 准星光线脱靶命中检测 (Silent Aim / Aimbot RayTrace Miss)
-        if (distance > 1.2 && angle > 55.0) {
+        if (distance > 1.2 && angle > 65.0) {
             double distanceToCompensatedBox = (plugin.getHistoryTracker() != null)
                     ? plugin.getHistoryTracker().getCompensatedMinDistance(eyeLoc, livingVictim, ping)
                     : adapter.getEntityBoundingBox(livingVictim).distanceTo(eyeLoc);
 
-            if (distanceToCompensatedBox > distance + 0.8) {
+            if (distanceToCompensatedBox > distance + 1.2) {
                 plugin.getCombatMitigationHandler().mitigateDamage(event, attacker, livingVictim, this, 2,
                         String.format("Aimbot Ray Miss angle=%.1f, ping=%d (Backtracked)", angle, ping));
                 return;
@@ -137,11 +137,18 @@ public class KillAuraCheck extends AbstractCheck {
             float yawDelta = Math.abs(currentYaw - lastYaw);
             if (yawDelta > 180.0f) yawDelta = 360.0f - yawDelta;
 
-            // 攻击瞬间产生大跨度偏转且立刻命中
+            // 攻击瞬间产生大跨度偏转且立刻命中：区分人类单次快速拉枪甩枪 (Flick Shot) 与自瞄程序
             if (yawDelta > snapAngleThreshold && angle < 25.0) {
-                plugin.getCombatMitigationHandler().mitigateDamage(event, attacker, livingVictim, this, 2,
-                        String.format("Aimbot Snap deltaYaw=%.1f, angle=%.1f", yawDelta, angle));
-                return;
+                long snapNow = System.currentTimeMillis();
+                int snaps = data.recordSnap(snapNow);
+                // 仅对连续两次以上异常吸附或极端非人自瞄突变 (>110度且精准直指) 执行拦截
+                if (snaps >= 2 || (yawDelta > 110.0f && angle < 12.0)) {
+                    plugin.getCombatMitigationHandler().mitigateDamage(event, attacker, livingVictim, this, 2,
+                            String.format("Aimbot Snap deltaYaw=%.1f, angle=%.1f, count=%d", yawDelta, angle, snaps));
+                    return;
+                }
+            } else {
+                data.resetSnap();
             }
         }
 

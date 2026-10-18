@@ -218,13 +218,20 @@ public class JesusCheck extends AbstractCheck {
         // ==============================================================================
         if (onWaterSurface && !adapter.hasPotionEffect(player, CompatPotionType.DOLPHINS_GRACE)) {
             int depthStrider = getDepthStriderLevel(player);
-            double allowedSpeed = maxWaterSpeed + (depthStrider * 0.03);
+            double allowedSpeed = (depthStrider > 0)
+                    ? (0.28 + depthStrider * 0.05)
+                    : maxWaterSpeed;
+            if (player.isSprinting()) {
+                allowedSpeed *= 1.35;
+            }
             int speedAmp = adapter.getPotionAmplifier(player, CompatPotionType.SPEED);
             if (speedAmp >= 0) {
-                allowedSpeed += (speedAmp + 1) * 0.03;
+                allowedSpeed += (speedAmp + 1) * 0.06;
             }
+            // 流水冲刷与表面浮沉轻微冲击容差
+            allowedSpeed += 0.05;
 
-            if (hDist > allowedSpeed && hDist > 0.26) {
+            if (hDist > allowedSpeed && hDist > 0.32) {
                 if (!isSetbackImmune) {
                     flag(player, 1, String.format("WaterWalk Speed: hDist=%.3f, limit=%.3f (DS=%d)",
                             hDist, allowedSpeed, depthStrider), event);

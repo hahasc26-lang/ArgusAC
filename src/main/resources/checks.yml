@@ -80,7 +80,25 @@ checks:
     # 预期受击退后的水平响应比率
     horizontal-ratio: 0.80
 
-  # 8. 快速挖掘检测 (FastBreak)
+  # 8. 快速射箭与加特林弓外挂检测 (FastBow)
+  # 深度防御瞬发箭、高频加特林射击、绕过蓄力与 FakeLag/Blink 延迟堆包轰炸 (Packet Spoil)
+  FastBow:
+    enabled: true
+    max-vl: 12
+    # 满蓄力 (force >= 0.8) 最小允许蓄力 tick 数 (原版拉满为 20 ticks / 1000ms，放宽 2 ticks 容差)
+    min-charge-ticks: 18
+    # 满蓄力最小允许蓄力毫秒数
+    min-charge-ms: 850
+    # 两次射击之间的绝对最小毫秒间隔 (防连发加特林外挂)
+    min-shot-interval-ms: 250
+    # 1000ms 滑动窗口内允许的最大射箭次数 (防延迟堆包轰炸)
+    max-shots-per-second: 3
+    # 违规防御处置模式 (仅保留 CANCEL 与 NERF 两种模式):
+    # CANCEL: 静默取消射击并移除箭矢实体 (默认推荐)
+    # NERF: 削弱为脚下软绵箭 (初速度强制削减归零并垂直坠地)
+    mitigation-mode: "CANCEL"
+
+  # 9. 快速挖掘检测 (FastBreak)
   FastBreak:
     enabled: true
     max-vl: 15
@@ -121,7 +139,8 @@ checks:
     # 协议级 50ms 时钟漂移平衡检测 (防 1.05x ~ 2.0x 变速齿轮与发包轰炸)
     timer-check: true
 
-  # 13. 鞘翅飞行物理检测 (ElytraFly)
+  # 13. 鞘翅飞行与“甲飞”作弊检测 (ElytraFly / PacketFly / Control Mode)
+  # 全面防御通过伪造滑翔发包、换甲漏洞、无动力爬升、无限平飞与空中悬停等“甲飞”作弊手段
   ElytraFly:
     enabled: true
     max-vl: 15
@@ -139,70 +158,75 @@ checks:
       # 服务端 TPS 跌落至此阈值以下时自动放宽判定
       min-server-tps: 17.5
 
-    # 子项 1: 滑翔最大水平速度
+    # 子项 1: 滑翔最大水平速度与俯冲动能换算
     speed:
       enabled: true
       max-unboosted-speed: 1.45
       max-boosted-speed: 2.60
       pitch-dive-multiplier: 0.55
       min-vl: 3
-      setback-mode: "HARD"
+      setback-mode: "CANCEL"
 
-    # 子项 2: 无动力异常爬升
+    # 子项 2: 无动力异常爬升 (机械能守恒定律严厉约束)
     ascend:
       enabled: true
       max-vertical-ascent: 0.15
-      ascend-ticks-threshold: 4
+      ascend-ticks-threshold: 3
+      lawful-min-prior-speed: 0.70
+      lawful-min-decay: 0.015
       min-vl: 3
-      setback-mode: "HARD"
+      setback-mode: "CANCEL"
 
-    # 子项 3: 空中零动量滞空悬停
+    # 子项 3: 空中零动量滞空悬停与定高无限平飞 (防 PacketFly 悬空定点挂机与 Control Mode)
     hover:
       enabled: true
       max-horizontal-speed: 0.08
       max-vertical-speed: 0.05
-      hover-ticks-threshold: 15
+      hover-ticks-threshold: 12
+      max-unpowered-level-ticks: 12
       min-vl: 3
-      setback-mode: "HARD"
+      setback-mode: "CANCEL"
 
-    # 子项 4: 烟花持续高速异常
+    # 子项 4: 烟花持续高速异常 (无推进自发加速与无限高速续航拦截)
     firework:
       enabled: true
-      min-unpropelled-accel: 0.12
-      continuous-high-speed-ticks: 50
+      min-unpropelled-accel: 0.08
+      continuous-high-speed-ticks: 20
       min-vl: 3
-      setback-mode: "HARD"
+      setback-mode: "CANCEL"
 
-    # 子项 5: 鞘翅装备耐久与滑翔状态校验
+    # 子项 5: 38号胸甲槽位装备与耐久实时强校验 (防脱甲偷飞、0耐久假开伞与换甲时序穿透)
     glide-state:
       enabled: true
       check-chestplate-durability: true
+      armor-swap-cancel: true
+      rapid-swap-threshold-ms: 150
       min-vl: 1
-      setback-mode: "HARD"
+      setback-mode: "CANCEL"
 
-    # 子项 6: 滑翔高频发包间隔检测
+    # 子项 6: 滑翔高频发包间隔检测 (Timer 变速时钟平衡)
     timer:
       enabled: true
       sample-window-size: 20
       min-average-interval-ms: 44.0
       min-vl: 3
-      setback-mode: "SOFT"
+      setback-mode: "CANCEL"
 
-    # 子项 7: 极速开关鞘翅姿态切换
+    # 子项 7: 极速开关鞘翅姿态切换 (GlideFlip 限频拦截)
     flip:
       enabled: true
       window-ms: 1000
       max-toggles: 4
       min-vl: 3
-      setback-mode: "SOFT"
+      setback-mode: "CANCEL"
 
-    # 子项 8: 临地切滑翔免除坠落伤害漏洞
+    # 子项 8: 临地切滑翔免除坠落伤害漏洞 (重复滥用判定)
     nofall:
       enabled: true
       min-fall-distance: 3.0
       ground-proximity-distance: 1.8
       min-vl: 3
-      setback-mode: "HARD"
+      setback-mode: "CANCEL"
 
   # 14. 水上行走与水面虚假悬浮检测 (Jesus)
   Jesus:

@@ -206,7 +206,7 @@ setback:
     ElytraFly:
       enabled: true
       min-vl: 3
-      mode: "HARD"
+      mode: "CANCEL"
     Jesus:
       enabled: true
       min-vl: 1
@@ -222,6 +222,10 @@ setback:
       min-vl: 1
       mode: "HARD"
     AutoClicker:
+      enabled: false
+      min-vl: 1
+      mode: "HARD"
+    FastBow:
       enabled: false
       min-vl: 1
       mode: "HARD"

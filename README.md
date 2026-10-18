@@ -55,7 +55,7 @@
 
 ## Checks
 
-ArgusAC provides comprehensive, non-intrusive cheat coverage across 25 dedicated check modules and sub-checks:
+ArgusAC provides comprehensive, non-intrusive cheat coverage across 26 dedicated check modules and sub-checks:
 
 ### 1. Movement Checks (12 Checks)
 
@@ -65,16 +65,16 @@ ArgusAC provides comprehensive, non-intrusive cheat coverage across 25 dedicated
 | `Fly` | Vertical Motion | Gravitational simulation, abnormal vertical ascent, anti-gravity floating, and hovering |
 | `NoFall` | Ground State | Packet-level `onGround` spoofing interception verified against server-side physical collision boxes |
 | `InventoryMove` | UI Interaction | Detects moving, sprinting, or jumping while viewing inventories, chests, or container screens |
-| `ElytraSpeed` | Gliding Speed | Enforces level flight and pitch-assisted dive speed limits |
-| `ElytraAscend` | Unpowered Climb | Blocks unpowered upward ascent without fireworks or bubble columns |
-| `ElytraHover` | Mid-Air Stalls | Detects zero-speed mid-air hovering exploits and floating cheats |
-| `ElytraBoost` | Propulsion Physics | Validates firework rocket and riptide trident boost duration and propulsion physics |
-| `ElytraState` | Equipment & Pose | Verifies chestplate durability, bounding box height, and swimming/gliding state consistency |
-| `ElytraTimer` | Packet Timing | Enforces client packet timing intervals during high-speed gliding |
-| `ElytraToggle` | State Toggling | Blocks rapid glide toggling used to phase through blocks or bypass movement limits |
-| `ElytraNoFall` | Fall Damage Bypass | Prevents toggling elytra glide at the last moment to negate accumulated fall damage |
+| `ElytraSpeed` | Gliding Speed & Energy | Kinematic energy conservation enforcing unpowered speed decay and pitch-assisted dive limits (Anti-ElytraFly / Control Mode) |
+| `ElytraAscend` | Unpowered Climb | Mechanical energy constraints ($E=mgh+\frac{1}{2}mv^2$) blocking unpowered climb and infinite ascent |
+| `ElytraHover` | Mid-Air Stalls & Cruise | Intercepts zero-motion hovering stalls and unpowered flat cruising cheats (PacketFly / Float / Control Mode) |
+| `ElytraBoost` | Propulsion Physics | Validates firework rocket and riptide trident boost duration, impulse decay, and propulsion physics |
+| `ElytraState` | Slot 38 & Durability Lock | Real-time chestplate slot 38 lock & durability verification, intercepting armor hot-swap packet spoofing |
+| `ElytraTimer` | Packet Timing | Enforces client packet timing intervals during high-speed gliding against timer acceleration |
+| `ElytraToggle` | State Toggling Rate Limit | Blocks rapid glide toggling (GlideFlip) used to spoof momentum, phase through blocks, or bypass movement limits |
+| `ElytraNoFall` | Fall Damage Bypass | Prevents toggling elytra glide at the ground proximity to cancel accumulated fall damage |
 
-### 2. Combat Checks (4 Checks)
+### 2. Combat Checks (5 Checks)
 
 | Check | Focus Area | Description |
 |---|---|---|
@@ -82,6 +82,7 @@ ArgusAC provides comprehensive, non-intrusive cheat coverage across 25 dedicated
 | `AutoClicker` | Click Rate & Patterns | Netty-layer packet sampling checking maximum CPS and statistical interval variance (macro/autoclicker detection) |
 | `KillAura` | Target & Angles | Ray-traced obstacle occlusion, impossible viewing angle deviation, silent aim misses, and rapid multi-target switching |
 | `Velocity` | Knockback Response | Validates horizontal and vertical knockback response ratios and tracks pending server velocity packets (Anti-KB) |
+| `FastBow` | Bow Charge & Burst | Server-side charge tick counter (20-tick baseline with 2-tick tolerance), sliding-window burst protection, shot rate limiting, and dual CANCEL / NERF mitigations |
 
 ### 3. World Interaction Checks (3 Checks)
 
@@ -103,6 +104,17 @@ ArgusAC provides comprehensive, non-intrusive cheat coverage across 25 dedicated
 | `BadPackets (Duplicate)` | Packet Redundancy | Filters duplicate position packets sent within the same tick |
 
 Check parameters can be tuned in [`checks.yml`](src/main/resources/checks.yml). Use `/argus compat` to verify compatibility across versions.
+
+### FastBow Defense & Mitigation Modes
+
+ArgusAC features dedicated server-side physics and protocol-level defenses against rapid bow/crossbow exploits (Gatling Bow, Machine Gun Bow, Instant Bow, Packet Spoil / Blink bursts):
+
+- **Server-Side Charge Tick Counter** — Pulling a bow to full force ($1.0$) strictly requires 20 vanilla ticks (1,000 ms). ArgusAC timestamps bow draw interactions (`USE_ITEM` packet & Bukkit interact) and verifies elapsed ticks upon arrow release (`EntityShootBowEvent`), allowing an adaptive 1–2 tick jitter tolerance ($\ge 18$ ticks / 850 ms). Also supports Crossbow Quick Charge enchantments.
+- **Transaction & Sliding-Window Burst Defense** — Intercepts FakeLag and Blink exploits where clients freeze packet dispatch and unleash a burst of arrows within a single tick; limits shots to physically feasible rates within a 1,000 ms sliding window.
+- **Shot Rate Limiting** — Enforces a physical cooldown window between consecutive shots ($\ge 250$ ms) to prevent macro-assisted rapid firing.
+- **Dual Mitigation Strategies**:
+  - **`CANCEL` (Default / Recommended)**: Silently drops the shoot event and removes the arrow entity on the server tick, preventing arrow rain from overloading the server without consuming ammunition.
+  - **`NERF` (Limp Noodle Arrow)**: Neutralizes the projectile's initial velocity down to zero ($v_y = -0.05$), making the arrow drop harmlessly at the shooter's feet.
 
 ---
 
@@ -223,7 +235,7 @@ MIT License.
 
 ## 检测模块 (Checks)
 
-ArgusAC 构建了四层纵深防御体系，共计 25 个独立检测模块与细分子项，全方位覆盖各类作弊行为：
+ArgusAC 构建了四层纵深防御体系，共计 26 个独立检测模块与细分子项，全方位覆盖各类作弊行为：
 
 ### 1. 移动类检测 (Movement Checks - 12项)
 
@@ -233,16 +245,16 @@ ArgusAC 构建了四层纵深防御体系，共计 25 个独立检测模块与�
 | `Fly` | 垂直移动与重力模拟 | 确定性重力加速度预测，检测反重力上升、慢速微跳（Mini-Jump）与空中悬浮（Hover） |
 | `NoFall` | 接地状态欺诈 | 数据包层虚假接地标志（`onGround`）实时拦截与服务端物理碰撞体着陆校验 |
 | `InventoryMove` | 界面移动交互 | 检测在打开物品栏、箱子或各种容器界面时发生的非法移动、疾跑与起跳 |
-| `ElytraSpeed` | 滑翔极限速度 | 限制平飞与向下俯冲视角加成下的水平最大滑翔速度 |
-| `ElytraAscend` | 无动力仰角爬升 | 拦截无烟花火箭推进或激流三叉戟时的反常向上仰角飞升 |
-| `ElytraHover` | 空中悬停滞空 | 识别空中零动量悬空挂机或滞空平飞外挂 |
+| `ElytraSpeed` | 鞘翅速度与动能衰减 | 运动学机械能守恒，限制平飞与俯冲动能换算，拦截“甲飞”超速机动与 Control Mode |
+| `ElytraAscend` | 无动力仰角爬升 | 机械能守恒约束（$E=mgh+\frac{1}{2}mv^2$），拦截无烟花/激流推进时的反常向上仰角飞升与“甲飞”无限爬升 |
+| `ElytraHover` | 悬停滞空与无限巡航 | 识别空中零动量悬空挂机（PacketFly/悬浮）及无动力定高无限平飞巡航等“甲飞”外挂 |
 | `ElytraBoost` | 冲量与推进物理 | 校验烟花火箭与三叉戟激流加速的推进时限与冲量衰减物理学 |
-| `ElytraState` | 装备与滑翔姿态 | 综合比对耐久度、实体碰撞盒高度与游泳姿态，校验滑翔状态一致性 |
-| `ElytraTimer` | 飞行数据包时序 | 限制高速滑翔过程中的数据包发包频率与时钟步进 |
-| `ElytraToggle` | 高频姿态切换 | 拦截高频反复开关鞘翅滑翔以穿墙或卡滞空的漏洞 |
+| `ElytraState` | 38号槽位与换甲锁定 | 实时强校验胸甲槽位与耐久（耐久$\le 1$不可飞），当帧阻断“换甲-开伞-换回胸甲”偷飞与伪造滑翔姿态 |
+| `ElytraTimer` | 飞行数据包时序 | 限制高速滑翔过程中的数据包发包频率与时钟步进，拦截 Timer 变速发包加速 |
+| `ElytraToggle` | 高频姿态切换限频 | 限制单秒内开关滑翔次数，拦截高频反复开关鞘翅滑翔以刷初速、穿墙或卡滞空的漏洞（GlideFlip） |
 | `ElytraNoFall` | 贴地滑翔免摔伤 | 防止在落地最后一瞬间开启滑翔姿态规避高空坠落摔伤 |
 
-### 2. 战斗类检测 (Combat Checks - 4项)
+### 2. 战斗类检测 (Combat Checks - 5项)
 
 | 检测项 | 核心领域 | 说明 |
 |---|---|---|
@@ -250,6 +262,7 @@ ArgusAC 构建了四层纵深防御体系，共计 25 个独立检测模块与�
 | `AutoClicker` | 连点频率与规律 | 网络底层纳秒采样，限制极限 CPS 并通过样本标准差识别极其机械的无抖动连点器 |
 | `KillAura` | 视角与隔墙打击 | 回溯坐标计算视角夹角、跨版本安全视线遮挡判定、脱靶命中与极速多目标切换 |
 | `Velocity` | 击退动量响应 | 校验垂直与水平受击退响应比率，追踪服务端下发的待确认击退时序（Anti-KB） |
+| `FastBow` | 弓箭蓄力与射速限制 | 服务端 Tick 级蓄力计时器（20 ticks 基准）、1000ms 滑动窗口防 FakeLag 堆包轰炸与全局射击冷却，专设 CANCEL（静默取消）与 NERF（软绵箭）双模式 |
 
 ### 3. 世界交互类检测 (World Interaction Checks - 3项)
 
@@ -271,6 +284,17 @@ ArgusAC 构建了四层纵深防御体系，共计 25 个独立检测模块与�
 | `BadPackets (Duplicate)` | 数据包冗余 | 过滤客户端同 tick 内发送的重复冗余位置包 |
 
 检测阈值与参数均可在 [`checks.yml`](src/main/resources/checks.yml) 中细致调节。使用 `/argus compat` 查看跨版本能力分配。
+
+### 快速射箭 (FastBow) 深度防御与处置模式
+
+ArgusAC 针对 FastBow / 加特林弓外挂（瞬发箭、绕过蓄力、Blink 延迟堆包轰炸）构建了确定性服务端物理校验：
+
+- **服务端 Tick 级蓄力计时器** — 原版弓箭拉满蓄力严格需要 20 个 Tick（1000ms）。ArgusAC 在举弓打点（协议包 `USE_ITEM` 与 Bukkit 交互）记录初始 Tick 与时间戳，在释放射箭（`EntityShootBowEvent`）时核算蓄力时效，放宽 1~2 Ticks（$\ge 18$ Ticks / 850ms）网络抖动容限；同时原生适配 1.14+ 弩（Crossbow）快速装填（Quick Charge）附魔。
+- **事务与滑动窗口防延迟堆包** — 针对挂端通过 FakeLag / Blink 制造网络阻塞假象、恢复发包瞬间倾泻十余支箭矢的包轰炸（Packet Spoil），在 1000ms 滑动窗口内设置物理释放上限（默认 $\le 3$ 支/秒）。
+- **全局射击冷却与频率限制** — 强制两箭之间必须具备基础动作切换耗时（默认 $\ge 250$ms 绝对物理间歇），拦截宏与极速连发。
+- **专设双重防御处置策略**：
+  - **`CANCEL`（默认推荐）**：当帧静默取消射箭事件并清除箭矢实体，不消耗玩家背包箭矢与弓耐久，杜绝客户端箭雨卡顿服务端。
+  - **`NERF`（软绵箭模式）**：强行将箭矢初速度削减归零（$v_y = -0.05$），使箭矢如无害软绵般垂直掉落在射手脚下。
 
 ---
 

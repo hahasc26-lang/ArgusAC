@@ -697,4 +697,149 @@ public class PlayerData {
     public void setClientOnGround(boolean clientOnGround) {
         this.clientOnGround = clientOnGround;
     }
+
+    // 悬停平飞与反重力连续采样追踪 (FlyCheck)
+    private int flatHoverTicks = 0;
+    private int antiGravityTicks = 0;
+    private int slimeTicks = 0;
+
+    public int getFlatHoverTicks() {
+        return flatHoverTicks;
+    }
+
+    public void setFlatHoverTicks(int ticks) {
+        this.flatHoverTicks = ticks;
+    }
+
+    public void incrementFlatHoverTicks() {
+        this.flatHoverTicks++;
+    }
+
+    public void resetFlatHoverTicks() {
+        this.flatHoverTicks = 0;
+    }
+
+    public int getAntiGravityTicks() {
+        return antiGravityTicks;
+    }
+
+    public void setAntiGravityTicks(int ticks) {
+        this.antiGravityTicks = ticks;
+    }
+
+    public void incrementAntiGravityTicks() {
+        this.antiGravityTicks++;
+    }
+
+    public void resetAntiGravityTicks() {
+        this.antiGravityTicks = 0;
+    }
+
+    public int getSlimeTicks() {
+        return slimeTicks;
+    }
+
+    public void setSlimeTicks(int slimeTicks) {
+        this.slimeTicks = slimeTicks;
+    }
+
+    public void decrementSlimeTicks() {
+        if (this.slimeTicks > 0) {
+            this.slimeTicks--;
+        }
+    }
+
+    // 自瞄突变连续命中追踪 (KillAuraCheck)
+    private int snapCount = 0;
+    private long lastSnapTime = 0L;
+
+    public int recordSnap(long now) {
+        if (now - lastSnapTime < 800L) {
+            snapCount++;
+        } else {
+            snapCount = 1;
+        }
+        lastSnapTime = now;
+        return snapCount;
+    }
+
+    public void resetSnap() {
+        snapCount = 0;
+        lastSnapTime = 0L;
+    }
+
+    // 潜行疾跑状态突变追踪 (BadPacketsCheck)
+    private int sneakSprintTicks = 0;
+
+    public int getSneakSprintTicks() {
+        return sneakSprintTicks;
+    }
+
+    public void incrementSneakSprintTicks() {
+        this.sneakSprintTicks++;
+    }
+
+    public void resetSneakSprintTicks() {
+        this.sneakSprintTicks = 0;
+    }
+
+    // 弓箭蓄力与射速状态追踪 (FastBowCheck)
+    private volatile boolean bowCharging = false;
+    private volatile long bowChargeStartTick = -1L;
+    private volatile long bowChargeStartTimeMs = 0L;
+    private volatile long lastBowShotTime = 0L;
+    private volatile long lastBowShotTick = 0L;
+    private final Deque<Long> bowShotTimestamps = new ConcurrentLinkedDeque<>();
+
+    public void startBowCharge(long currentTick, long nowMs) {
+        this.bowCharging = true;
+        this.bowChargeStartTick = currentTick;
+        this.bowChargeStartTimeMs = nowMs;
+    }
+
+    public void stopBowCharge() {
+        this.bowCharging = false;
+        this.bowChargeStartTick = -1L;
+        this.bowChargeStartTimeMs = 0L;
+    }
+
+    public boolean isBowCharging() {
+        return bowCharging;
+    }
+
+    public long getBowChargeStartTick() {
+        return bowChargeStartTick;
+    }
+
+    public long getBowChargeStartTimeMs() {
+        return bowChargeStartTimeMs;
+    }
+
+    public long getLastBowShotTime() {
+        return lastBowShotTime;
+    }
+
+    public long getLastBowShotTick() {
+        return lastBowShotTick;
+    }
+
+    public int recordBowShot(long currentTick, long nowMs) {
+        this.lastBowShotTime = nowMs;
+        this.lastBowShotTick = currentTick;
+        this.bowShotTimestamps.addLast(nowMs);
+        while (!bowShotTimestamps.isEmpty() && (nowMs - bowShotTimestamps.peekFirst() > 1000L)) {
+            bowShotTimestamps.pollFirst();
+        }
+        return bowShotTimestamps.size();
+    }
+
+    public int getBowShotsInWindow(long windowMs, long nowMs) {
+        int count = 0;
+        for (Long ts : bowShotTimestamps) {
+            if (ts != null && (nowMs - ts) <= windowMs) {
+                count++;
+            }
+        }
+        return count;
+    }
 }

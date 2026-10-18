@@ -74,8 +74,16 @@ public class VelocityCheck extends AbstractCheck {
         }
 
         long now = System.currentTimeMillis();
-        // 如果距离收到速度已经超过 600ms，说明该次击退已过期
-        if (now - data.getLastVelocityReceivedTime() > 600L) {
+        long timeSinceVelocity = now - data.getLastVelocityReceivedTime();
+
+        Location from = event.getFrom();
+        Location to = event.getTo();
+        if (to == null) {
+            return;
+        }
+
+        // 校验是否头顶撞墙或被方块阻挡
+        if (hasBlockAbove(from) || hasBlockAbove(to)) {
             data.setVelocityHandled(true);
             return;
         }
@@ -86,38 +94,39 @@ public class VelocityCheck extends AbstractCheck {
             return;
         }
 
-        Location from = event.getFrom();
-        Location to = event.getTo();
-        if (to == null) {
-            return;
-        }
-
         double deltaY = to.getY() - from.getY();
+        double dx = to.getX() - from.getX();
+        double dz = to.getZ() - from.getZ();
+        double actualHoriz = Math.hypot(dx, dz);
 
-        // 校验是否头顶撞墙或被方块阻挡
-        if (hasBlockAbove(from)) {
+        double expectedHorizSq = expected.getX() * expected.getX() + expected.getZ() * expected.getZ();
+        double expectedHoriz = Math.sqrt(expectedHorizSq) * horizontalRatio;
+        double expectedY = expected.getY() * verticalRatio;
+
+        boolean satisfiedY = (expected.getY() <= 0.20) || (deltaY >= Math.max(0.08, expectedY * 0.65));
+        boolean satisfiedH = (expectedHorizSq <= 0.04) || (actualHoriz >= Math.max(0.08, expectedHoriz * 0.65));
+
+        // 1. 玩家已产生响应位移，判定击退成功响应
+        if (satisfiedY && satisfiedH) {
             data.setVelocityHandled(true);
             return;
         }
 
-        // 垂直击退检测：若预期向上受到击退 (expected.getY() > 0.2)，但实际位移几乎为 0
-        if (expected.getY() > 0.20) {
-            double expectedY = expected.getY() * verticalRatio;
-            if (deltaY < 0.01 && deltaY < expectedY) {
-                flag(player, 2, String.format("Anti-KB deltaY=%.2f, expected=%.2f", deltaY, expected.getY()), event);
-            }
+        // 2. 网络往返延迟等待保护 (Ping Latency Window)
+        // 击退数据包下发到客户端并由客户端发回移动数据包需要至少 1 个 RTT 周期，期间必须静待响应，绝不能将尚未收到击退的位移误判为 Anti-KB
+        int ping = com.example.argusac.compat.VersionAdapterFactory.getAdapter().getPing(player);
+        long minWaitTime = Math.max(150L, ping + 60L);
+
+        if (timeSinceVelocity < minWaitTime) {
+            return;
         }
 
-        // 水平击退检测：若预期有水平击退速度，但实际水平位移极小
-        double expectedHorizSq = expected.getX() * expected.getX() + expected.getZ() * expected.getZ();
-        if (expectedHorizSq > 0.04) {
-            double dx = to.getX() - from.getX();
-            double dz = to.getZ() - from.getZ();
-            double actualHoriz = Math.sqrt(dx * dx + dz * dz);
-            double expectedHoriz = Math.sqrt(expectedHorizSq) * horizontalRatio;
-            if (actualHoriz < 0.01 && actualHoriz < expectedHoriz) {
-                flag(player, 1, String.format("Anti-KB(H) horiz=%.3f, expected=%.3f", actualHoriz, Math.sqrt(expectedHorizSq)), event);
-            }
+        // 3. 超过延迟等待窗口且在 600ms 内，如果依然完全没有击退位移响应，方才判定为非法消除击退 (Anti-KB)
+        if (!satisfiedY && expected.getY() > 0.20 && deltaY < 0.01) {
+            flag(player, 2, String.format("Anti-KB(V) deltaY=%.2f, expected=%.2f, ping=%d", deltaY, expected.getY(), ping), event);
+        }
+        if (!satisfiedH && expectedHorizSq > 0.04 && actualHoriz < 0.01) {
+            flag(player, 2, String.format("Anti-KB(H) horiz=%.3f, expected=%.3f, ping=%d", actualHoriz, Math.sqrt(expectedHorizSq), ping), event);
         }
 
         data.setVelocityHandled(true);

@@ -20,6 +20,7 @@ import org.bukkit.event.block.BlockDamageEvent;
 import org.bukkit.event.block.BlockPlaceEvent;
 import org.bukkit.event.entity.EntityDamageByEntityEvent;
 import org.bukkit.event.entity.EntityDamageEvent;
+import org.bukkit.event.entity.EntityShootBowEvent;
 import org.bukkit.event.entity.EntityToggleGlideEvent;
 import org.bukkit.event.entity.PlayerDeathEvent;
 import org.bukkit.event.inventory.InventoryCloseEvent;
@@ -190,7 +191,11 @@ public class PlayerEventListener implements Listener {
             return;
         }
 
-        plugin.getSetbackManager().getContext(player.getUniqueId()).clearLockedAnchor();
+        com.example.argusac.setback.PlayerSetbackContext context = plugin.getSetbackManager().getContext(player.getUniqueId());
+        if (context != null) {
+            context.confirmTeleport(0);
+            context.clearLockedAnchor();
+        }
 
         PlayerData data = plugin.getPlayerManager().getPlayerData(player);
         if (data != null) {
@@ -201,6 +206,7 @@ public class PlayerEventListener implements Listener {
             data.getElytraData().resetAll();
             if (event.getTo() != null) {
                 data.getPhysicsState().reset(event.getTo());
+                data.getPhysicsState().clearPendingVelocities();
             }
 
             // 外部传送赋予合法速度豁免
@@ -300,11 +306,20 @@ public class PlayerEventListener implements Listener {
             return;
         }
 
-        // During setback immunity, allow only the client acknowledgement at the setback
-        // target. Any other movement ends immunity and is checked in this same event.
-        if (plugin.getSetbackManager().isImmune(player.getUniqueId())
-                && !plugin.getSetbackManager().isCorrectionMove(player, from, to)) {
-            plugin.getSetbackManager().clearImmunity(player.getUniqueId());
+        // 对齐 GrimAC 传送传输中 (Teleport In-Flight) 机制：
+        // 服务端发出的位置重置包在客户端收到并回复 ACK 之前存在 1 个 RTT 延迟。
+        // 期间来自客户端的旧移动包必须宽容接纳并约束至目标点，绝不重复触发二次判定与连环拉回
+        com.example.argusac.setback.PlayerSetbackContext setbackCtx = plugin.getSetbackManager().getContext(player.getUniqueId());
+        if (setbackCtx != null && setbackCtx.isTeleportInFlight()) {
+            if (setbackCtx.matchesCorrection(to)) {
+                setbackCtx.confirmTeleport(setbackCtx.getInFlightTeleportId());
+            } else {
+                Location inFlightTarget = setbackCtx.getTeleportInFlightTarget();
+                if (inFlightTarget != null) {
+                    event.setTo(inFlightTarget);
+                }
+                return;
+            }
         }
 
         data.setFromLocation(from);
@@ -343,6 +358,11 @@ public class PlayerEventListener implements Listener {
             data.setIceTicks(4);
         } else {
             data.decrementIceTicks();
+        }
+        if (adapter.isSlime(under)) {
+            data.setSlimeTicks(20);
+        } else {
+            data.decrementSlimeTicks();
         }
 
         Location originalTo = to.clone();
@@ -507,7 +527,11 @@ public class PlayerEventListener implements Listener {
             checkManager.getElytraFlyCheck().handleInteract(event.getPlayer(), data, event);
         }
         Action action = event.getAction();
-        if (action == Action.LEFT_CLICK_BLOCK) {
+        if (action == Action.RIGHT_CLICK_AIR || action == Action.RIGHT_CLICK_BLOCK) {
+            if (event.getItem() != null) {
+                checkManager.getFastBowCheck().handleBowStart(event.getPlayer(), event.getItem());
+            }
+        } else if (action == Action.LEFT_CLICK_BLOCK) {
             if (data != null) {
                 data.setDigging(true);
                 data.setLastDiggingTime(System.currentTimeMillis());
@@ -515,6 +539,13 @@ public class PlayerEventListener implements Listener {
             }
         } else if (action == Action.LEFT_CLICK_AIR) {
             recordClickIfFallback(event.getPlayer());
+        }
+    }
+
+    @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = true)
+    public void onEntityShootBow(EntityShootBowEvent event) {
+        if (event.getEntity() instanceof Player player) {
+            checkManager.getFastBowCheck().handleShootBow(player, event);
         }
     }
 
@@ -576,6 +607,56 @@ public class PlayerEventListener implements Listener {
             if (data != null) {
                 data.setInventoryOpen(false, null);
             }
+        }
+    }
+
+    @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = true)
+    public void onInventoryClick(org.bukkit.event.inventory.InventoryClickEvent event) {
+        if (event.getWhoClicked() instanceof Player player) {
+            PlayerData data = plugin.getPlayerManager().getPlayerData(player);
+            if (data != null && (player.isGliding() || data.isElytraGliding())) {
+                boolean isChestplateSlot = (event.getSlotType() == org.bukkit.event.inventory.InventoryType.SlotType.ARMOR && event.getSlot() == 38)
+                        || event.getRawSlot() == 6;
+                boolean isArmorRelated = isChestplateSlot
+                        || event.getSlotType() == org.bukkit.event.inventory.InventoryType.SlotType.ARMOR
+                        || event.getClick() == org.bukkit.event.inventory.ClickType.SWAP_OFFHAND
+                        || event.getClick() == org.bukkit.event.inventory.ClickType.NUMBER_KEY;
+
+                if (isArmorRelated) {
+                    long now = System.currentTimeMillis();
+                    data.getElytraData().recordArmorSwap(now);
+
+                    boolean armorSwapCancel = checkManager.getChecksConfig().getBoolean("checks.ElytraFly.glide-state.armor-swap-cancel", true);
+                    if (isChestplateSlot && armorSwapCancel) {
+                        // 正在空中滑翔时强行换脱胸甲：当帧直接阻断该交互包，剥离滑翔姿态并下发协议同步包锚定
+                        event.setCancelled(true);
+                        player.setGliding(false);
+                        data.getElytraData().resetGlideState();
+                        plugin.getSetbackManager().sendPositionSyncPacket(player, player.getLocation());
+                        return;
+                    }
+
+                    org.bukkit.Bukkit.getScheduler().runTask(plugin, () -> {
+                        if (player.isOnline() && (player.isGliding() || data.isElytraGliding())) {
+                            org.bukkit.inventory.ItemStack chest = player.getInventory().getChestplate();
+                            if (chest == null || chest.getType() != org.bukkit.Material.ELYTRA) {
+                                player.setGliding(false);
+                                data.getElytraData().resetGlideState();
+                                plugin.getSetbackManager().sendPositionSyncPacket(player, player.getLocation());
+                            }
+                        }
+                    });
+                }
+            }
+        }
+    }
+
+    @EventHandler(priority = EventPriority.MONITOR, ignoreCancelled = true)
+    public void onPlayerSwapHandItems(org.bukkit.event.player.PlayerSwapHandItemsEvent event) {
+        Player player = event.getPlayer();
+        PlayerData data = plugin.getPlayerManager().getPlayerData(player);
+        if (data != null && (player.isGliding() || data.isElytraGliding())) {
+            data.getElytraData().recordArmorSwap(System.currentTimeMillis());
         }
     }
 

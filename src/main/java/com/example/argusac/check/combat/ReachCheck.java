@@ -64,9 +64,10 @@ public class ReachCheck extends AbstractCheck {
             distanceToBox = box.distanceTo(eyeLocation);
         }
 
-        // 若历史回溯追踪器正常运转，严格收拢在真实物理极限；若未启用则使用带 Ping 上限的降级兜底
-        double dynamicLimit = (plugin.getHistoryTracker() != null)
-                ? maxReach
+        // 若受害者存在历史快照，使用回溯物理极限加上网络延迟微量容差；若为怪物或无快照，应用网络延迟 Ping 补偿
+        boolean hasTrackedHistory = (plugin.getHistoryTracker() != null && plugin.getHistoryTracker().hasHistory(victim.getUniqueId()));
+        double dynamicLimit = hasTrackedHistory
+                ? (maxReach + 0.05 + Math.min(0.12, (ping / 500.0) * 0.10))
                 : Math.min(maxReach + Math.min(0.40, (ping / 100.0) * 0.08), maxPingReach);
 
         if (distanceToBox > dynamicLimit) {

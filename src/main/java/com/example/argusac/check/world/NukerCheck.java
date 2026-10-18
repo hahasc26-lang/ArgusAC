@@ -62,11 +62,12 @@ public class NukerCheck extends AbstractCheck {
             data.setBreaksThisTick(1);
         }
 
-        // 1. 同一游戏刻 (Tick) 内并发破坏多个非零硬度实体方块 (排除双层花草门床自然联动)
+        // 1. 同一游戏刻 (Tick) 内并发破坏多个非零硬度实体方块 (排除双层花草门床自然联动与瞬破网络轻微堆包)
         float hardness = com.example.argusac.compat.VersionAdapterFactory.getAdapter().getBlockHardness(event.getBlock());
-        if (hardness > 0.0f && data.getBreaksThisTick() > maxBreaksPerTick) {
+        int allowedBreaksThisTick = (hardness <= 0.6f) ? Math.max(maxBreaksPerTick, 3) : maxBreaksPerTick;
+        if (hardness > 0.0f && data.getBreaksThisTick() > allowedBreaksThisTick) {
             event.setCancelled(true);
-            flag(player, 2, String.format("Multi-break in single tick count=%d", data.getBreaksThisTick()));
+            flag(player, 2, String.format("Multi-break in single tick count=%d (limit=%d)", data.getBreaksThisTick(), allowedBreaksThisTick));
             return;
         }
 

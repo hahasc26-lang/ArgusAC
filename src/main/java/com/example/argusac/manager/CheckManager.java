@@ -3,6 +3,7 @@ package com.example.argusac.manager;
 import com.example.argusac.ArgusACPlugin;
 import com.example.argusac.api.Check;
 import com.example.argusac.check.combat.AutoClickerCheck;
+import com.example.argusac.check.combat.FastBowCheck;
 import com.example.argusac.check.combat.KillAuraCheck;
 import com.example.argusac.check.combat.ReachCheck;
 import com.example.argusac.check.combat.VelocityCheck;
@@ -41,6 +42,7 @@ public class CheckManager {
     private AutoClickerCheck autoClickerCheck;
     private KillAuraCheck killAuraCheck;
     private VelocityCheck velocityCheck;
+    private FastBowCheck fastBowCheck;
 
     private FastBreakCheck fastBreakCheck;
     private NukerCheck nukerCheck;
@@ -67,6 +69,7 @@ public class CheckManager {
         register(autoClickerCheck = new AutoClickerCheck(plugin));
         register(killAuraCheck = new KillAuraCheck(plugin));
         register(velocityCheck = new VelocityCheck(plugin));
+        register(fastBowCheck = new FastBowCheck(plugin));
 
         // 世界交互类
         register(fastBreakCheck = new FastBreakCheck(plugin));
@@ -112,6 +115,7 @@ public class CheckManager {
     public AutoClickerCheck getAutoClickerCheck() { return autoClickerCheck; }
     public KillAuraCheck getKillAuraCheck() { return killAuraCheck; }
     public VelocityCheck getVelocityCheck() { return velocityCheck; }
+    public FastBowCheck getFastBowCheck() { return fastBowCheck; }
 
     public FastBreakCheck getFastBreakCheck() { return fastBreakCheck; }
     public NukerCheck getNukerCheck() { return nukerCheck; }

@@ -90,17 +90,21 @@ public class ViolationManager {
         String logMode = "LOG_ONLY";
 
         if (check.getType() == com.example.argusac.api.CheckType.MOVEMENT) {
-            if (moveEvent != null) {
-                // 对齐 GrimAC 架构：只要触发移动违规，当帧立即直接取消本次移动！
-                // 不受冷却期或高 VL 门槛延宕，零延迟直接阻断非法位移，空中悬停外挂当场拉回地面
-                defaultPunishmentTriggered = plugin.getSetbackManager().directCancel(
+            String mode = check.getSetbackMode();
+            if ("CANCEL".equalsIgnoreCase(mode) && moveEvent != null) {
+                // CANCEL 模式：达到 min-vl 门槛后立即在当前游戏刻直接阻断本次移动，无冷却无缝锚定
+                if (plugin.getSetbackManager().shouldCancel(player, check, currentVl)) {
+                    defaultPunishmentTriggered = plugin.getSetbackManager().directCancel(
+                            player, check, currentVl, details, moveEvent
+                    );
+                    logMode = "DIRECT_CANCEL";
+                }
+            } else if (plugin.getSetbackManager().shouldSetback(player, check, currentVl)) {
+                // HARD / SOFT 回退模式：依独立冷却与历史快照平滑校正
+                defaultPunishmentTriggered = plugin.getSetbackManager().mitigate(
                         player, check, currentVl, details, moveEvent
                 );
-                logMode = "DIRECT_CANCEL";
-            } else if (plugin.getSetbackManager().shouldSetback(player, check, currentVl)) {
-                defaultPunishmentTriggered = plugin.getSetbackManager().mitigate(
-                        player, check, currentVl, details, null
-                );
+                logMode = mode;
             }
         } else {
             // 战斗、方块及数据包类违规，处置方式为取消非法交互并记录日志

@@ -84,6 +84,55 @@ public class PacketPipelineManager extends PacketListenerAbstract {
             handleIncomingPlayerDiggingPacket(player, data, event);
         }
 
+        // 5. 拦截客户端传送确认包 (Teleport Confirm / ServerboundAcceptTeleportationPacket)
+        // 对齐 GrimAC 事务闭环：收到客户端 ACK 确认，解除 In-Flight 状态，彻底杜绝回退震颤与连环误拉
+        if (event.getPacketType() == PacketType.Play.Client.TELEPORT_CONFIRM) {
+            handleIncomingTeleportConfirm(player, data, event);
+        }
+
+        // 6. 拦截客户端使用物品数据包 (Use Item - 弓箭/弩蓄力协议级打点)
+        if (event.getPacketType() == PacketType.Play.Client.USE_ITEM) {
+            handleIncomingUseItemPacket(player, data);
+        }
+    }
+
+    private void handleIncomingUseItemPacket(Player player, PlayerData data) {
+        if (player == null || data == null || plugin.getCheckManager() == null) return;
+        try {
+            org.bukkit.inventory.ItemStack main = player.getInventory().getItemInMainHand();
+            org.bukkit.inventory.ItemStack off = player.getInventory().getItemInOffHand();
+            if (main != null && (main.getType().name().equals("BOW") || main.getType().name().equals("CROSSBOW"))) {
+                plugin.getCheckManager().getFastBowCheck().handleBowStart(player, main);
+            } else if (off != null && (off.getType().name().equals("BOW") || off.getType().name().equals("CROSSBOW"))) {
+                plugin.getCheckManager().getFastBowCheck().handleBowStart(player, off);
+            }
+        } catch (Throwable ignored) {}
+    }
+
+    private void handleIncomingTeleportConfirm(Player player, PlayerData data, PacketReceiveEvent event) {
+        int teleportId = -1;
+        try {
+            com.github.retrooper.packetevents.wrapper.play.client.WrapperPlayClientTeleportConfirm confirm =
+                    new com.github.retrooper.packetevents.wrapper.play.client.WrapperPlayClientTeleportConfirm(event);
+            teleportId = confirm.getTeleportId();
+        } catch (Throwable t) {
+            try {
+                java.lang.reflect.Method m = event.getClass().getMethod("getTeleportId");
+                teleportId = (int) m.invoke(event);
+            } catch (Throwable ignored) {}
+        }
+
+        if (plugin.getSetbackManager() != null) {
+            com.example.argusac.setback.PlayerSetbackContext context = plugin.getSetbackManager().getContext(player.getUniqueId());
+            if (context != null) {
+                context.confirmTeleport(teleportId);
+            }
+        }
+
+        if (data != null && data.getPhysicsState() != null) {
+            data.getPhysicsState().reset(player.getLocation());
+            data.getPhysicsState().clearPendingVelocities();
+        }
     }
 
     @Override

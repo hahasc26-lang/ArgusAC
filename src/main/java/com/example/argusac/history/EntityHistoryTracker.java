@@ -158,6 +158,15 @@ public class EntityHistoryTracker {
     }
 
     /**
+     * 检查目标实体是否存在已采样的历史盒快照
+     */
+    public boolean hasHistory(UUID uuid) {
+        if (uuid == null) return false;
+        Deque<HistoricalBox> deque = historyMap.get(uuid);
+        return deque != null && !deque.isEmpty();
+    }
+
+    /**
      * 移除实体记录 (玩家离线时)
      */
     public void removeEntity(UUID uuid) {
