@@ -11,7 +11,6 @@ commands:
     aliases:
       - ac
       - argusac
-      - aegis
     usage: /<command> [help|reload|vl|logs|toggle|setback|alerts]
 
 permissions:
@@ -23,15 +22,4 @@ permissions:
     default: op
   argusac.bypass:
     description: Bypasses anti-cheat checks and setbacks
-    default: false
-
-  # Legacy aliases for backwards compatibility
-  aegisac.admin:
-    description: Legacy permission alias for argusac.admin
-    default: op
-  aegisac.alert:
-    description: Legacy permission alias for argusac.alert
-    default: op
-  aegisac.bypass:
-    description: Legacy permission alias for argusac.bypass
     default: false
