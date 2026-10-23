@@ -530,6 +530,11 @@ public class PlayerEventListener implements Listener {
         if (action == Action.RIGHT_CLICK_AIR || action == Action.RIGHT_CLICK_BLOCK) {
             if (event.getItem() != null) {
                 checkManager.getFastBowCheck().handleBowStart(event.getPlayer(), event.getItem());
+                checkManager.getFastEatCheck().handleItemStartUse(event.getPlayer(), event.getItem());
+            }
+            Player p = event.getPlayer();
+            if (p.getInventory() != null && p.getInventory().getItemInOffHand() != null) {
+                checkManager.getFastEatCheck().handleItemStartUse(p, p.getInventory().getItemInOffHand());
             }
         } else if (action == Action.LEFT_CLICK_BLOCK) {
             if (data != null) {
@@ -651,6 +656,21 @@ public class PlayerEventListener implements Listener {
         }
     }
 
+    @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = true)
+    public void onPlayerItemConsume(PlayerItemConsumeEvent event) {
+        checkManager.getFastEatCheck().handleItemConsume(event.getPlayer(), event);
+    }
+
+    @EventHandler(priority = EventPriority.MONITOR)
+    public void onPlayerItemHeld(PlayerItemHeldEvent event) {
+        checkManager.getFastEatCheck().handleItemStopUse(event.getPlayer());
+    }
+
+    @EventHandler(priority = EventPriority.MONITOR, ignoreCancelled = true)
+    public void onPlayerDropItem(PlayerDropItemEvent event) {
+        checkManager.getFastEatCheck().handleItemStopUse(event.getPlayer());
+    }
+
     @EventHandler(priority = EventPriority.MONITOR, ignoreCancelled = true)
     public void onPlayerSwapHandItems(org.bukkit.event.player.PlayerSwapHandItemsEvent event) {
         Player player = event.getPlayer();
@@ -658,6 +678,7 @@ public class PlayerEventListener implements Listener {
         if (data != null && (player.isGliding() || data.isElytraGliding())) {
             data.getElytraData().recordArmorSwap(System.currentTimeMillis());
         }
+        checkManager.getFastEatCheck().handleItemStopUse(player);
     }
 
     /**

@@ -236,7 +236,8 @@ public class PacketPipelineManager extends PacketListenerAbstract {
         // 排除梯子/藤蔓等可攀爬物以及液体环境 (攀爬和涉水在原版协议中存在特殊的接地过渡)
         org.bukkit.block.Block feet = player.getLocation().getBlock();
         com.example.argusac.compat.VersionAdapter adapter = com.example.argusac.compat.VersionAdapterFactory.getAdapter();
-        boolean specialEnvironment = adapter.isLiquid(feet) || adapter.isClimbable(feet);
+        boolean specialEnvironment = adapter.isLiquid(feet) || adapter.isClimbable(feet)
+                || adapter.isStandable(feet) || adapter.isStandable(feet.getRelative(0, -1, 0));
 
         boolean groundSpoof = flying.isOnGround() && data.getAirTicks() > 4 && !data.isOnGround()
                 && !data.isSetbackImmune() && !data.hasAnyLegalVelocity() && !specialEnvironment;

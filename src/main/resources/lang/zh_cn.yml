@@ -182,6 +182,7 @@ compat:
     scaffold-full: "搭建朝向与视线交点全版本支持"
     inventorymove-full: "背包开启状态监听全版本支持"
     jesus-full: "水上行走、水面虚假接地与水面平飞全版本支持"
+    fasteat-full: "物品食用时钟与网络延迟补偿全版本支持"
   diag:
     ready: "多版本自适应环境自检就绪:"
     core: "识别内核: {core} ({type})"

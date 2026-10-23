@@ -181,6 +181,7 @@ compat:
     scaffold-full: "Placement raytracing and direction supported on all versions"
     inventorymove-full: "Inventory state tracking supported on all versions"
     jesus-full: "Full multi-version support for water-walk, ground spoof, and liquid hover detection"
+    fasteat-full: "Item consumption timing and lag compensation supported on all versions"
   diag:
     ready: "Multi-version adaptive environment diagnostics ready:"
     core: "Core: {core} ({type})"

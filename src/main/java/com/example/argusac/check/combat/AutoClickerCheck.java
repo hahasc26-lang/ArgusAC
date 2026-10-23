@@ -41,6 +41,10 @@ public class AutoClickerCheck extends AbstractCheck {
             return;
         }
 
+        if (player.getGameMode() == org.bukkit.GameMode.CREATIVE || player.getGameMode() == org.bukkit.GameMode.SPECTATOR) {
+            return;
+        }
+
         PlayerData data = plugin.getPlayerManager().getPlayerData(player);
         if (data == null || data.isInGracePeriod()) {
             return;

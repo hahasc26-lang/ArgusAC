@@ -3,9 +3,10 @@
 All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), and adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [1.2.0] - 2026-10-23
+## [1.2.0] - 2026-10-18
 
 ### Added
+- **FastEat & Instant Consumption Defense (快速进食与异常物品使用防御)**: Server-side item consume tick counter (32-tick / 1600ms baseline with 4-tick tolerance), packet spoofing detection (Instant Consume without start record), Ping-adaptive RTT lag compensation, and inventory hand synchronization.
 - **FastBow & Gatling Bow Defense (快速射箭与加特林弓全面防御)**: Server-side charge tick counter (20 ticks / 1000ms baseline with 2-tick jitter tolerance), sliding-window burst & packet spoil protection, shot rate cooldown limiting, and configurable arrow nerf/cancellation.
 - **GrimAC Teleport Confirmation & In-Flight Lock (流水号事务与抗震颤回退)**: Monotonic sequence IDs with PacketEvents `TELEPORT_CONFIRM` packet ACK tracking to eliminate rubberbanding loops during latency windows.
 - **Setback Modularization (回退引擎模块化)**: Refactored `SetbackManager` into dedicated sub-components (`SafeLocationFinder`, `SetbackPhysics`, `SetbackPacketSync`, `SetbackNotifier`, `PlayerSetbackContext`) under `com.example.argusac.setback`.
@@ -17,7 +18,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 - **Pure Vanilla PvP Experience (移除侵入式战斗抑制)**: Removed weapon cooldown and charging resets to preserve authentic PvP mechanics.
 - **Strict Motion Zeroing (回退动量彻底清零)**: Resets server-side physics velocity and residual client motion upon setback to prevent follow-up false flags.
 
-### Fixed
+### Fixed & Improved
+- **Minecraft 26.3 Version Alignment**: Standardized version parsing, enum names (`V26_0`, `V26_3`), and friendly display names across `ServerVersion`, `plugin.yml`, `README.md`, and `.gitignore` for seamless Minecraft 26.3 (26.x) compatibility.
+- **Pre-Loaded Crossbow False Flag Fix (`FastBowCheck`)**: Exempted pre-loaded Crossbows from charge-tick requirements when fired instantly, while preserving strict 250ms shot rate limiting and 1000ms sliding window burst protection.
+- **Creative Mode Click Exemption (`AutoClickerCheck`)**: Added explicit GameMode exemptions for Creative and Spectator modes to prevent false positives during fast building and instant block breaking.
+- **NoFall Standable Surface Protection (`PacketPipelineManager`)**: Enhanced ground spoof checks with standable surface scanning (carpets, slabs, stairs, trapdoors, snow layers, scaffolding) to ensure zero false flags upon landing.
 - **Velocity Anti-KB Inverted Logic (击退响应窗口修复)**: Introduced ping-adaptive RTT response window to eliminate initial-move false flags.
 - **Speed Buffer Clamping (速度平滑缓冲区截断)**: Clamps excessive movement smoothly below `min-vl`, preventing false rubberbanding on stairs and lag spikes.
 - **Fly & Hover Detection (滞空与顶点误报消除)**: Distinguishes jump apex ($v_Y \approx 0.003$) via 3-tick verification and exempts cobwebs, powder snow, and berries.

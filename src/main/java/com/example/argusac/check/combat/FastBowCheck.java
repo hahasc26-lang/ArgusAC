@@ -141,8 +141,10 @@ public class FastBowCheck extends AbstractCheck {
         long elapsedMs = -1;
 
         if (startTick <= 0 || startTimeMs <= 0) {
-            // 从未经过右键举弓蓄力，直接发包射出 (No-Draw / Instant Release Spoof)
-            if (force >= 0.5f) {
+            // 从未经过右键举弓蓄力直接发包射出 (普通弓 No-Draw / Instant Release Spoof)
+            // 注意：预先填装好的弩 (Crossbow) 可随时瞬间发包射击，由全局冷却与滑动窗口限制其连发频次，豁免 charge 0 打点
+            boolean isCrossbow = (bow != null && bow.getType().name().equals("CROSSBOW"));
+            if (force >= 0.5f && !isCrossbow) {
                 insufficientCharge = true;
             }
         } else {

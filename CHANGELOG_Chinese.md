@@ -2,9 +2,10 @@
 
 本文件记录本项目所有重要变更。遵循 [语义化版本规范](https://semver.org/lang/zh-CN/)。
 
-## [1.2.0] - 2026-10-23
+## [1.2.0] - 2026-10-18
 
 ### 新增 (Added)
+- **FastEat 快速进食与异常物品使用防御**：引入服务端 Tick 级与毫秒时间差食用计时器（32 ticks / 1600ms 基准，结合 4 ticks 抖动容许）、伪造完成数据包拦截（无交互记录 Instant Eat 直接阻断）、动态 Ping RTT 延迟补偿与客户端物品手持刷写同步。
 - **FastBow 快速射箭与加特林弓全面防御**：引入服务端 Tick 级蓄力计时器（20 ticks / 1000ms 基准，结合 2 ticks 网络抖动容限）、1000ms 滑动窗口防 FakeLag/Blink 堆包轰炸、全局射击冷却窗（>=250ms）与软绵箭/静默取消防御策略。
 - **GrimAC 流水号事务与抗震颤回退**：引入单调自增 Sequence ID 与 PacketEvents `TELEPORT_CONFIRM` 数据包 ACK 确认机制，在过渡期锁定状态，彻底消灭回退震颤与连环拉回（Rubberbanding Storm）。
 - **回退引擎模块化解耦**：将原 1600+ 行单体 `SetbackManager` 拆分为 `SafeLocationFinder`、`SetbackPhysics`、`SetbackPacketSync`、`SetbackNotifier`、`PlayerSetbackContext` 等子模块（位于 `com.example.argusac.setback`），对外保持 100% 兼容。
@@ -16,7 +17,11 @@
 - **保障纯正原版 PVP 手感**：移除战斗检测中的侵入式挥刀缴械与蓄力清零逻辑，不影响玩家正常竞技对抗。
 - **回退动量彻底清零**：回退与取消时同步清空服务端物理预测速度与客户端本地残余 Motion，防止落地二次误判。
 
-### 修复 (Fixed)
+### 修复与优化 (Fixed & Improved)
+- **Minecraft 26.3 版本标准对齐**：统一 `ServerVersion` 枚举（`V26_0`、`V26_3`）、解析正则、`plugin.yml`、`README.md` 与 `.gitignore` 中的版本号描述，完备支持 Minecraft 26.3 (26.x) 新版无 `1.` 前缀命名体系。
+- **预填装弩箭防误报优化 (`FastBowCheck`)**：为预先填装好的弩（Crossbow）提供蓄力 Tick 打点豁免，根除预装填弩箭射击误判；同时保留 250ms 绝对物理射击间歇与 1000ms 滑动窗口连发频次限制。
+- **创造模式连点防误报 (`AutoClickerCheck`)**：在连点检测入口增加 `CREATIVE` 与 `SPECTATOR` 游戏模式显式豁免，彻底消除创造模式飞搭与拆除方块时的连点误报。
+- **NoFall 地形落脚点防误报 (`PacketPipelineManager`)**：增强协议层虚假地面判定，加入半方块、地毯、台阶、雪层、陷阱门与脚手架等地形承托面扫描，确保触地着陆零误报。
 - **击退响应 (Velocity / Anti-KB) 逻辑倒置修复**：引入基于玩家网络 Ping 的往返响应窗口，合规位移即刻清除判定，杜绝下发击退后首帧误判。
 - **速度平滑缓冲区 (Speed Buffer) 提前阻断修复**：未达 `min-vl` 时等比平滑截断位移，达标后方才直接取消事件，杜绝台阶起跳与轻微网络抖动拉回。
 - **跳跃顶点与滞空误报消除 (FlyCheck)**：区分跳跃第 5 Tick 瞬时零点（~0.003）与真实悬停，引入 3 Tick 连续平飞判定，并豁免蜘蛛网、细雪、浆果丛与粘液块。

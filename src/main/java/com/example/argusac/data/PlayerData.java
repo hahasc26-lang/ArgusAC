@@ -791,6 +791,42 @@ public class PlayerData {
     private volatile long lastBowShotTick = 0L;
     private final Deque<Long> bowShotTimestamps = new ConcurrentLinkedDeque<>();
 
+    // 快速进食与物品使用状态追踪 (FastEatCheck)
+    private volatile boolean eating = false;
+    private volatile long eatStartTick = -1L;
+    private volatile long eatStartTimeMs = 0L;
+    private volatile String eatingItemType = null;
+
+    public void startEating(long currentTick, long nowMs, String itemType) {
+        this.eating = true;
+        this.eatStartTick = currentTick;
+        this.eatStartTimeMs = nowMs;
+        this.eatingItemType = itemType;
+    }
+
+    public void stopEating() {
+        this.eating = false;
+        this.eatStartTick = -1L;
+        this.eatStartTimeMs = 0L;
+        this.eatingItemType = null;
+    }
+
+    public boolean isEating() {
+        return eating;
+    }
+
+    public long getEatStartTick() {
+        return eatStartTick;
+    }
+
+    public long getEatStartTimeMs() {
+        return eatStartTimeMs;
+    }
+
+    public String getEatingItemType() {
+        return eatingItemType;
+    }
+
     public void startBowCharge(long currentTick, long nowMs) {
         this.bowCharging = true;
         this.bowChargeStartTick = currentTick;

@@ -98,6 +98,20 @@ checks:
     # NERF: 削弱为脚下软绵箭 (初速度强制削减归零并垂直坠地)
     mitigation-mode: "CANCEL"
 
+  # 9. 快速进食与异常物品使用检测 (FastEat)
+  # 深度防御提前发送完成使用数据包 (Packet Spoofing)、Timer 步进加速与瞬间吃药/吃肉/金苹果外挂
+  FastEat:
+    enabled: true
+    max-vl: 12
+    # 正常食用需要 32 ticks (1600ms)，允许的最低吃东西 tick 数 (考虑到 2-4 ticks 容差)
+    min-allowed-ticks: 28
+    # 允许的最低吃东西毫秒数 (默认 1200ms)
+    min-allowed-ms: 1200
+    # 是否启用基于玩家 Ping 延迟的网络抖动补偿
+    lag-compensation: true
+    # 违规防御处置模式 (CANCEL: 静默取消食用并刷写手持物品同步，防客户端虚假消耗)
+    mitigation-mode: "CANCEL"
+
   # 9. 快速挖掘检测 (FastBreak)
   FastBreak:
     enabled: true
