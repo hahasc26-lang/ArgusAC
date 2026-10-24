@@ -106,17 +106,6 @@ ArgusAC provides comprehensive, non-intrusive cheat coverage across 27 dedicated
 
 Check parameters can be tuned in [`checks.yml`](src/main/resources/checks.yml). Use `/argus compat` to verify compatibility across versions.
 
-### FastBow Defense & Mitigation Modes
-
-ArgusAC features dedicated server-side physics and protocol-level defenses against rapid bow/crossbow exploits (Gatling Bow, Machine Gun Bow, Instant Bow, Packet Spoil / Blink bursts):
-
-- **Server-Side Charge Tick Counter** — Pulling a bow to full force ($1.0$) strictly requires 20 vanilla ticks (1,000 ms). ArgusAC timestamps bow draw interactions (`USE_ITEM` packet & Bukkit interact) and verifies elapsed ticks upon arrow release (`EntityShootBowEvent`), allowing an adaptive 1–2 tick jitter tolerance ($\ge 18$ ticks / 850 ms). Also supports Crossbow Quick Charge enchantments.
-- **Transaction & Sliding-Window Burst Defense** — Intercepts FakeLag and Blink exploits where clients freeze packet dispatch and unleash a burst of arrows within a single tick; limits shots to physically feasible rates within a 1,000 ms sliding window.
-- **Shot Rate Limiting** — Enforces a physical cooldown window between consecutive shots ($\ge 250$ ms) to prevent macro-assisted rapid firing.
-- **Dual Mitigation Strategies**:
-  - **`CANCEL` (Default / Recommended)**: Silently drops the shoot event and removes the arrow entity on the server tick, preventing arrow rain from overloading the server without consuming ammunition.
-  - **`NERF` (Limp Noodle Arrow)**: Neutralizes the projectile's initial velocity down to zero ($v_y = -0.05$), making the arrow drop harmlessly at the shooter's feet.
-
 ---
 
 ## Setback System
@@ -286,17 +275,6 @@ ArgusAC 构建了四层纵深防御体系，共计 27 个独立检测模块与�
 | `BadPackets (Duplicate)` | 数据包冗余 | 过滤客户端同 tick 内发送的重复冗余位置包 |
 
 检测阈值与参数均可在 [`checks.yml`](src/main/resources/checks.yml) 中细致调节。使用 `/argus compat` 查看跨版本能力分配。
-
-### 快速射箭 (FastBow) 深度防御与处置模式
-
-ArgusAC 针对 FastBow / 加特林弓外挂（瞬发箭、绕过蓄力、Blink 延迟堆包轰炸）构建了确定性服务端物理校验：
-
-- **服务端 Tick 级蓄力计时器** — 原版弓箭拉满蓄力严格需要 20 个 Tick（1000ms）。ArgusAC 在举弓打点（协议包 `USE_ITEM` 与 Bukkit 交互）记录初始 Tick 与时间戳，在释放射箭（`EntityShootBowEvent`）时核算蓄力时效，放宽 1~2 Ticks（$\ge 18$ Ticks / 850ms）网络抖动容限；同时原生适配 1.14+ 弩（Crossbow）快速装填（Quick Charge）附魔。
-- **事务与滑动窗口防延迟堆包** — 针对挂端通过 FakeLag / Blink 制造网络阻塞假象、恢复发包瞬间倾泻十余支箭矢的包轰炸（Packet Spoil），在 1000ms 滑动窗口内设置物理释放上限（默认 $\le 3$ 支/秒）。
-- **全局射击冷却与频率限制** — 强制两箭之间必须具备基础动作切换耗时（默认 $\ge 250$ms 绝对物理间歇），拦截宏与极速连发。
-- **专设双重防御处置策略**：
-  - **`CANCEL`（默认推荐）**：当帧静默取消射箭事件并清除箭矢实体，不消耗玩家背包箭矢与弓耐久，杜绝客户端箭雨卡顿服务端。
-  - **`NERF`（软绵箭模式）**：强行将箭矢初速度削减归零（$v_y = -0.05$），使箭矢如无害软绵般垂直掉落在射手脚下。
 
 ---
 
