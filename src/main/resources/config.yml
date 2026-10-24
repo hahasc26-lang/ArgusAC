@@ -230,6 +230,10 @@ setback:
       enabled: false
       min-vl: 1
       mode: "HARD"
+    Mace:
+      enabled: false
+      min-vl: 1
+      mode: "HARD"
 
     # --- World & Block Checks (Block Event Cancellation Only, No Setback Teleport) ---
     FastBreak:

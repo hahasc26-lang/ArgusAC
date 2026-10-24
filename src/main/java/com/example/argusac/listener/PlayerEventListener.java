@@ -120,6 +120,7 @@ public class PlayerEventListener implements Listener {
         if (data != null) {
             data.getElytraData().resetAll();
             data.getPhysicsState().reset(event.getEntity().getLocation());
+            data.resetMaceFallState(event.getEntity().getLocation().getY());
         }
     }
 
@@ -132,6 +133,7 @@ public class PlayerEventListener implements Listener {
         if (data != null) {
             data.getElytraData().resetAll();
             data.getPhysicsState().reset(event.getRespawnLocation());
+            data.resetMaceFallState(event.getRespawnLocation().getY());
         }
     }
 
@@ -145,6 +147,7 @@ public class PlayerEventListener implements Listener {
         if (data != null) {
             data.getElytraData().resetAll();
             data.getPhysicsState().reset(player.getLocation());
+            data.resetMaceFallState(player.getLocation().getY());
         }
 
         // 记录跨世界 SESSION 日志
@@ -209,6 +212,7 @@ public class PlayerEventListener implements Listener {
             if (event.getTo() != null) {
                 data.getPhysicsState().reset(event.getTo());
                 data.getPhysicsState().clearPendingVelocities();
+                data.resetMaceFallState(event.getTo().getY());
             }
 
             // 外部传送赋予合法速度豁免
@@ -240,6 +244,7 @@ public class PlayerEventListener implements Listener {
             if (data != null) {
                 data.grantLegalVelocity(VelocitySourceType.VEHICLE, 1000L);
                 data.getElytraData().resetGlideState();
+                data.resetMaceFallState(player.getLocation().getY());
             }
         }
     }
@@ -251,6 +256,7 @@ public class PlayerEventListener implements Listener {
             if (data != null) {
                 data.grantLegalVelocity(VelocitySourceType.VEHICLE, 1000L);
                 data.getElytraData().resetGlideState();
+                data.resetMaceFallState(player.getLocation().getY());
             }
         }
     }
@@ -358,12 +364,14 @@ public class PlayerEventListener implements Listener {
         if (onGround || inLiquid) {
             data.setAirTicks(0);
             data.incrementGroundTicks();
+            data.resetMaceFallState(to.getY());
             // 落地且已脱离冰面与滑行记忆期，重置空中冰面起跳惯性
             if (!adapter.isIce(under) && !adapter.isSlime(under) && data.getIceTicks() <= 0) {
                 data.setAirborneFromIce(false);
             }
         } else {
             data.setGroundTicks(0);
+            data.updateMaceApex(to.getY());
             // 离地起跳帧：若脚下为冰/粘液或处于冰面记忆期，标记本次滞空继承冰面起跳大动量
             Block underFrom = from.clone().subtract(0, 0.5, 0).getBlock();
             if (data.getIceTicks() > 0 || adapter.isIce(underFrom) || adapter.isSlime(underFrom)) {
@@ -532,6 +540,12 @@ public class PlayerEventListener implements Listener {
             return;
         }
 
+        // 重锤下落伤害与作弊检测 (MaceDMG / FakeFall)
+        checkManager.getMaceCheck().handleAttack(attacker, event.getEntity(), event);
+        if (event.isCancelled()) {
+            return;
+        }
+
         // 攻击距离检测
         checkManager.getReachCheck().handleAttack(attacker, event.getEntity(), event);
     }
@@ -656,6 +670,7 @@ public class PlayerEventListener implements Listener {
                         event.setCancelled(true);
                         player.setGliding(false);
                         data.getElytraData().resetGlideState();
+                data.resetMaceFallState(player.getLocation().getY());
                         plugin.getSetbackManager().sendPositionSyncPacket(player, player.getLocation());
                         return;
                     }
@@ -666,6 +681,7 @@ public class PlayerEventListener implements Listener {
                             if (chest == null || chest.getType() != org.bukkit.Material.ELYTRA) {
                                 player.setGliding(false);
                                 data.getElytraData().resetGlideState();
+                data.resetMaceFallState(player.getLocation().getY());
                                 plugin.getSetbackManager().sendPositionSyncPacket(player, player.getLocation());
                             }
                         }

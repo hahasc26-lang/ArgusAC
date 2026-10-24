@@ -5,6 +5,17 @@
 本文件的格式基于 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.0.0/)，
 并且本项目遵循 [语义化版本规范](https://semver.org/lang/zh-CN/)。
 
+## [1.2.1] - 2026-10-24
+
+### 新增
+- **重锤战斗与下落伤害异常全方位防御 (`MaceCheck` / `MaceDMG`)**：针对 Minecraft 1.21+ 全新重锤武器及其主流外挂（Wurst MaceDMG、LiquidBounce MaceKill、FakeFall 伪造下落）建立确定性检测与拦截体系。
+- **物理真最高点坠落校验 (True Apex Verification)**：独立追踪玩家离开地面以来的物理真最高点（`trueApexY`），严格约束声称下落高度不可超越物理几何落差，彻底瓦解平地伪造高空坠落包。
+- **地面虚假重击当场阻断 (Ground Smash Interception)**：严查在地面接地状态或起跳物理落差 $< 1.5$ 格时触发的重锤重击伤害，根除平地一击秒杀（OHKO）作弊。
+- **运动学下落速度与耗时约束 (Kinematic Fall Constraint)**：基于滞空 Tick 数强加终端下落极速约束（$D_{\max} \approx \text{airTicks} \times 3.92 + 2.0$），拦截 1~2 tick 内突发性伪造下落数十格的数据包轰炸。
+- **理论伤害天花板与硬上限双重防护 (Damage Ceiling & Cap)**：严密推算重锤基础伤害、致密（Density I~V）、力量药水加成与暴击加成的物理极限，支持配置单次伤害硬上限与 CANCEL / NERF 双重处置模式。
+- **重击频率限制 (Smash Rate Limiting)**：设定连续重击最小间隔（默认 350ms），防御利用数据包连点实现原地连续秒杀。
+- **多版本自适应降级矩阵**：在 1.21 以前版本服务器自动静默挂起该模块（DISABLED），在 1.21~26.3 环境满血运行（FULL）。
+
 ## [1.2.0] - 2026-10-23
 
 ### 新增

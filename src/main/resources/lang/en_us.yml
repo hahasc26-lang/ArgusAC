@@ -182,6 +182,8 @@ compat:
     inventorymove-full: "Inventory state tracking supported on all versions"
     jesus-full: "Full multi-version support for water-walk, ground spoof, and liquid hover detection"
     fasteat-full: "Item consumption timing and lag compensation supported on all versions"
+    mace-disabled: "Mace mechanics do not exist before Minecraft 1.21"
+    mace-full: "Full support for Mace smash, physical apex validation, and damage cap checks"
   diag:
     ready: "Multi-version adaptive environment diagnostics ready:"
     core: "Core: {core} ({type})"

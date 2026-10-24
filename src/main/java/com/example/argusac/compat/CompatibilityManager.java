@@ -62,6 +62,13 @@ public class CompatibilityManager {
         markCheck("Scaffold", CheckCompatStatus.FULL, "compat.reason.scaffold-full");
         markCheck("InventoryMove", CheckCompatStatus.FULL, "compat.reason.inventorymove-full");
         markCheck("Jesus", CheckCompatStatus.FULL, "compat.reason.jesus-full");
+
+        // 6. 重锤 (Mace) 战斗与下落伤害检测 (Minecraft 1.21+ 专属机制)
+        if (ServerVersion.isOlderThan(ServerVersion.V1_21)) {
+            markCheck("Mace", CheckCompatStatus.DISABLED, "compat.reason.mace-disabled");
+        } else {
+            markCheck("Mace", CheckCompatStatus.FULL, "compat.reason.mace-full");
+        }
     }
 
     private void markCheck(String checkName, CheckCompatStatus status, String reasonKey) {

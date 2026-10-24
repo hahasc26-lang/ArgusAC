@@ -571,6 +571,7 @@ public class LegacyVersionAdapter implements VersionAdapter {
             case DOLPHINS_GRACE -> PotionEffectType.getByName("DOLPHINS_GRACE");
             case HASTE -> PotionEffectType.FAST_DIGGING;
             case MINING_FATIGUE -> PotionEffectType.SLOW_DIGGING;
+            case STRENGTH -> (PotionEffectType.getByName("STRENGTH") != null ? PotionEffectType.getByName("STRENGTH") : PotionEffectType.INCREASE_DAMAGE);
         };
     }
 

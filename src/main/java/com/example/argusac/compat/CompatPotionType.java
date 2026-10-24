@@ -11,5 +11,6 @@ public enum CompatPotionType {
     SLOW_FALLING,
     DOLPHINS_GRACE,
     HASTE,
-    MINING_FATIGUE
+    MINING_FATIGUE,
+    STRENGTH
 }

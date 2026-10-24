@@ -60,6 +60,7 @@ dist/
 ehthumbs.db
 Thumbs.db
 desktop.ini
+powershell.bat
 package.json
 metadata.json
 index.html

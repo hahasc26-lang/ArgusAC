@@ -604,6 +604,8 @@ public class PlayerData {
         lastSpeedCheckNanos = 0L;
         iceTicks = 0;
         resetWaterTrackingState();
+        resetMaceFallState(0.0);
+        lastMaceSmashTime = 0L;
     }
 
     public double getSpeedBuffer() {
@@ -939,5 +941,56 @@ public class PlayerData {
             }
         }
         return count;
+    }
+
+    // 重锤下落物理真峰值与滞空状态追踪 (MaceCheck / MaceDMG)
+    private volatile double maceApexY = 0.0;
+    private volatile double maceGroundY = 0.0;
+    private volatile int maceAirTicks = 0;
+    private volatile long lastMaceSmashTime = 0L;
+
+    public void resetMaceFallState(double currentY) {
+        this.maceApexY = currentY;
+        this.maceGroundY = currentY;
+        this.maceAirTicks = 0;
+    }
+
+    public void updateMaceApex(double currentY) {
+        this.maceAirTicks++;
+        if (currentY > this.maceApexY) {
+            this.maceApexY = currentY;
+        }
+    }
+
+    public double getMaceApexY() {
+        return maceApexY;
+    }
+
+    public void setMaceApexY(double maceApexY) {
+        this.maceApexY = maceApexY;
+    }
+
+    public double getMaceGroundY() {
+        return maceGroundY;
+    }
+
+    public void setMaceGroundY(double maceGroundY) {
+        this.maceGroundY = maceGroundY;
+    }
+
+    public int getMaceAirTicks() {
+        return maceAirTicks;
+    }
+
+    public void setMaceAirTicks(int maceAirTicks) {
+        this.maceAirTicks = maceAirTicks;
+    }
+
+    public long getLastMaceSmashTime() {
+        return lastMaceSmashTime;
+    }
+
+    public void setLastMaceSmashTime(long lastMaceSmashTime) {
+        this.lastMaceSmashTime = lastMaceSmashTime;
     }
 }

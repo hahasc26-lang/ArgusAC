@@ -55,7 +55,7 @@
 
 ## Checks
 
-ArgusAC provides comprehensive, non-intrusive cheat coverage across 27 dedicated check modules and sub-checks:
+ArgusAC provides comprehensive, non-intrusive cheat coverage across 28 dedicated check modules and sub-checks:
 
 ### 1. Movement Checks (12 Checks)
 
@@ -74,7 +74,7 @@ ArgusAC provides comprehensive, non-intrusive cheat coverage across 27 dedicated
 | `ElytraToggle` | State Toggling Rate Limit | Blocks rapid glide toggling (GlideFlip) used to spoof momentum, phase through blocks, or bypass movement limits |
 | `ElytraNoFall` | Fall Damage Bypass | Prevents toggling elytra glide at the ground proximity to cancel accumulated fall damage |
 
-### 2. Combat Checks (6 Checks)
+### 2. Combat Checks (7 Checks)
 
 | Check | Focus Area | Description |
 |---|---|---|
@@ -84,6 +84,7 @@ ArgusAC provides comprehensive, non-intrusive cheat coverage across 27 dedicated
 | `Velocity` | Knockback Response | Validates horizontal and vertical knockback response ratios and tracks pending server velocity packets (Anti-KB) |
 | `FastBow` | Bow Charge & Burst | Server-side charge tick counter (20-tick baseline with 2-tick tolerance), sliding-window burst protection, shot rate limiting, and dual CANCEL / NERF mitigations |
 | `FastEat` | Item Consumption | Server-side consume tick counter (32-tick baseline with 4-tick jitter tolerance), packet spoofing detection, and Ping-adaptive lag compensation |
+| `Mace` | Heavy Mace & Smash Exploit | Detects 1.21+ mace exploits with fall physics, damage limits, ground-smash checks, and rate limiting |
 
 ### 3. World Interaction Checks (3 Checks)
 
@@ -225,7 +226,7 @@ MIT License.
 
 ## 检测模块 (Checks)
 
-ArgusAC 构建了四层纵深防御体系，共计 27 个独立检测模块与细分子项，全方位覆盖各类作弊行为：
+ArgusAC 构建了四层纵深防御体系，共计 28 个独立检测模块与细分子项，全方位覆盖各类作弊行为：
 
 ### 1. 移动类检测 (Movement Checks - 12项)
 
@@ -244,7 +245,7 @@ ArgusAC 构建了四层纵深防御体系，共计 27 个独立检测模块与�
 | `ElytraToggle` | 高频姿态切换限频 | 限制单秒内开关滑翔次数，拦截高频反复开关鞘翅滑翔以刷初速、穿墙或卡滞空的漏洞（GlideFlip） |
 | `ElytraNoFall` | 贴地滑翔免摔伤 | 防止在落地最后一瞬间开启滑翔姿态规避高空坠落摔伤 |
 
-### 2. 战斗类检测 (Combat Checks - 6项)
+### 2. 战斗类检测 (Combat Checks - 7项)
 
 | 检测项 | 核心领域 | 说明 |
 |---|---|---|
@@ -254,6 +255,7 @@ ArgusAC 构建了四层纵深防御体系，共计 27 个独立检测模块与�
 | `Velocity` | 击退动量响应 | 校验垂直与水平受击退响应比率，追踪服务端下发的待确认击退时序（Anti-KB） |
 | `FastBow` | 弓箭蓄力与射速限制 | 服务端 Tick 级蓄力计时器（20 ticks 基准）、1000ms 滑动窗口防 FakeLag 堆包轰炸与全局射击冷却，专设 CANCEL（静默取消）与 NERF（软绵箭）双模式 |
 | `FastEat` | 快速进食与物品使用 | 服务端 Tick 级食用计时器（32 ticks 基准，4 ticks 抖动容忍）、伪造完成数据包拦截（Instant Eat）与动态 RTT 延迟补偿 |
+| `Mace` | 重锤下落砸击与伤害防护 | 检测 1.21+ 重锤作弊，涵盖下落物理校验、伤害限制、地面砸击拦截与攻击频率限制 |
 
 ### 3. 世界交互类检测 (World Interaction Checks - 3项)
 

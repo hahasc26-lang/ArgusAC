@@ -48,6 +48,7 @@ public class ModernVersionAdapter implements VersionAdapter {
         register(CompatPotionType.DOLPHINS_GRACE,  "DOLPHINS_GRACE");
         register(CompatPotionType.HASTE,           "HASTE",          "FAST_DIGGING");
         register(CompatPotionType.MINING_FATIGUE,  "MINING_FATIGUE", "SLOW_DIGGING");
+        register(CompatPotionType.STRENGTH,        "STRENGTH",        "INCREASE_DAMAGE");
     }
 
     /**

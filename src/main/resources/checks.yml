@@ -256,3 +256,29 @@ checks:
     max-water-surface-ticks: 15
     # Vertical oscillation reset threshold
     vertical-reset-threshold: 0.12
+
+  # 15. Heavy Mace Combat & Damage Exploit Check (Mace / MaceDMG)
+  # Deep defense against 1.21+ MaceDMG exploits, fake fall distance, ground smash, impossible fall velocity, and Wind Burst abuse
+  Mace:
+    enabled: true
+    max-vl: 12
+    # Check if a smash attack is performed while grounded or without sufficient fall distance (Vanilla requires > 1.5 blocks fall)
+    check-ground-smash: true
+    # Validate reported fall distance against true physical apex height (prevents Y-spoofing and packet-inflated fall distance)
+    check-apex-fall: true
+    # Allowed height tolerance in blocks between true physical apex and reported fall distance
+    apex-tolerance: 0.85
+    # Validate whether the fall distance is physically achievable within the elapsed airborne ticks (kinematic gravity constraint)
+    check-impossible-fall-speed: true
+    # Check if damage dealt exceeds theoretical maximum (base + fall scaling + Density V + Strength + Crits)
+    check-damage-cap: true
+    # Absolute maximum allowed single-hit damage cap for Mace attacks (0 = disabled, default 48.0 = 24 hearts)
+    max-damage-limit: 48.0
+    # Minimum interval in milliseconds between consecutive Mace smash attacks (prevents rapid-fire smash exploits)
+    min-smash-interval-ms: 350
+    # Violation mitigation mode:
+    # CANCEL: Silently cancels the attack and zeroes the damage (recommended)
+    # NERF: Reduces damage to verified legitimate maximum (or base weapon damage) and resets spoofed fall distance
+    mitigation-mode: "CANCEL"
+    # Action on reaching max VL:
+    setback-mode: "CANCEL"

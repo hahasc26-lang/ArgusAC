@@ -183,6 +183,8 @@ compat:
     inventorymove-full: "背包开启状态监听全版本支持"
     jesus-full: "水上行走、水面虚假接地与水面平飞全版本支持"
     fasteat-full: "物品食用时钟与网络延迟补偿全版本支持"
+    mace-disabled: "Minecraft 1.21 以前不存在重锤机制"
+    mace-full: "完整支持重锤下落坠击、物理真峰值与超限伤害校验"
   diag:
     ready: "多版本自适应环境自检就绪:"
     core: "识别内核: {core} ({type})"

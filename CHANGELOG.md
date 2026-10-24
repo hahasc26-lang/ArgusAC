@@ -5,6 +5,17 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.2.1] - 2026-10-24
+
+### Added
+- **Heavy Mace Combat & Damage Exploit Check (`MaceCheck` / `MaceDMG`)**: Comprehensive defense suite against Minecraft 1.21+ Mace exploits (Wurst MaceDMG, LiquidBounce MaceKill, and fake-fall packet spoofing).
+- **True Physical Apex Verification**: Independently tracks player's true maximum airborne altitude (`trueApexY`) since leaving the ground, enforcing that claimed fall distance cannot exceed $(\text{trueApexY} - \text{currentY}) + \epsilon$.
+- **Ground Smash Interception**: Detects and cancels smash attacks executed while grounded or with insufficient physical drop ($< 1.5$ blocks), eliminating flat-ground one-hit kill exploits.
+- **Kinematic Gravity & Fall Time Constraint**: Enforces physical fall rate limits based on elapsed airborne ticks ($D_{\max} \approx \text{airTicks} \times 3.92 + 2.0$), preventing instant 1-tick fall distance injection.
+- **Theoretical Damage Ceiling & Cap Protection**: Computes exact theoretical damage limits based on base damage, Density I~V enchantments, Strength potion effects, and critical modifiers with configurable hard damage caps.
+- **Smash Rate Limiting**: Enforces a minimum interval (default 350ms) between consecutive smash attacks to prevent burst smash packet exploits.
+- **Cross-Version Graceful Evaluation**: Automatically marks `MaceCheck` as disabled on pre-1.21 servers and full performance on 1.21+ runtimes.
+
 ## [1.2.0] - 2026-10-23
 
 ### Added
