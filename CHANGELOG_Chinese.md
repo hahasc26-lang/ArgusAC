@@ -8,6 +8,17 @@
 ## [1.2.1] - 2026-10-24
 
 ### 新增
+- **Netty 数据包层战斗拦截体系 (`PacketPipelineManager` & `CombatMitigationHandler`)**：将核心攻击阻断逻辑彻底由 Bukkit 事件层下沉至 Netty 数据包层（PacketEvents），在接收到客户端攻击包（`PacketPlayInUseEntity` / `ServerboundInteractPacket`，Action 为 `ATTACK`）的瞬间即时拦截，彻底阻断其流入服务端主线程及 NMS 伤害结算管线。
+- **协议进包阶段合规性初筛引擎**：在 Netty 进包管道内完成无锁极速初筛与即时丢弃：
+  - `KillAuraCheck`：视角夹角（Angle）、背身盲区（Blindspot）、射线穿墙碰撞遮挡（Raytrace）、突变自瞄（Aimbot Snap）与极速多目标切换（Multi-Target Switch）；
+  - `ReachCheck`：基于历史实体包围盒快照的延迟补偿极限物理距离（GrimAC-Grade Lag Compensated Reach）；
+  - `MaceCheck`：伪造下落高度（MaceDMG）、突破运动学重力加速度极限与高频连砸；
+  - `AutoClickerCheck`：纳秒级发包打点、极限 CPS 超限与机械均匀点击间隔标准差。
+- **下行动态实体状态包抑制 (`PacketPlayOutEntityStatus` / `ClientboundEntityEventPacket`)**：拦截发往下游客户端的目标受害实体状态包（`Status = 2`, `33`, `36`, `37` 受伤发红/抖动与 `Status = 3` 死亡动画），彻底解决攻击被阻断后受害者仍出现异常发红抖动或虚假死亡的视觉穿透问题。
+- **挥手与攻击音效广播消除**：在战斗抑制窗口内拦截派生的挥手广播包（`PacketPlayOutAnimation` / `ClientboundAnimatePacket`）、受害实体粒子动画以及服务端生成的受击/暴击/横扫命名音效包（`PacketPlayOutNamedSoundEffect` / `ClientboundSoundPacket`），实现完全纯净的静默拦截。
+- **分级处置策略 (`CombatVerdict`)**：
+  - `LOW_CONFIDENCE_DROP`（低确信/微量超出）：如 Reach 超出在 `0.25` 格缓冲裕度内、Angle 超出在 `6.0°` 裕度内，仅在 Netty 底层静默丢弃（Drop）攻击包，不增加严重 VL，防止网络抖动导致的误伤；
+  - `HIGH_CONFIDENCE_VIOLATION`（高确信/明显作弊）：丢弃数据包并累加 VL；若同时伴随移动异常（移动缓冲区累积异常、物理预测器残差偏高或处于空中违规状态），自动联动移动预测引擎与 `SetbackManager` 触发标准位置矫正（Setback），达到阈值后自动执行踢出或封禁。
 - **重锤战斗与下落伤害异常全方位防御 (`MaceCheck` / `MaceDMG`)**：针对 Minecraft 1.21+ 全新重锤武器及其主流外挂（Wurst MaceDMG、LiquidBounce MaceKill、FakeFall 伪造下落）建立确定性检测与拦截体系。
 - **物理真最高点坠落校验 (True Apex Verification)**：独立追踪玩家离开地面以来的物理真最高点（`trueApexY`），严格约束声称下落高度不可超越物理几何落差，彻底瓦解平地伪造高空坠落包。
 - **地面虚假重击当场阻断 (Ground Smash Interception)**：严查在地面接地状态或起跳物理落差 $< 1.5$ 格时触发的重锤重击伤害，根除平地一击秒杀（OHKO）作弊。
@@ -15,6 +26,11 @@
 - **理论伤害天花板与硬上限双重防护 (Damage Ceiling & Cap)**：严密推算重锤基础伤害、致密（Density I~V）、力量药水加成与暴击加成的物理极限，支持配置单次伤害硬上限与 CANCEL / NERF 双重处置模式。
 - **重击频率限制 (Smash Rate Limiting)**：设定连续重击最小间隔（默认 350ms），防御利用数据包连点实现原地连续秒杀。
 - **多版本自适应降级矩阵**：在 1.21 以前版本服务器自动静默挂起该模块（DISABLED），在 1.21~26.3 环境满血运行（FULL）。
+
+### 变更
+- **战斗拦截架构解耦重构**：将主要的取消逻辑由 Bukkit 事件层移至 Netty 数据包拦截器，由 `CombatMitigationHandler` 集中统一调度数据包丢弃、出包抑制与处置升级。
+- **线程安全实体历史索引**：在 `EntityHistoryTracker` 中扩展了双向 `EntityId <-> UUID` 映射索引与视角高度/死亡状态快照，支撑 Netty 管道线程无锁高效查询目标实体。
+- **Bukkit 事件层降级为最终兜底防线**：`PlayerEventListener` 中的 `EntityDamageByEntityEvent` 监听降级为兜底防御（Fallback），仅用于处理未命中缓存的实体或外部插件触发的兼容事件，正常情况下违规包在协议层已被丢弃，该事件根本不会被触发。
 
 ## [1.2.0] - 2026-10-23
 
@@ -78,14 +94,3 @@
 - **半方块精细贴合与载具同步**：精准贴合台阶（0.5格）、雪层与楼梯真实表面；玩家与坐骑同步传送。
 - **主动重力监管引擎**：主线程周期巡检并强制下压客户端断包悬浮（Blink/Freecam）。
 - **模拟滑冰加速漏洞修复**：严格限制非冰地面平跑极速（$\le 0.31$），脱冰惯性收紧至 4 Tick。
-- **综合误报消除**：豁免长按挖掘方块时的连点检测；优化水面涉水判定与正脚底搭路校验。
-
----
-
-## [1.1.0 - 1.1.3] - 2026-10-17
-
-### 新增 (Added)
-- **内置 PacketEvents 2.7.0**：Relocation 阴影打包，跨版本开箱即用支持 1.12.2 - 26.3。
-- **确定性运动学预测引擎**：全包络微型客户端物理模拟与输入残差核验。
-- **时空回溯历史盒**：1000ms AABB 历史回溯，根治高延迟网络下的攻击距离误判。
-- **JesusCheck 与纳秒级时钟检测**：水面行走拦截与协议层 Timer 漂移监控。

@@ -3,10 +3,13 @@ package com.example.argusac.check.combat;
 import com.example.argusac.ArgusACPlugin;
 import com.example.argusac.api.CheckType;
 import com.example.argusac.check.AbstractCheck;
-import com.example.argusac.data.PlayerData;
+import com.example.argusac.combat.CombatVerdict;
 import com.example.argusac.compat.VersionAdapter;
 import com.example.argusac.compat.VersionAdapterFactory;
+import com.example.argusac.data.PlayerData;
+import com.example.argusac.history.HistoricalBox;
 import com.example.argusac.util.MathUtil;
+import org.bukkit.Bukkit;
 import org.bukkit.GameMode;
 import org.bukkit.Location;
 import org.bukkit.entity.Entity;
@@ -19,8 +22,8 @@ import java.util.UUID;
 
 /**
  * 杀戮光环检测 (KillAuraCheck)
- * 采用多维度算法矩阵检测异常攻击视角、盲区发包、穿墙透打与自瞄突变，
- * 由 CombatMitigationHandler 执行即时纯静默伤害与交互阻断，取消非原版侵入式缴械。
+ * 采用多维度算法矩阵检测异常攻击视角、盲区发包、穿墙透打与自瞄突变。
+ * 全面支持 Netty 进包阶段 (PacketPlayInUseEntity) 即时初筛裁决与分级处置策略。
  */
 public class KillAuraCheck extends AbstractCheck {
 
@@ -30,6 +33,9 @@ public class KillAuraCheck extends AbstractCheck {
     private boolean blindspotCheck;
     private boolean snapCheck;
     private double snapAngleThreshold;
+
+    // 视角夹角微量超出缓冲度（在此区间内判定为低确信仅静默 Drop，不累加严重 VL）
+    private static final double ANGLE_LOW_CONFIDENCE_MARGIN = 6.0;
 
     public KillAuraCheck(ArgusACPlugin plugin) {
         super(plugin, "KillAura", CheckType.COMBAT);
@@ -47,66 +53,79 @@ public class KillAuraCheck extends AbstractCheck {
         this.snapAngleThreshold = getChecksConfig().getDouble(path + "snap-angle-threshold", 45.0);
     }
 
-    public void handleAttack(Player attacker, Entity victim, EntityDamageByEntityEvent event) {
+    /**
+     * 核心数据包层/事件层通用 KillAura 合规性裁决 (Netty 线程安全)
+     */
+    public CombatVerdict evaluateAttack(Player attacker, PlayerData data, Entity victim) {
         if (!enabled || attacker == null || !(victim instanceof LivingEntity livingVictim)) {
-            return;
+            return CombatVerdict.pass();
         }
 
-        // 死亡状态攻击与攻击自身漏洞拦截
-        if (attacker.isDead() || livingVictim.isDead()) {
-            plugin.getCombatMitigationHandler().mitigateDamage(event, attacker, livingVictim, this, 3, "Attack while dead");
-            return;
+        HistoricalBox victimSnap = (plugin.getHistoryTracker() != null)
+                ? plugin.getHistoryTracker().getLatestSnapshot(livingVictim.getUniqueId())
+                : null;
+        boolean victimDead = (victimSnap != null) ? victimSnap.isDead() : livingVictim.isDead();
+
+        // 死亡状态攻击与攻击自身漏洞拦截 (高确信)
+        if (attacker.isDead() || victimDead) {
+            return CombatVerdict.highConfidence(this, 3, "Attack while dead");
         }
         if (attacker.equals(livingVictim)) {
-            plugin.getCombatMitigationHandler().mitigateDamage(event, attacker, livingVictim, this, 3, "Self damage packet exploit");
-            return;
+            return CombatVerdict.highConfidence(this, 3, "Self damage packet exploit");
         }
 
         if (attacker.getGameMode() == GameMode.CREATIVE || attacker.getGameMode() == GameMode.SPECTATOR) {
-            return;
+            return CombatVerdict.pass();
         }
 
-        PlayerData data = plugin.getPlayerManager().getPlayerData(attacker);
         if (data == null || data.isInGracePeriod()) {
-            return;
+            return CombatVerdict.pass();
         }
 
         VersionAdapter adapter = VersionAdapterFactory.getAdapter();
-        Location eyeLoc = attacker.getEyeLocation();
+        Location eyeLoc = resolveAttackerEyeLocation(attacker, data);
         int ping = Math.max(0, adapter.getPing(attacker));
 
         // 基于网络往返延迟回溯受害者在攻击者屏幕上的历史真实坐标 (GrimAC Lag Compensated Position)
         Location victimLoc = (plugin.getHistoryTracker() != null)
                 ? plugin.getHistoryTracker().getCompensatedLocation(livingVictim, ping)
                 : livingVictim.getLocation();
-        Location victimEye = victimLoc.clone().add(0, livingVictim.getEyeHeight(), 0);
-
-        if (eyeLoc.getWorld() != victimEye.getWorld()) {
-            return;
+        if (eyeLoc == null || victimLoc == null || eyeLoc.getWorld() != victimLoc.getWorld()) {
+            return CombatVerdict.pass();
         }
+
+        double victimEyeHeight = (victimSnap != null) ? victimSnap.getEyeHeight() : 1.62;
+        if (victimSnap == null && Bukkit.isPrimaryThread()) {
+            try {
+                victimEyeHeight = livingVictim.getEyeHeight();
+            } catch (Throwable ignored) {
+            }
+        }
+        Location victimEye = victimLoc.clone().add(0, victimEyeHeight, 0);
 
         Vector eyeDirection = eyeLoc.getDirection();
         Vector toTarget = victimEye.toVector().subtract(eyeLoc.toVector());
         if (toTarget.lengthSquared() < 0.01) {
-            return;
+            return CombatVerdict.pass();
         }
 
         double distance = eyeLoc.distance(victimEye);
         double angle = MathUtil.getAngleBetweenVectors(eyeDirection, toTarget);
 
-        // 1. 盲区与背身反向攻击拦截 (Blindspot Check: 完全背对或偏离超过 90 度发包攻击)
+        // 1. 盲区与背身反向攻击拦截 (Blindspot Check: 完全背对或偏离超过 90 度发包攻击 -> 高确信明显作弊)
         if (blindspotCheck && distance > 0.8 && angle > 90.0) {
-            plugin.getCombatMitigationHandler().mitigateDamage(event, attacker, livingVictim, this, 3,
+            return CombatVerdict.highConfidence(this, 3,
                     String.format("Blindspot Attack angle=%.1f deg (>90.0) (Backtracked)", angle));
-            return;
         }
 
-        // 2. 视角夹角检测 (Angle Check，基于回溯坐标对齐)
-        // 仅在距离大于 1.0 格时检测极限脱节夹角 (贴脸时因碰撞箱宽大正常挥刀夹角变化剧烈)
+        // 2. 视角夹角检测 (Angle Check，基于回溯坐标对齐，支持分级处置)
         if (distance > 1.0 && angle > maxAngle) {
-            plugin.getCombatMitigationHandler().mitigateDamage(event, attacker, livingVictim, this, 2,
-                    String.format("Impossible Angle angle=%.1f deg, max=%.1f (Backtracked)", angle, maxAngle));
-            return;
+            double angleExcess = angle - maxAngle;
+            String detail = String.format("Impossible Angle angle=%.1f deg, max=%.1f (Backtracked)", angle, maxAngle);
+            if (angleExcess <= ANGLE_LOW_CONFIDENCE_MARGIN) {
+                return CombatVerdict.lowConfidenceDrop(this, detail);
+            }
+            return CombatVerdict.highConfidence(this, 2, detail);
         }
 
         // 3. 准星光线脱靶命中检测 (Silent Aim / Aimbot RayTrace Miss)
@@ -116,24 +135,25 @@ public class KillAuraCheck extends AbstractCheck {
                     : adapter.getEntityBoundingBox(livingVictim).distanceTo(eyeLoc);
 
             if (distanceToCompensatedBox > distance + 1.2) {
-                plugin.getCombatMitigationHandler().mitigateDamage(event, attacker, livingVictim, this, 2,
+                return CombatVerdict.highConfidence(this, 2,
                         String.format("Aimbot Ray Miss angle=%.1f, ping=%d (Backtracked)", angle, ping));
-                return;
             }
         }
 
         // 4. 隔墙穿透攻击检测 (RayTrace Blocks，跨版本安全适配)
         if (raytraceBlocks && distance > 1.2) {
-            if (adapter.isRayOccluded(eyeLoc, victimEye)) {
-                plugin.getCombatMitigationHandler().mitigateDamage(event, attacker, livingVictim, this, 2, "Attack Through Wall");
-                return;
+            try {
+                if (adapter.isRayOccluded(eyeLoc, victimEye)) {
+                    return CombatVerdict.highConfidence(this, 2, "Attack Through Wall");
+                }
+            } catch (Throwable ignored) {
             }
         }
 
         // 5. 准星瞬间锁头突变检测 (Sudden Angle Snap)
         if (snapCheck && distance > 1.0) {
             float lastYaw = data.getLastLookYaw();
-            float currentYaw = attacker.getLocation().getYaw();
+            float currentYaw = eyeLoc.getYaw();
             float yawDelta = Math.abs(currentYaw - lastYaw);
             if (yawDelta > 180.0f) yawDelta = 360.0f - yawDelta;
 
@@ -141,11 +161,10 @@ public class KillAuraCheck extends AbstractCheck {
             if (yawDelta > snapAngleThreshold && angle < 25.0) {
                 long snapNow = System.currentTimeMillis();
                 int snaps = data.recordSnap(snapNow);
-                // 仅对连续两次以上异常吸附或极端非人自瞄突变 (>110度且精准直指) 执行拦截
+                // 仅对连续两次以上异常吸附或极端非人自瞄突变 (>110度且精准直指) 执行高确信拦截
                 if (snaps >= 2 || (yawDelta > 110.0f && angle < 12.0)) {
-                    plugin.getCombatMitigationHandler().mitigateDamage(event, attacker, livingVictim, this, 2,
+                    return CombatVerdict.highConfidence(this, 2,
                             String.format("Aimbot Snap deltaYaw=%.1f, angle=%.1f, count=%d", yawDelta, angle, snaps));
-                    return;
                 }
             } else {
                 data.resetSnap();
@@ -160,13 +179,48 @@ public class KillAuraCheck extends AbstractCheck {
         if (lastTarget != null && !lastTarget.equals(victim.getUniqueId())) {
             long switchInterval = now - lastAttack;
             if (switchInterval < targetSwitchMs) {
-                plugin.getCombatMitigationHandler().mitigateDamage(event, attacker, livingVictim, this, 2,
-                        String.format("Rapid Switch interval=%dms", switchInterval));
-                return;
+                String detail = String.format("Rapid Switch interval=%dms", switchInterval);
+                // 若仅比阈值快不到 15ms，视作微量超出仅静默丢弃；若极速多目标切换则高确信计分
+                if (targetSwitchMs - switchInterval <= 15L) {
+                    return CombatVerdict.lowConfidenceDrop(this, detail);
+                }
+                return CombatVerdict.highConfidence(this, 2, detail);
             }
         }
 
         data.setLastAttackedTarget(victim.getUniqueId());
         data.setLastAttackTime(now);
+        return CombatVerdict.pass();
+    }
+
+    /**
+     * Bukkit 实体受伤事件兜底入口 (Fallback)
+     */
+    public void handleAttack(Player attacker, Entity victim, EntityDamageByEntityEvent event) {
+        if (!enabled || attacker == null) {
+            return;
+        }
+        PlayerData data = plugin.getPlayerManager().getPlayerData(attacker);
+        CombatVerdict verdict = evaluateAttack(attacker, data, victim);
+        if (verdict.isBlocked() && plugin.getCombatMitigationHandler() != null) {
+            plugin.getCombatMitigationHandler().applyFallbackVerdict(event, attacker, victim, verdict);
+        }
+    }
+
+    private Location resolveAttackerEyeLocation(Player attacker, PlayerData data) {
+        double eyeHeight = 1.62;
+        try {
+            eyeHeight = attacker.getEyeHeight();
+        } catch (Throwable ignored) {
+        }
+        if (data != null && data.getPhysicsState() != null && data.getPhysicsState().hasLastPosition() && attacker.getWorld() != null) {
+            var ps = data.getPhysicsState();
+            return new Location(attacker.getWorld(), ps.getLastX(), ps.getLastY() + eyeHeight, ps.getLastZ(),
+                    ps.getLastYaw(), ps.getLastPitch());
+        }
+        if (data != null && data.getToLocation() != null) {
+            return data.getToLocation().clone().add(0, eyeHeight, 0);
+        }
+        return attacker.getEyeLocation();
     }
 }

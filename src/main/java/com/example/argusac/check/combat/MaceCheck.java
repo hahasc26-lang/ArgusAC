@@ -83,7 +83,78 @@ public class MaceCheck extends AbstractCheck {
     }
 
     /**
-     * 核心检测入口：在实体受到近战伤害时进行重锤作弊校验
+     * Netty 数据包层前置初筛：在收到 PacketPlayInUseEntity (ATTACK) 的瞬间拦截明显的伪造高度与高频连砸
+     */
+    public com.example.argusac.combat.CombatVerdict evaluatePacketAttack(Player attacker, PlayerData data, Entity victim) {
+        if (!enabled || attacker == null || data == null) {
+            return com.example.argusac.combat.CombatVerdict.pass();
+        }
+        if (ServerVersion.isOlderThan(ServerVersion.V1_21)) {
+            return com.example.argusac.combat.CombatVerdict.pass();
+        }
+        if (attacker.getGameMode() == GameMode.CREATIVE || attacker.getGameMode() == GameMode.SPECTATOR) {
+            return com.example.argusac.combat.CombatVerdict.pass();
+        }
+        if (data.isInGracePeriod() || data.isSetbackImmune()) {
+            return com.example.argusac.combat.CombatVerdict.pass();
+        }
+
+        ItemStack weapon;
+        try {
+            weapon = attacker.getInventory().getItemInMainHand();
+        } catch (Throwable t) {
+            return com.example.argusac.combat.CombatVerdict.pass();
+        }
+        if (!isMace(weapon)) {
+            return com.example.argusac.combat.CombatVerdict.pass();
+        }
+
+        float reportedFall = attacker.getFallDistance();
+        double currentY = (data.getPhysicsState() != null && data.getPhysicsState().hasLastPosition())
+                ? data.getPhysicsState().getLastY()
+                : attacker.getLocation().getY();
+        double trueApexY = Math.max(currentY, data.getMaceApexY());
+        double maxPhysicalFall = Math.max(0.0, trueApexY - currentY);
+        int airTicks = data.getMaceAirTicks();
+
+        // 1. 虚假下落高度与物理真峰值校验 (True Apex Fall Verification - MaceDMG)
+        if (checkApexFall && reportedFall > (maxPhysicalFall + apexTolerance)) {
+            double delta = reportedFall - maxPhysicalFall;
+            String detail = String.format("MaceDMG spoofed fall distance: reported=%.2f, trueMax=%.2f, diff=%.2f (Packet)",
+                    reportedFall, maxPhysicalFall, delta);
+            if (delta <= apexTolerance + 0.35) {
+                return com.example.argusac.combat.CombatVerdict.lowConfidenceDrop(this, detail);
+            }
+            int vl = Math.min(5, Math.max(1, (int) (delta / 3.0)));
+            return com.example.argusac.combat.CombatVerdict.highConfidence(this, vl, detail);
+        }
+
+        // 2. 运动学下落速度与耗时违背 (Kinematic Fall Constraint)
+        if (checkImpossibleFallSpeed && !data.hasAnyLegalVelocity()) {
+            double kinematicMax = calculateKinematicMaxFall(airTicks);
+            if (reportedFall > kinematicMax) {
+                return com.example.argusac.combat.CombatVerdict.highConfidence(this, 2,
+                        String.format("Impossible fall velocity: reported=%.2f in %d airTicks (kinematicMax=%.2f) (Packet)",
+                                reportedFall, airTicks, kinematicMax));
+            }
+        }
+
+        // 3. 连续重击最小间隔限制 (Smash Rate Limiting)
+        if (reportedFall > 1.5f && minSmashIntervalMs > 0) {
+            long now = System.currentTimeMillis();
+            long lastSmash = data.getLastMaceSmashTime();
+            if (lastSmash > 0 && (now - lastSmash < minSmashIntervalMs)) {
+                return com.example.argusac.combat.CombatVerdict.highConfidence(this, 2,
+                        String.format("Rapid consecutive smash attacks (interval=%dms < %dms) (Packet)",
+                                (now - lastSmash), minSmashIntervalMs));
+            }
+        }
+
+        return com.example.argusac.combat.CombatVerdict.pass();
+    }
+
+    /**
+     * 核心检测入口：在实体受到近战伤害时进行重锤作弊校验 (含最终事件伤害上限核验与兜底)
      */
     public void handleAttack(Player attacker, Entity victim, EntityDamageByEntityEvent event) {
         if (!enabled || attacker == null || !(victim instanceof LivingEntity)) {

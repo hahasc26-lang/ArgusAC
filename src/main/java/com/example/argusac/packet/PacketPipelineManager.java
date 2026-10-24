@@ -75,10 +75,10 @@ public class PacketPipelineManager extends PacketListenerAbstract {
 
         // 2. 拦截客户端手臂摆动与左键挖掘包 (Animation)
         if (event.getPacketType() == PacketType.Play.Client.ANIMATION) {
-            handleIncomingAnimationPacket(player, data);
+            handleIncomingAnimationPacket(player, data, event);
         }
 
-        // 3. 拦截客户端实体交互与攻击包 (Interact Entity)
+        // 3. 拦截客户端实体交互与攻击包 (Interact Entity / PacketPlayInUseEntity / ServerboundInteractPacket)
         if (event.getPacketType() == PacketType.Play.Client.INTERACT_ENTITY) {
             handleIncomingInteractEntityPacket(player, data, event);
         }
@@ -145,6 +145,14 @@ public class PacketPipelineManager extends PacketListenerAbstract {
 
     @Override
     public void onPacketSend(PacketSendEvent event) {
+        // 0. 第二阶段：下游实体状态包、挥手广播包与受击音效包抑制 (Entity Status / Animation / Sound Suppression)
+        if (plugin.getCombatMitigationHandler() != null) {
+            plugin.getCombatMitigationHandler().handleOutgoingPacketSuppression(event);
+            if (event.isCancelled()) {
+                return;
+            }
+        }
+
         // 1. 服务端发出的实体击退与速度同步包追踪
         if (event.getPacketType() == PacketType.Play.Server.ENTITY_VELOCITY) {
             Object playerObj = event.getPlayer();
@@ -320,17 +328,29 @@ public class PacketPipelineManager extends PacketListenerAbstract {
     }
 
     /**
-     * 客户端手臂挥舞包 (Animation) 捕获，纳秒级打点消除主线程 Tick 合并造成的 CPS 失真
+     * 客户端手臂挥舞包 (Animation) 捕获：
+     * 1. 若该玩家正处于违规攻击抑制期，当场拦截挥手包，防止服务端向周围玩家广播异常挥臂动作；
+     * 2. 纳秒级打点统计 CPS，若超过阈值同样拦截该包。
      */
-    private void handleIncomingAnimationPacket(Player player, PlayerData data) {
+    private void handleIncomingAnimationPacket(Player player, PlayerData data, PacketReceiveEvent event) {
+        if (plugin.getCombatMitigationHandler() != null && plugin.getCombatMitigationHandler().isAttackSuppressed(player)) {
+            event.setCancelled(true);
+            return;
+        }
         if (!plugin.isPlayerExempt(player) && !data.isDigging()) {
-            plugin.getCheckManager().getAutoClickerCheck().handleClick(player);
+            com.example.argusac.combat.CombatVerdict verdict = plugin.getCheckManager().getAutoClickerCheck().evaluateClick(player);
+            if (verdict.isBlocked()) {
+                event.setCancelled(true);
+                if (plugin.getCombatMitigationHandler() != null) {
+                    plugin.getCombatMitigationHandler().suppressAttack(player, 75L);
+                }
+            }
         }
     }
 
     /**
-     * 客户端实体交互包 (Interact Entity) 捕获
-     * 对齐 GrimAC SetbackBlocker：回退在途或违规锁死状态下严禁交互与攻击，杜绝借机抽刀与载具二次穿透
+     * 客户端实体交互包 (Interact Entity / PacketPlayInUseEntity / ServerboundInteractPacket) 捕获
+     * 过滤条件：只拦截交互类型为 ATTACK 的动作，并在 Netty 进包瞬间完成合规初筛与丢弃
      */
     private void handleIncomingInteractEntityPacket(Player player, PlayerData data, PacketReceiveEvent event) {
         if (plugin.getSetbackManager() != null) {

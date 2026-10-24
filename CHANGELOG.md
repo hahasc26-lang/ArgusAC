@@ -8,6 +8,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [1.2.1] - 2026-10-24
 
 ### Added
+- **Netty Packet-Level Combat Mitigation (`PacketPipelineManager` & `CombatMitigationHandler`)**: Migrated the core attack cancellation architecture from the Bukkit event layer down to the Netty protocol layer (`PacketEvents`), intercepting incoming `PacketPlayInUseEntity` / `ServerboundInteractPacket` before it reaches the Minecraft server main thread and NMS processing pipeline.
+- **Inbound Protocol Attack Screening**: Evaluates attacks at the Netty pipeline level with zero-latency drops:
+  - `KillAuraCheck`: Vector angle, blindspot, raytrace block occlusion, sudden aimbot snaps, and rapid multi-target switching.
+  - `ReachCheck`: Lag-compensated Euclidean distance matching target historical bounding boxes.
+  - `MaceCheck`: Spoofed fall distance (`MaceDMG`), impossible fall kinematics, and rapid burst smash rate limits.
+  - `AutoClickerCheck`: Protocol-level nanosecond click timing, extreme CPS limit, and robotic click interval standard deviation.
+- **Downstream Entity Status Suppression (`PacketPlayOutEntityStatus` / `ClientboundEntityEventPacket`)**: Protocol-level suppression of downstream entity status packets (`Status = 2`, `33`, `36`, `37` for hurt/damage animation and `Status = 3` for death animation) on blocked attacks, preventing false red-flash and hurt-camera jitter.
+- **Visual Animation & Sound Broadcast Suppression**: Intercepts downstream attacker swing broadcasts (`PacketPlayOutAnimation` / `ClientboundAnimatePacket`), victim hurt particle broadcasts, and hurt/attack named sound effect packets (`PacketPlayOutNamedSoundEffect` / `ClientboundSoundPacket`) within combat suppression windows.
+- **Hierarchical Mitigation Strategy (`CombatVerdict`)**:
+  - `LOW_CONFIDENCE_DROP`: Drops packets silently at the Netty layer without incrementing severe violation levels (VL) for borderline thresholds (e.g., Reach within `0.25` margin, Angle within `6.0°` margin) to eliminate false positives under network jitter.
+  - `HIGH_CONFIDENCE_VIOLATION`: Drops violating attack packets, increments VL, and coordinates with `DeterministicMovePredictor` / `SetbackManager` to trigger standard position setbacks if movement anomalies are simultaneously detected.
 - **Heavy Mace Combat & Damage Exploit Check (`MaceCheck` / `MaceDMG`)**: Comprehensive defense suite against Minecraft 1.21+ Mace exploits (Wurst MaceDMG, LiquidBounce MaceKill, and fake-fall packet spoofing).
 - **True Physical Apex Verification**: Independently tracks player's true maximum airborne altitude (`trueApexY`) since leaving the ground, enforcing that claimed fall distance cannot exceed $(\text{trueApexY} - \text{currentY}) + \epsilon$.
 - **Ground Smash Interception**: Detects and cancels smash attacks executed while grounded or with insufficient physical drop ($< 1.5$ blocks), eliminating flat-ground one-hit kill exploits.
@@ -15,6 +26,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Theoretical Damage Ceiling & Cap Protection**: Computes exact theoretical damage limits based on base damage, Density I~V enchantments, Strength potion effects, and critical modifiers with configurable hard damage caps.
 - **Smash Rate Limiting**: Enforces a minimum interval (default 350ms) between consecutive smash attacks to prevent burst smash packet exploits.
 - **Cross-Version Graceful Evaluation**: Automatically marks `MaceCheck` as disabled on pre-1.21 servers and full performance on 1.21+ runtimes.
+
+### Changed
+- **Decoupled Combat Mitigation Architecture**: Refactored `CombatMitigationHandler` to act as a centralized packet-level combat mitigation engine rather than relying on late-stage Bukkit event cancellation.
+- **Thread-Safe Entity History Resolution**: Extended `EntityHistoryTracker` with bidirectional `EntityId <-> UUID` mapping, enabling high-performance non-blocking lookups in Netty packet listener threads.
+- **Bukkit Layer Demoted to Fallback**: `EntityDamageByEntityEvent` in `PlayerEventListener` is now demoted to a fallback defense layer for uncached non-player entities and third-party custom damage events; legitimate-path attacks blocked at the protocol layer never trigger Bukkit damage events.
 
 ## [1.2.0] - 2026-10-23
 
@@ -77,20 +93,3 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ---
 
 ## [1.1.4] - 2026-10-17
-
-### Fixed
-- **Direct Movement Cancellation (当帧即时直接取消)**: Replaced delay windows with in-event cancellation and authentic gravity curve simulation ($v_Y = (v_{Y,prev} - 0.08) \times 0.98$).
-- **Sub-Block Terrain Adherence (半方块精准贴合)**: Snaps setback targets to exact top surfaces of slabs, stairs, and snow layers.
-- **Active Gravity Enforcement (主动重力监管引擎)**: Server-side task forces descent for packet-suspended clients (Blink/Freecam).
-- **Wurst Ice SpeedHack Fix (滑冰加速漏洞修复)**: Strict ground kinematic speed envelope and reduced post-ice inertia to 4 ticks.
-- **False Positive Hardening (综合误报优化)**: AutoClicker mining exemptions, Jesus wading tolerance, and Scaffold horizontal footprint checks.
-
----
-
-## [1.1.0 - 1.1.3] - 2026-10-17
-
-### Added
-- **Embedded PacketEvents 2.7.0 (内置数据包框架)**: Shaded protocol pipeline supporting Paper/Spigot 1.12.2 through 26.3.
-- **Deterministic Movement Predictor (确定性物理预测引擎)**: Kinematic physics residual simulation.
-- **Lag-Compensated Entity History (时空回溯历史盒)**: 1000ms AABB snapshot rollback for accurate reach checks.
-- **JesusCheck & Timer Engine (水上行走与高精时钟检测)**: Liquid ground spoofing and nanosecond drift balance checks.

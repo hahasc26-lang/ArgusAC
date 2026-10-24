@@ -522,7 +522,9 @@ public class PlayerEventListener implements Listener {
             return;
         }
 
-        // 核心战斗拦截保护器：若玩家在微时钟内已有攻击被阻断，立即取消本次伤害
+        // 第三阶段 Bukkit 层兜底防御 (Fallback)：
+        // 正常情况下违规攻击已在 Netty 进包阶段 (PacketPlayInUseEntity) 被直接丢弃，本事件不应被触发；
+        // 若因同 tick 多包穿透或外部插件直接构造事件触发至此，首先检查攻击者是否已处于抑制窗口
         if (plugin.getCombatMitigationHandler() != null && plugin.getCombatMitigationHandler().isAttackSuppressed(attacker)) {
             event.setCancelled(true);
             try {
@@ -531,22 +533,30 @@ public class PlayerEventListener implements Listener {
             return;
         }
 
+        // 若目标实体为首次交互的非玩家生物（尚未进入 EntityHistoryTracker 索引），当场补录进索引缓存
+        if (plugin.getHistoryTracker() != null && event.getEntity() != null) {
+            plugin.getHistoryTracker().recordEntity(
+                    event.getEntity(),
+                    VersionAdapterFactory.getAdapter(),
+                    System.currentTimeMillis()
+            );
+        }
+
         // 仅在数据包协议管线未就绪时由 Bukkit 事件作为降级统计，杜绝网络层与主线程双重打点导致的 CPS 翻倍误报
         recordClickIfFallback(attacker);
 
-        // 杀戮光环检测
-        checkManager.getKillAuraCheck().handleAttack(attacker, event.getEntity(), event);
-        if (event.isCancelled()) {
-            return;
-        }
-
-        // 重锤下落伤害与作弊检测 (MaceDMG / FakeFall)
+        // 重锤下落伤害上限与最终伤害数值核验 (MaceDMG / Theoretical Damage Cap)
         checkManager.getMaceCheck().handleAttack(attacker, event.getEntity(), event);
         if (event.isCancelled()) {
             return;
         }
 
-        // 攻击距离检测
+        // 当 Packet 管线未激活或目标实体此前未被缓存命中时，执行 KillAura 与 Reach 的 Bukkit 层兜底检测
+        checkManager.getKillAuraCheck().handleAttack(attacker, event.getEntity(), event);
+        if (event.isCancelled()) {
+            return;
+        }
+
         checkManager.getReachCheck().handleAttack(attacker, event.getEntity(), event);
     }
 
@@ -670,7 +680,7 @@ public class PlayerEventListener implements Listener {
                         event.setCancelled(true);
                         player.setGliding(false);
                         data.getElytraData().resetGlideState();
-                data.resetMaceFallState(player.getLocation().getY());
+                        data.resetMaceFallState(player.getLocation().getY());
                         plugin.getSetbackManager().sendPositionSyncPacket(player, player.getLocation());
                         return;
                     }
@@ -681,7 +691,7 @@ public class PlayerEventListener implements Listener {
                             if (chest == null || chest.getType() != org.bukkit.Material.ELYTRA) {
                                 player.setGliding(false);
                                 data.getElytraData().resetGlideState();
-                data.resetMaceFallState(player.getLocation().getY());
+                                data.resetMaceFallState(player.getLocation().getY());
                                 plugin.getSetbackManager().sendPositionSyncPacket(player, player.getLocation());
                             }
                         }
