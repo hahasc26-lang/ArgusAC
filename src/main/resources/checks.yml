@@ -1,178 +1,178 @@
 # ==============================================================================
-# ArgusAC - 独立检测项配置文件 (checks.yml)
-# 集中管理所有移动、战斗、世界交互及数据包检测模块的参数与阈值
+# ArgusAC - Independent Checks Configuration File (checks.yml)
+# Centralized management of parameters and thresholds for all movement, combat, world interaction, and packet detection modules
 # ==============================================================================
 
 checks:
-  # 1. 移动速度检测 (Speed)
+  # 1. Movement Speed Check (Speed)
   Speed:
     enabled: true
     max-vl: 15
-    # 基础每 50ms 移动 tick 最大允许水平位移 (原版正常疾跑跳跃约为 0.61)
+    # Base maximum allowed horizontal displacement per 50ms movement tick (Vanilla normal sprint jump is approx. 0.61)
     max-horizontal-speed: 0.65
-    # 冰面 / 浮冰摩擦额外加速系数
+    # Extra acceleration multiplier for ice / packed ice friction
     ice-modifier: 1.45
-    # 速度药水每级效果加成系数
+    # Effect multiplier per level of Speed potion
     speed-potion-multiplier: 0.20
-    # 违规缓冲区容量 (用于吸收单 tick 网络微弱抖动)
-    speed-buffer-max: 0.40
-    # 每次合法移动 tick 的缓冲区衰减量
-    speed-buffer-decay: 0.08
+    # Violation buffer capacity (used to absorb minor single-tick network jitter and discrete physical variance of continuous jumping; tuned to 0.25 on par with mature anti-cheats)
+    speed-buffer-max: 0.25
+    # Buffer decay amount for each legal movement tick
+    speed-buffer-decay: 0.10
 
-  # 2. 飞行与重力检测 (Fly)
+  # 2. Flight and Gravity Check (Fly)
   Fly:
     enabled: true
     max-vl: 12
-    # 允许的最大滞空 tick 数 (超出且未下落即判定为滞空悬停)
-    max-air-ticks: 25
-    # 无跳跃提升药水效果时的异常向上垂直位移阈值
+    # Maximum allowed airborne ticks (Vanilla jump max is only 11 ticks; tightened to 12 ticks for instant detection of excessive air time)
+    max-air-ticks: 12
+    # Abnormal upward vertical displacement threshold without Jump Boost potion effect
     vertical-ascent-threshold: 0.42
 
-  # 3. 虚假落地检测 (NoFall)
+  # 3. Fake Ground Check (NoFall)
   NoFall:
     enabled: true
     max-vl: 15
-    # 客户端声明 onGround=true 但脚下无实体方块时的容差距离
+    # Tolerance distance when the client claims onGround=true but there is no solid block underfoot
     ground-check-tolerance: 0.001
 
-  # 4. 攻击距离检测 (Reach)
+  # 4. Attack Reach Check (Reach)
   Reach:
     enabled: true
     max-vl: 15
-    # 生存模式最大攻击距离理论极限 (格)
+    # Theoretical limit for maximum attack reach in Survival mode (blocks)
     max-reach: 3.10
-    # 结合 Ping 延迟补偿和击退余量的最大允许距离
+    # Maximum allowed distance combined with Ping latency compensation and knockback margin
     max-ping-reach: 3.50
 
-  # 5. 自动连点器检测 (AutoClicker)
+  # 5. AutoClicker Check (AutoClicker)
   AutoClicker:
     enabled: true
     max-vl: 15
-    # 允许的最大每秒点击数 (CPS)
+    # Maximum allowed clicks per second (CPS)
     max-cps: 18
-    # 最小点击时间差标准差 (用于检测宏无抖动的机械均匀点击)
+    # Minimum standard deviation of click time differences (used to detect mechanical, jitter-free uniform clicks from macros)
     min-std-deviation: 4.5
 
-  # 6. 杀戮光环检测 (KillAura)
-  # 采用纯静默即时取消机制，杜绝伤害穿透，无侵入式缴械
+  # 6. KillAura Check
+  # Uses a purely silent instant cancellation mechanism to prevent damage penetration, without intrusive disarming
   KillAura:
     enabled: true
     max-vl: 18
-    # 攻击时视线中心与目标允许的最大夹角 (度)
+    # Maximum allowed angle between line of sight center and target during attack (degrees)
     max-angle: 68.0
-    # 检测攻击者与受害者视线之间是否有实体方块遮挡 (防隔墙打击)
+    # Checks if there are solid blocks blocking the line of sight between attacker and victim (prevents hitting through walls)
     raytrace-blocks: true
-    # 极速切换不同受击目标的最短允许毫秒间隔 (防 1vN 瞬转群殴)
+    # Shortest allowed millisecond interval for rapidly switching between different targets (prevents instant 1vN multi-target attacks)
     target-switch-ms: 80
-    # 盲区与背身反向攻击拦截 (> 90.0 度)
+    # Intercepts blind spot and backwards/reverse attacks (> 90.0 degrees)
     blindspot-check: true
-    # 瞬间自瞄偏转检测
+    # Instant aimbot snap detection
     snap-check: true
-    # 判定为瞬间自瞄的偏航角突变阈值 (度)
+    # Yaw angle sudden change threshold to be determined as an instant snap (degrees)
     snap-angle-threshold: 45.0
 
-  # 7. 击退动量响应检测 (Velocity / Anti-KB)
+  # 7. Knockback Momentum Response Check (Velocity / Anti-KB)
   Velocity:
     enabled: true
     max-vl: 15
-    # 预期受击退后的垂直响应比率 (低于此值视为垂直反击退)
+    # Expected vertical response ratio after receiving knockback (values below this are considered vertical anti-knockback)
     vertical-ratio: 0.85
-    # 预期受击退后的水平响应比率
+    # Expected horizontal response ratio after receiving knockback
     horizontal-ratio: 0.80
 
-  # 8. 快速射箭与加特林弓外挂检测 (FastBow)
-  # 深度防御瞬发箭、高频加特林射击、绕过蓄力与 FakeLag/Blink 延迟堆包轰炸 (Packet Spoil)
+  # 8. FastBow and Gatling Bow Cheat Check (FastBow)
+  # Deep defense against instant arrows, high-frequency Gatling shooting, charge bypass, and FakeLag/Blink latency packet spamming (Packet Spoof)
   FastBow:
     enabled: true
     max-vl: 12
-    # 满蓄力 (force >= 0.8) 最小允许蓄力 tick 数 (原版拉满为 20 ticks / 1000ms，放宽 2 ticks 容差)
+    # Minimum allowed charge ticks for full charge (force >= 0.8) (Vanilla full draw is 20 ticks / 1000ms, relaxed with 2 ticks tolerance)
     min-charge-ticks: 18
-    # 满蓄力最小允许蓄力毫秒数
+    # Minimum allowed charge milliseconds for full charge
     min-charge-ms: 850
-    # 两次射击之间的绝对最小毫秒间隔 (防连发加特林外挂)
+    # Absolute minimum millisecond interval between two shots (prevents rapid-fire Gatling cheats)
     min-shot-interval-ms: 250
-    # 1000ms 滑动窗口内允许的最大射箭次数 (防延迟堆包轰炸)
+    # Maximum allowed arrow shots within a 1000ms sliding window (prevents delayed packet spamming)
     max-shots-per-second: 3
-    # 违规防御处置模式 (仅保留 CANCEL 与 NERF 两种模式):
-    # CANCEL: 静默取消射击并移除箭矢实体 (默认推荐)
-    # NERF: 削弱为脚下软绵箭 (初速度强制削减归零并垂直坠地)
+    # Violation mitigation mode (only CANCEL and NERF modes are retained):
+    # CANCEL: Silently cancels the shot and removes the arrow entity (default recommended)
+    # NERF: Nerfs into a weak arrow at the feet (initial velocity forcefully reduced to zero, dropping vertically)
     mitigation-mode: "CANCEL"
 
-  # 9. 快速进食与异常物品使用检测 (FastEat)
-  # 深度防御提前发送完成使用数据包 (Packet Spoofing)、Timer 步进加速与瞬间吃药/吃肉/金苹果外挂
+  # 9. Fast Eating and Abnormal Item Usage Check (FastEat)
+  # Deep defense against sending completion packets early (Packet Spoofing), Timer stepping acceleration, and instant potion/food/golden apple cheats
   FastEat:
     enabled: true
     max-vl: 12
-    # 正常食用需要 32 ticks (1600ms)，允许的最低吃东西 tick 数 (考虑到 2-4 ticks 容差)
+    # Normal eating takes 32 ticks (1600ms); minimum allowed eating ticks (considering a 2-4 ticks tolerance)
     min-allowed-ticks: 28
-    # 允许的最低吃东西毫秒数 (默认 1200ms)
+    # Minimum allowed eating milliseconds (default 1200ms)
     min-allowed-ms: 1200
-    # 是否启用基于玩家 Ping 延迟的网络抖动补偿
+    # Whether to enable network jitter compensation based on player Ping latency
     lag-compensation: true
-    # 违规防御处置模式 (CANCEL: 静默取消食用并刷写手持物品同步，防客户端虚假消耗)
+    # Violation mitigation mode (CANCEL: silently cancels eating and resyncs held item to prevent fake client-side consumption)
     mitigation-mode: "CANCEL"
 
-  # 9. 快速挖掘检测 (FastBreak)
+  # 9. Fast Break Check (FastBreak)
   FastBreak:
     enabled: true
     max-vl: 15
-    # 超出理论方块硬度挖掘耗时的容许百分比 (0.20 = 允许快 20%)
+    # Allowed percentage exceeding theoretical block hardness breaking time (0.20 = allows being 20% faster)
     time-leniency: 0.20
 
-  # 9. 暴拆/群破坏检测 (Nuker)
+  # 9. Nuker / Mass Block Break Check (Nuker)
   Nuker:
     enabled: true
     max-vl: 12
-    # 单 tick 允许破坏的最大方块数 (原版客户端为 1)
+    # Maximum allowed blocks broken per single tick (Vanilla client is 1)
     max-breaks-per-tick: 2
-    # 无急迫 II 效果下每秒破坏的最大方块数
+    # Maximum blocks broken per second without Haste II effect
     max-breaks-per-second: 15
 
-  # 10. 自动搭桥检测 (Scaffold)
+  # 10. Scaffold Check (Scaffold)
   Scaffold:
     enabled: true
     max-vl: 15
-    # 脚下铺路时的异常低头俯仰角阈值 (度)
+    # Abnormal downward pitch angle threshold when placing blocks underfoot (degrees)
     min-pitch: 70.0
 
-  # 11. 界面移动检测 (InventoryMove)
+  # 11. Inventory Move Check (InventoryMove)
   InventoryMove:
     enabled: true
     max-vl: 10
-    # 在打开背包、箱子等容器界面时允许的最大移动距离
+    # Maximum allowed movement distance while a container interface like inventory or chest is open
     max-distance-while-open: 0.15
 
-  # 12. 协议与数据包异常检测 (BadPackets)
+  # 12. Protocol and Packet Anomaly Check (BadPackets)
   BadPackets:
     enabled: true
     max-vl: 10
-    # 严格俯仰角约束 [-90.0, 90.0] (防 Derp / 倒立仰角外挂)
+    # Strict pitch angle constraint [-90.0, 90.0] (prevents Derp / upside-down pitch cheats)
     strict-pitch: true
-    # 检测上升过程中的重复冗余位置包
+    # Checks for duplicate redundant position packets during ascent
     check-duplicate-move: true
-    # 协议级 50ms 时钟漂移平衡检测 (防 1.05x ~ 2.0x 变速齿轮与发包轰炸)
+    # Protocol-level 50ms clock drift balance check (prevents 1.05x ~ 2.0x speedhacks and packet spamming)
     timer-check: true
 
-  # 13. 鞘翅飞行与“甲飞”作弊检测 (ElytraFly / PacketFly / Control Mode)
-  # 全面防御通过伪造滑翔发包、换甲漏洞、无动力爬升、无限平飞与空中悬停等“甲飞”作弊手段
+  # 13. Elytra Flight and Armor-Fly Cheat Check (ElytraFly / PacketFly / Control Mode)
+  # Comprehensive defense against "Armor-Fly" cheats via spoofed glide packets, armor-swap exploits, unpowered ascent, infinite level flight, and mid-air hovering
   ElytraFly:
     enabled: true
     max-vl: 15
 
-    # 物理环境与合法推进豁免时长
+    # Exemption durations for physical environments and legal propulsion
     exemptions:
-      # 烟花火箭推进豁免期 (毫秒)
+      # Firework rocket boost exemption period (ms)
       firework-boost-duration-ms: 1500
-      # 激流三叉戟豁免期 (毫秒)
+      # Riptide trident exemption period (ms)
       riptide-duration-ms: 2000
-      # 爆炸与外部动量冲击豁免期 (毫秒)
+      # Explosion and external momentum impact exemption period (ms)
       external-velocity-duration-ms: 1200
-      # 初始起飞滑翔保护期 (毫秒)
+      # Initial takeoff glide grace period (ms)
       takeoff-grace-duration-ms: 1000
-      # 服务端 TPS 跌落至此阈值以下时自动放宽判定
+      # Automatically relaxes detection when server TPS drops below this threshold
       min-server-tps: 17.5
 
-    # 子项 1: 滑翔最大水平速度与俯冲动能换算
+    # Sub-item 1: Maximum horizontal glide speed and dive kinetic energy conversion
     speed:
       enabled: true
       max-unboosted-speed: 1.45
@@ -181,7 +181,7 @@ checks:
       min-vl: 3
       setback-mode: "CANCEL"
 
-    # 子项 2: 无动力异常爬升 (机械能守恒定律严厉约束)
+    # Sub-item 2: Abnormal unpowered ascent (strict constraint via law of conservation of mechanical energy)
     ascend:
       enabled: true
       max-vertical-ascent: 0.15
@@ -191,7 +191,7 @@ checks:
       min-vl: 3
       setback-mode: "CANCEL"
 
-    # 子项 3: 空中零动量滞空悬停与定高无限平飞 (防 PacketFly 悬空定点挂机与 Control Mode)
+    # Sub-item 3: Zero-momentum mid-air hover and fixed-altitude infinite level flight (prevents PacketFly suspended AFK and Control Mode)
     hover:
       enabled: true
       max-horizontal-speed: 0.08
@@ -201,7 +201,7 @@ checks:
       min-vl: 3
       setback-mode: "CANCEL"
 
-    # 子项 4: 烟花持续高速异常 (无推进自发加速与无限高速续航拦截)
+    # Sub-item 4: Abnormal continuous high speed with fireworks (intercepts unpropelled spontaneous acceleration and infinite high-speed cruising)
     firework:
       enabled: true
       min-unpropelled-accel: 0.08
@@ -209,7 +209,7 @@ checks:
       min-vl: 3
       setback-mode: "CANCEL"
 
-    # 子项 5: 38号胸甲槽位装备与耐久实时强校验 (防脱甲偷飞、0耐久假开伞与换甲时序穿透)
+    # Sub-item 5: Real-time strict validation of chestplate slot 38 equipment and durability (prevents unequipped flying, 0-durability fake deployment, and armor-swap timing bypasses)
     glide-state:
       enabled: true
       check-chestplate-durability: true
@@ -218,7 +218,7 @@ checks:
       min-vl: 1
       setback-mode: "CANCEL"
 
-    # 子项 6: 滑翔高频发包间隔检测 (Timer 变速时钟平衡)
+    # Sub-item 6: High-frequency glide packet interval check (Timer speedhack clock balance)
     timer:
       enabled: true
       sample-window-size: 20
@@ -226,7 +226,7 @@ checks:
       min-vl: 3
       setback-mode: "CANCEL"
 
-    # 子项 7: 极速开关鞘翅姿态切换 (GlideFlip 限频拦截)
+    # Sub-item 7: Extremely fast Elytra glide posture toggling (GlideFlip rate-limit interception)
     flip:
       enabled: true
       window-ms: 1000
@@ -234,7 +234,7 @@ checks:
       min-vl: 3
       setback-mode: "CANCEL"
 
-    # 子项 8: 临地切滑翔免除坠落伤害漏洞 (重复滥用判定)
+    # Sub-item 8: Near-ground glide toggle exploit to negate fall damage (repeated abuse detection)
     nofall:
       enabled: true
       min-fall-distance: 3.0
@@ -242,17 +242,17 @@ checks:
       min-vl: 3
       setback-mode: "CANCEL"
 
-  # 14. 水上行走与水面虚假悬浮检测 (Jesus)
+  # 14. Water Walking and Fake Water Surface Hover Check (Jesus)
   Jesus:
     enabled: true
     max-vl: 12
-    # 水面虚假接地立即拦截
+    # Immediate interception of fake ground-state on water surface
     detect-ground-spoof: true
-    # 水面移动最大允许水平速度 (格/tick)
+    # Maximum allowed horizontal speed for water surface movement (blocks/tick)
     max-water-speed: 0.28
-    # 水面上锁死垂直零位移的最大允许 tick 数
+    # Maximum allowed ticks for locked zero vertical displacement on water surface
     max-solid-hover-ticks: 4
-    # 水面持续停留累积判定上限 tick 数
+    # Cumulative detection limit in ticks for continuous staying on water surface
     max-water-surface-ticks: 15
-    # 垂直振荡重置阈值
+    # Vertical oscillation reset threshold
     vertical-reset-threshold: 0.12

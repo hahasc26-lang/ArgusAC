@@ -47,10 +47,15 @@ public class InventoryMoveCheck extends AbstractCheck {
             return;
         }
 
+        com.example.argusac.setback.PlayerSetbackContext setbackContext =
+                plugin.getSetbackManager() != null ? plugin.getSetbackManager().getContext(player.getUniqueId()) : null;
+        boolean underViolationLock = setbackContext != null && (setbackContext.isTeleportInFlight() || setbackContext.isUnderViolationLock());
+
         long now = System.currentTimeMillis();
-        // 打开容器前 400ms 惯性缓冲、空中跳跃惯性、流水冲刷、冰面滑行或击退均豁免
+        // 打开容器前 400ms 惯性缓冲、空中跳跃惯性、流水冲刷、冰面滑行或击退均豁免 (违规锁定期严禁速度豁免)
         if (now - data.getInventoryOpenTime() < 400L || !data.isOnGround() || data.getAirTicks() > 0 || data.getIceTicks() > 0
-                || com.example.argusac.compat.VersionAdapterFactory.getAdapter().isInWater(player) || data.hasRecentVelocity(800L)) {
+                || com.example.argusac.compat.VersionAdapterFactory.getAdapter().isInWater(player)
+                || (!underViolationLock && data.hasRecentVelocity(1000L))) {
             return;
         }
 

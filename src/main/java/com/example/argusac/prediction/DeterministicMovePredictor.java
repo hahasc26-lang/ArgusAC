@@ -103,8 +103,12 @@ public class DeterministicMovePredictor {
             return PredictionResult.exempt();
         }
 
-        // 回退自免疫期、合法高机动期、登录豁免期直接豁免
-        if (data.isSetbackImmune() || data.hasAnyLegalVelocity() || data.isInGracePeriod()) {
+        com.example.argusac.setback.PlayerSetbackContext setbackContext =
+                plugin.getSetbackManager() != null ? plugin.getSetbackManager().getContext(player.getUniqueId()) : null;
+        boolean underViolationLock = setbackContext != null && (setbackContext.isTeleportInFlight() || setbackContext.isUnderViolationLock());
+
+        // 仅在非违规锁定期才允许合法高机动期与登录豁免期豁免
+        if (!underViolationLock && (data.isSetbackImmune() || data.hasAnyLegalVelocity() || data.isInGracePeriod())) {
             return PredictionResult.exempt();
         }
 

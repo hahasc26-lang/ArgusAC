@@ -486,7 +486,9 @@ public class LegacyVersionAdapter implements VersionAdapter {
                 || name.contains("SLAB") || name.contains("STEP")
                 || name.contains("STAIRS")
                 || name.contains("TRAPDOOR")
-                || name.contains("FENCE");
+                || name.contains("FENCE")
+                || name.contains("WALL")
+                || name.contains("SCAFFOLDING");
     }
 
     @Override

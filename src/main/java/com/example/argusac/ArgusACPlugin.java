@@ -12,8 +12,6 @@ import com.example.argusac.manager.ViolationManager;
 import org.bukkit.command.PluginCommand;
 import org.bukkit.plugin.java.JavaPlugin;
 
-
-
 /**
  * ArgusAC 主插件类
  * 专为 Spigot / Paper 1.12.2 ~ 26.3 服务端跨版本优化，采用模块化结构与原生状态回退机制
@@ -58,13 +56,11 @@ public class ArgusACPlugin extends JavaPlugin {
     // 实体历史碰撞盒回溯追踪器 (Lag Compensation History)
     private com.example.argusac.history.EntityHistoryTracker historyTracker;
 
-
     @Override
     public void onLoad() {
         try {
             com.github.retrooper.packetevents.PacketEvents.setAPI(
-                    io.github.retrooper.packetevents.factory.spigot.SpigotPacketEventsBuilder.build(this)
-            );
+                    io.github.retrooper.packetevents.factory.spigot.SpigotPacketEventsBuilder.build(this));
             com.github.retrooper.packetevents.PacketEvents.getAPI().load();
         } catch (Throwable t) {
             getLogger().log(java.util.logging.Level.WARNING, "Failed to load PacketEvents API in onLoad", t);
@@ -84,7 +80,6 @@ public class ArgusACPlugin extends JavaPlugin {
         // 初始化独立战斗拦截处理器
         this.combatMitigationHandler = new com.example.argusac.combat.CombatMitigationHandler(this);
 
-
         // 1. 初始化底层 PacketEvents 数据包管线
         try {
             com.github.retrooper.packetevents.PacketEvents.getAPI().init();
@@ -97,7 +92,8 @@ public class ArgusACPlugin extends JavaPlugin {
         // 2. 检查最低支持版本 (1.12.2)，过低版本安全挂起退出，不抛异常
         if (com.example.argusac.compat.ServerVersion.isOlderThan(com.example.argusac.compat.ServerVersion.V1_12_2)) {
             getLogger().severe("==================================================");
-            getLogger().severe(" [ArgusAC Compatibility] Unsupported server version: " + com.example.argusac.compat.ServerVersion.get().getFriendlyName());
+            getLogger().severe(" [ArgusAC Compatibility] Unsupported server version: "
+                    + com.example.argusac.compat.ServerVersion.get().getFriendlyName());
             getLogger().severe(" ArgusAC requires Minecraft 1.12.2+. Plugin disabled safely for server stability.");
             getLogger().severe("==================================================");
             getServer().getPluginManager().disablePlugin(this);
@@ -135,7 +131,8 @@ public class ArgusACPlugin extends JavaPlugin {
 
         // 8. 针对 1.13+ 现代专有事件进行条件式动态注册 (杜绝 1.12.2 类装载 NoClassDefFoundError)
         if (com.example.argusac.compat.ServerVersion.isAtLeast(com.example.argusac.compat.ServerVersion.V1_13)) {
-            getServer().getPluginManager().registerEvents(new com.example.argusac.listener.ModernEventListener(this), this);
+            getServer().getPluginManager().registerEvents(new com.example.argusac.listener.ModernEventListener(this),
+                    this);
         }
 
         // 9. 注册全版本客户端品牌 PluginMessage 通道监听
@@ -154,8 +151,7 @@ public class ArgusACPlugin extends JavaPlugin {
             setbackManager.getContext(online.getUniqueId()).reset(
                     online.getLocation(),
                     online.isInsideVehicle(),
-                    online.getVehicle() != null ? online.getVehicle().getUniqueId() : null
-            );
+                    online.getVehicle() != null ? online.getVehicle().getUniqueId() : null);
         }
 
         // 12. 打印就绪横幅
@@ -173,11 +169,13 @@ public class ArgusACPlugin extends JavaPlugin {
                             data.setClientBrand(brand);
                         }
                     }
-                } catch (Throwable ignored) {}
+                } catch (Throwable ignored) {
+                }
             };
             getServer().getMessenger().registerIncomingPluginChannel(this, "MC|Brand", listener);
             getServer().getMessenger().registerIncomingPluginChannel(this, "minecraft:brand", listener);
-        } catch (Throwable ignored) {}
+        } catch (Throwable ignored) {
+        }
     }
 
     @Override
@@ -208,7 +206,8 @@ public class ArgusACPlugin extends JavaPlugin {
         }
         try {
             com.github.retrooper.packetevents.PacketEvents.getAPI().terminate();
-        } catch (Throwable ignored) {}
+        } catch (Throwable ignored) {
+        }
 
         if (auditLogManager != null) {
             auditLogManager.shutdown();
@@ -223,13 +222,20 @@ public class ArgusACPlugin extends JavaPlugin {
     public void reloadAll() {
         reloadConfig();
         reloadChecksConfig();
-        if (languageManager != null) languageManager.reload();
-        if (setbackManager != null) setbackManager.reloadConfig();
-        if (alertManager != null) alertManager.reloadConfig();
-        if (punishmentManager != null) punishmentManager.reloadConfig();
-        if (checkManager != null) checkManager.reloadAll();
-        if (movePredictor != null) movePredictor.reloadConfig();
-        if (violationManager != null) violationManager.startDecayTask();
+        if (languageManager != null)
+            languageManager.reload();
+        if (setbackManager != null)
+            setbackManager.reloadConfig();
+        if (alertManager != null)
+            alertManager.reloadConfig();
+        if (punishmentManager != null)
+            punishmentManager.reloadConfig();
+        if (checkManager != null)
+            checkManager.reloadAll();
+        if (movePredictor != null)
+            movePredictor.reloadConfig();
+        if (violationManager != null)
+            violationManager.startDecayTask();
     }
 
     @SuppressWarnings("deprecation")
@@ -241,11 +247,6 @@ public class ArgusACPlugin extends JavaPlugin {
         getLogger().info(" / ___ \\| | | (_| | |_| \\__ \\    / ___ \\| |___  ");
         getLogger().info("/_/   \\_\\_|  \\__, |\\__,_|___/   /_/   \\_\\\\____| ");
         getLogger().info("             |___/    ArgusAC AntiCheat v" + this.getDescription().getVersion());
-        getLogger().info(" Target: Spigot / Paper 1.12.2 ~ 26.3 | Runtime: Java 17");
-        getLogger().info(" Packet Pipeline: PacketEvents v2.7.0 (Native Packet State Machine)");
-        getLogger().info(" Checks: " + checkManager.getAllChecks().size() + " registered modules");
-        getLogger().info(" Setback: " + (setbackManager.isGlobalEnabled() ? "Globally Enabled" : "Standby"));
-        getLogger().info(" Audit Log Engine: Active (Persistent Writer / SHA-256 Chain / Non-blocking)");
         getLogger().info("==================================================");
     }
 
@@ -369,4 +370,3 @@ public class ArgusACPlugin extends JavaPlugin {
         }
     }
 }
-

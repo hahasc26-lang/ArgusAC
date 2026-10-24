@@ -15,6 +15,8 @@ import com.example.argusac.setback.SafeLocationFinder;
 import com.example.argusac.setback.SetbackNotifier;
 import com.example.argusac.setback.SetbackPacketSync;
 import com.example.argusac.setback.SetbackPhysics;
+import com.example.argusac.compat.VersionAdapter;
+import com.example.argusac.compat.VersionAdapterFactory;
 import org.bukkit.Bukkit;
 import org.bukkit.GameMode;
 import org.bukkit.Location;
@@ -212,14 +214,20 @@ public class SetbackManager implements Listener {
 
         PlayerSetbackContext context = getContext(player.getUniqueId());
 
-        if (context.hasPendingCorrection()
-                && context.matchesCorrection(from)
-                && context.matchesCorrection(to)) {
+        if (context.hasPendingCorrection() && context.matchesCorrection(to)) {
+            context.confirmTeleport(context.getInFlightTeleportId());
             context.clearPendingCorrection();
             context.setImmunityUntil(0L);
         }
 
-        if (context.isImmune()) {
+        // 对标 GrimAC 权威安全锚点防污染法则：若处于在途传送未确认状态或违规锁定期内，严禁将未经验证的过渡位移记入合法快照！
+        if (context.isTeleportInFlight() || context.isUnderViolationLock() || context.isImmune()) {
+            return;
+        }
+
+        PlayerData pData = plugin.getPlayerManager().getPlayerData(player);
+        // 若当前处于超速嫌疑累积期 (speedBuffer > 0.04)，绝不允许将涉嫌加速的坐标吸纳为合法安全快照！
+        if (pData != null && pData.getSpeedBuffer() > 0.04) {
             return;
         }
 
@@ -227,7 +235,6 @@ public class SetbackManager implements Listener {
                 ? player.getVehicle().getUniqueId() : null;
 
         boolean onGround = to.clone().subtract(0, 0.1, 0).getBlock().getType().isSolid();
-        PlayerData pData = plugin.getPlayerManager().getPlayerData(player);
         if (pData != null && pData.isOnGround()) {
             onGround = true;
         }
@@ -285,12 +292,8 @@ public class SetbackManager implements Listener {
             }
         }
 
-        long now = System.currentTimeMillis();
-        long lastCheckSetback = context.getLastSetbackTimestamp(check.getName());
-        if (now - lastCheckSetback < cooldownMs) {
-            return false;
-        }
-
+        // 对标 GrimAC：移动类检测彻底废除物理回退的冷却放行时间，杜绝作弊者利用 350ms 冷却窗口蹭步蠕动！
+        // 告警广播与玩家聊天提示的频次限制由 SetbackNotifier 独立控制，物理拦截本身必须当 tick 即时生效
         int requiredVl = check.getSetbackMinVl() > 0 ? check.getSetbackMinVl() : globalMinVl;
         return currentVl >= requiredVl;
     }
@@ -374,6 +377,7 @@ public class SetbackManager implements Listener {
         }
 
         long now = System.currentTimeMillis();
+        long previousCancelTime = context.getLastCancellationViolationTime();
         context.incrementConsecutiveCancellationViolations();
         context.setLastSetbackTimestamp(check.getName(), now);
 
@@ -387,7 +391,7 @@ public class SetbackManager implements Listener {
         Location cancelTarget;
 
         if (lockedAnchor != null && from.getWorld() != null && from.getWorld().equals(lockedAnchor.getWorld())
-                && (now - context.getLastCancellationViolationTime() < 4000L)) {
+                && (now - previousCancelTime < 4000L)) {
             cancelTarget = lockedAnchor.clone();
         } else {
             if (isAirborne || isFlightOrWaterCheck) {
@@ -408,7 +412,22 @@ public class SetbackManager implements Listener {
             cancelTarget.setPitch(to.getPitch());
         }
 
-        if (isAirborne || isFlightOrWaterCheck) {
+        VersionAdapter adapter = VersionAdapterFactory.getAdapter();
+        boolean inLiquid = adapter.isInWater(player)
+                || adapter.isLiquid(cancelTarget.getBlock())
+                || adapter.isLiquid(from.getBlock())
+                || adapter.isLiquid(cancelTarget.clone().subtract(0, 0.4, 0).getBlock());
+
+        // 仅在纯真空空中滞空且非流体环境下才模拟原版重力加速度下坠下压；
+        // 流体环境 (水、岩浆) 自带浮力，绝不执行真空自由落体下坠，杜绝水面跳跃/回退时被连环下压沉底
+        if (inLiquid && to != null && to.getY() < cancelTarget.getY() && (cancelTarget.getY() - to.getY()) <= 0.5) {
+            // 在水中发生回退锚定时，允许玩家自然下沉入水，防止将玩家死锁在水面表层 (如 Y=62.94) 引发连环 Jesus 误报
+            cancelTarget.setY(to.getY());
+            if (context.getLockedAnchorLocation() != null) {
+                context.getLockedAnchorLocation().setY(to.getY());
+            }
+        }
+        if ((isAirborne || isFlightOrWaterCheck) && !inLiquid) {
             if (to != null && to.getY() > cancelTarget.getY()) {
                 cancelTarget.setY(Math.min(cancelTarget.getY(), from.getY()));
             }
@@ -428,6 +447,8 @@ public class SetbackManager implements Listener {
         if (player.isInsideVehicle() && player.getVehicle() != null) {
             org.bukkit.entity.Entity vehicle = player.getVehicle();
             vehicle.setVelocity(new Vector(0, 0, 0));
+            // 严格对标 GrimAC：强制将违规玩家从载具弹出下马，拉回载具，彻底封死载具插值微位移
+            player.leaveVehicle();
             if (!isAirborne) {
                 vehicle.teleport(cancelTarget);
             }
@@ -443,16 +464,21 @@ public class SetbackManager implements Listener {
             }
         }
 
-        // 生成单调递增流水号并下发位置同步包 (GrimAC 事务确认与 In-Flight 锁防连环拉回)
-        int teleportId = (int) (context.getNextSequenceId() % 2000000000L);
+        // 生成绝对隔离的负数 Teleport ID 并下发位置同步包 (GrimAC 源码: random.nextInt() | Integer.MIN_VALUE)
+        int teleportId = context.generateSecureTeleportId();
         context.markTeleportInFlight(teleportId, cancelTarget);
         sendPositionSyncPacket(player, cancelTarget, teleportId);
 
         // 速度与运动状态彻底清零，消除作弊客户端本地残留 Motion 再次触发异常位移
         player.setVelocity(new Vector(0, 0, 0));
-        if (data != null && data.getPhysicsState() != null) {
-            data.getPhysicsState().reset(cancelTarget);
-            data.getPhysicsState().clearPendingVelocities();
+        if (data != null) {
+            data.clearExpectedVelocity();
+            data.setSpeedBuffer(0.0);
+            data.getTimerTracker().reset();
+            if (data.getPhysicsState() != null) {
+                data.getPhysicsState().reset(cancelTarget);
+                data.getPhysicsState().clearPendingVelocities();
+            }
         }
 
         setbackNotifier.postSetbackSuccess(player, context, check.getName(), currentVl, reason, "DIRECT_CANCEL",
@@ -608,13 +634,12 @@ public class SetbackManager implements Listener {
             if (player.isInsideVehicle() && player.getVehicle() != null) {
                 org.bukkit.entity.Entity vehicle = player.getVehicle();
                 vehicle.setVelocity(new Vector(0, 0, 0));
-                boolean vehicleSuccess = vehicle.teleport(targetLocation);
-                if (!vehicleSuccess) {
-                    player.leaveVehicle();
-                }
+                // 严格对标 GrimAC：强制将违规玩家从载具弹出下马并单独拉回载具
+                player.leaveVehicle();
+                vehicle.teleport(targetLocation);
             }
 
-            int teleportId = (int) (context.getActiveSequenceId() % 2000000000L);
+            int teleportId = context.generateSecureTeleportId();
             context.markTeleportInFlight(teleportId, targetLocation);
             sendPositionSyncPacket(player, targetLocation, teleportId);
 
@@ -629,9 +654,14 @@ public class SetbackManager implements Listener {
                 }
 
                 PlayerData data = plugin.getPlayerManager().getPlayerData(player);
-                if (data != null && data.getPhysicsState() != null) {
-                    data.getPhysicsState().reset(targetLocation);
-                    data.getPhysicsState().clearPendingVelocities();
+                if (data != null) {
+                    data.clearExpectedVelocity();
+                    data.setSpeedBuffer(0.0);
+                    data.getTimerTracker().reset();
+                    if (data.getPhysicsState() != null) {
+                        data.getPhysicsState().reset(targetLocation);
+                        data.getPhysicsState().clearPendingVelocities();
+                    }
                 }
 
                 if (target != null) {
@@ -700,7 +730,11 @@ public class SetbackManager implements Listener {
                 continue;
             }
 
-            if (data.hasAnyLegalVelocity() || data.hasRecentVelocity(800L)) {
+            PlayerSetbackContext context = getContext(player.getUniqueId());
+            if (context == null) continue;
+            boolean underViolationLock = context.isTeleportInFlight() || context.isUnderViolationLock();
+
+            if (!underViolationLock && (data.hasAnyLegalVelocity() || data.hasRecentVelocity(1000L))) {
                 continue;
             }
 
@@ -708,16 +742,15 @@ public class SetbackManager implements Listener {
             if (curLoc == null || curLoc.getWorld() == null) continue;
             if (exemptedWorlds.contains(curLoc.getWorld().getName().toLowerCase())) continue;
 
-            boolean grounded = isGrounded(player, curLoc);
+            boolean grounded = isGrounded(player, curLoc) || (data != null && data.isOnGround());
             var feet = curLoc.getBlock();
             var head = curLoc.clone().add(0, 1.0, 0).getBlock();
             boolean climbOrSubmerged = adapter.isClimbable(feet) || adapter.isClimbable(head)
                     || adapter.isSwimming(player)
                     || (adapter.isLiquid(feet) && adapter.isLiquid(head));
 
-            PlayerSetbackContext context = getContext(player.getUniqueId());
-
-            if (grounded || climbOrSubmerged) {
+            // 若玩家接地、处于液体/攀爬环境，或 airTicks 为 0 (地面正常运动)，即刻重置断包悬浮追踪
+            if (grounded || climbOrSubmerged || (data != null && data.getAirTicks() <= 0)) {
                 context.resetActiveHoverTracking();
                 continue;
             }
@@ -725,7 +758,8 @@ public class SetbackManager implements Listener {
             ActiveHoverTracker tracker = context.getHoverTracker();
             tracker.tick(curLoc, now);
 
-            if (tracker.isIllegalHover(12, 600L)) {
+            // 针对真正断包挂起 (Blink / Freecam / Suspend) 悬空外挂：必须在完全脱离地面的空中持续悬空 20 ticks (1000ms) 以上
+            if (tracker.isIllegalHover(20, 1000L)) {
                 selfTeleportingPlayers.add(player.getUniqueId());
                 try {
                     Location target = curLoc.clone();

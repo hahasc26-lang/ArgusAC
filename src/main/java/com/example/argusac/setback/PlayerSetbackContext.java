@@ -50,6 +50,11 @@ public class PlayerSetbackContext {
     private volatile int consecutiveCancellationViolations = 0;
     private volatile long lastCancellationViolationTime = 0L;
 
+    // 装聋作哑 (Ignore Teleport / Creeping) 逃避反作弊回退补刀追踪器 (对标 GrimAC BadPacketsN)
+    private volatile int unackedMovePackets = 0;
+    private volatile long lastResendSetbackTimestamp = 0L;
+    private static final Random RANDOM = new Random();
+
     private final Deque<ViolationLog> logs = new ConcurrentLinkedDeque<>();
     private final Deque<SetbackFailureLog> failureLogs = new ConcurrentLinkedDeque<>();
     private final ActiveHoverTracker hoverTracker = new ActiveHoverTracker();
@@ -67,14 +72,35 @@ public class PlayerSetbackContext {
     }
 
     /**
+     * 生成绝对安全的负数 Teleport ID (对齐 GrimAC 源码: random.nextInt() | Integer.MIN_VALUE)
+     * 最高二进制位强制置 1，与原版服务端及其他插件的非负自增 Teleport ID (0, 1, 2...) 形成绝对二进制隔离！
+     */
+    public int generateSecureTeleportId() {
+        int id = RANDOM.nextInt() | Integer.MIN_VALUE;
+        return (id == 0) ? -1 : id;
+    }
+
+    /**
      * 标记进入处于纠正状态 (Teleport In-Flight)
      * 发出回退包后生成特定的 Teleport ID，并在客户端正式回传确认包前锁定状态
+     * 自动构造 PendingCorrection，保证协议与坐标双通道校验闭环
      */
     public void markTeleportInFlight(int teleportId, Location target) {
         this.teleportInFlight = true;
         this.inFlightTeleportId = teleportId;
-        this.teleportInFlightTimestamp = System.currentTimeMillis();
+        long now = System.currentTimeMillis();
+        this.teleportInFlightTimestamp = now;
         this.teleportInFlightTarget = (target != null) ? target.clone() : null;
+        this.unackedMovePackets = 0;
+
+        if (target != null && target.getWorld() != null) {
+            this.pendingCorrection = new PendingCorrection(
+                    target.getX(), target.getY(), target.getZ(),
+                    target.getWorld().getUID(),
+                    now + 1500L,
+                    teleportId
+            );
+        }
     }
 
     /**
@@ -86,24 +112,57 @@ public class PlayerSetbackContext {
         }
         if (System.currentTimeMillis() - teleportInFlightTimestamp > 1500L) {
             this.teleportInFlight = false;
+            this.inFlightTeleportId = 0;
+            this.pendingCorrection = null;
+            this.unackedMovePackets = 0;
             return false;
         }
         return true;
     }
 
     /**
+     * 记录在 In-Flight 传输态下接收到的非法偏离移动数据包
+     * @return true 若客户端连续发送未确认移动包达到阈值（装聋作哑/丢弃回退包），需要立即原地瞬发补刀重发回退数据包！
+     */
+    public boolean recordUnackedMovePacket() {
+        if (!teleportInFlight) {
+            return false;
+        }
+        unackedMovePackets++;
+        long now = System.currentTimeMillis();
+        // 对齐 GrimAC：若未确认移动包达到 2 次以上，或距离回退发出超过 200ms 依然持续发移动包，立即触发补刀
+        if (unackedMovePackets >= 2 || (now - teleportInFlightTimestamp > 200L && now - lastResendSetbackTimestamp > 150L)) {
+            this.lastResendSetbackTimestamp = now;
+            this.unackedMovePackets = 0;
+            return true;
+        }
+        return false;
+    }
+
+    /**
      * 收到客户端 ACK 确认 (Teleport Confirm / AcceptTeleportationPacket) 或坐标吻合，解除 In-Flight
+     * 严格对标 GrimAC 机制：
+     * 1. 只接受负数 Teleport ID 闭环，原版或第三方插件的正数 ID (>= 0) 绝不干扰反作弊回退！
+     * 2. 解除传输态时不清除违规锁定锚点，防止作弊者紧接着下一 tick 蹭步前移！
      */
     public void confirmTeleport(int teleportId) {
         if (!teleportInFlight) {
             return;
         }
-        if (this.inFlightTeleportId <= 0 || teleportId <= 0 || this.inFlightTeleportId == teleportId) {
+        if (teleportId < 0 && (this.inFlightTeleportId == teleportId || this.inFlightTeleportId == 0)) {
             this.teleportInFlight = false;
             this.inFlightTeleportId = 0;
+            this.unackedMovePackets = 0;
             clearPendingCorrection();
-            clearLockedAnchor();
         }
+    }
+
+    /**
+     * 判断当前是否处于违规锚点锁死周期内 (防止作弊者连续按 W 产生微小位移前移锚点)
+     */
+    public boolean isUnderViolationLock() {
+        return lockedAnchorLocation != null
+                && (System.currentTimeMillis() - lastCancellationViolationTime < 2000L);
     }
 
     public Location getTeleportInFlightTarget() {
@@ -123,6 +182,11 @@ public class PlayerSetbackContext {
     }
 
     public void update(LegitimateLocation location, int maxCapacity, long maxAgeMs) {
+        // 对齐 GrimAC：处于在途传送或违规锁定期内，严禁将未经验证的中间过渡位移写入历史快照，彻底杜绝快照污染！
+        if (isTeleportInFlight() || isUnderViolationLock()) {
+            return;
+        }
+
         this.previousLegitimateLocation = this.lastLegitimateLocation;
         this.lastLegitimateLocation = location;
         if (location != null && location.isOnGround()) {
@@ -163,6 +227,15 @@ public class PlayerSetbackContext {
             return null;
         }
         long now = System.currentTimeMillis();
+
+        // 0. 对标 GrimAC 锚点守恒法则：若处于违规锁定期内，绝对优先返回锁定锚点 (Locked Anchor)，禁止任何向前漂移！
+        if (isUnderViolationLock() && lockedAnchorLocation != null && lockedAnchorLocation.getWorld() != null
+                && lockedAnchorLocation.getWorld().getUID().equals(worldUid)) {
+            LegitimateLocation anchorLegit = LegitimateLocation.from(lockedAnchorLocation, null, true, false, null);
+            if (anchorLegit != null && anchorLegit.isPassable()) {
+                return anchorLegit;
+            }
+        }
 
         // 1. 优先从历史快照队列中检索近期的地面稳定态快照
         for (LegitimateLocation snap : snapshotHistory) {

@@ -313,8 +313,12 @@ public class ElytraFlyCheck extends AbstractCheck {
                 || data.hasLegalVelocity(VelocitySourceType.FIREWORK);
         var adapter = com.example.argusac.compat.VersionAdapterFactory.getAdapter();
         boolean riptideActive = (now - elytraData.getLastRiptideTime()) < riptideDurationMs || adapter.isRiptiding(player);
-        boolean externalVelocityActive = (now - elytraData.getLastExternalVelocityTime()) < externalVelocityDurationMs
-                || data.hasAnyLegalVelocity() || data.hasRecentVelocity(externalVelocityDurationMs);
+        com.example.argusac.setback.PlayerSetbackContext setbackContext =
+                plugin.getSetbackManager() != null ? plugin.getSetbackManager().getContext(player.getUniqueId()) : null;
+        boolean underViolationLock = setbackContext != null && (setbackContext.isTeleportInFlight() || setbackContext.isUnderViolationLock());
+
+        boolean externalVelocityActive = !underViolationLock && ((now - elytraData.getLastExternalVelocityTime()) < externalVelocityDurationMs
+                || data.hasAnyLegalVelocity() || data.hasRecentVelocity(externalVelocityDurationMs));
         boolean inBubbleColumn = isInBubbleColumn(from) || isInBubbleColumn(to);
         boolean hasLevitationOrSlowFall = adapter.hasPotionEffect(player, com.example.argusac.compat.CompatPotionType.SLOW_FALLING)
                 || adapter.hasPotionEffect(player, com.example.argusac.compat.CompatPotionType.LEVITATION);
@@ -532,6 +536,7 @@ public class ElytraFlyCheck extends AbstractCheck {
     /**
      * 监听滑翔状态切换事件 (EntityToggleGlideEvent)
      */
+    @SuppressWarnings("deprecation")
     public void handleToggleGlide(Player player, PlayerData data, EntityToggleGlideEvent event) {
         if (!enabled || player == null || data == null) {
             return;
@@ -587,7 +592,7 @@ public class ElytraFlyCheck extends AbstractCheck {
             }
 
             // 换甲后极速开伞作弊拦截 (防“换甲-开伞-换回胸甲”发包时序穿透)
-            if (now - elytraData.getLastArmorSwapTime() < glideStateRapidSwapThresholdMs) {
+            if (glideStateArmorSwapCancel && (now - elytraData.getLastArmorSwapTime() < glideStateRapidSwapThresholdMs)) {
                 flagSubCheck(player, data, glideStateSubCheck, 4,
                         String.format("[ElytraGlideState] Toggle rejected: rapid glide toggle %dms after armor swap (Armor-spoof exploit)",
                                 (now - elytraData.getLastArmorSwapTime())), null);
@@ -911,4 +916,5 @@ public class ElytraFlyCheck extends AbstractCheck {
     public ElytraSubCheck getTimerSubCheck() { return timerSubCheck; }
     public ElytraSubCheck getFlipSubCheck() { return flipSubCheck; }
     public ElytraSubCheck getNoFallSubCheck() { return noFallSubCheck; }
+    public boolean isGlideStateArmorSwapCancel() { return glideStateArmorSwapCancel; }
 }

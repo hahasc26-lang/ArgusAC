@@ -16,8 +16,8 @@ public class TimerTracker {
 
     // 允许的最大正向时间储备 (防止长时间网络空闲积攒过多可用 balance)
     private static final double MAX_BALANCE = 50.0;
-    // 允许的最大赤字容差 (毫秒，考虑网络抖动与 TCP 包合并)
-    private static final double DEFICIT_LIMIT = -120.0;
+    // 允许的最大赤字容差 (毫秒，对齐标准 3~4 个 Tick 缓冲 -150ms，完全吸收正常网络抖动与回退同步冲击，持续超速仍能在 0.5s 内瞬捕)
+    private static final double DEFICIT_LIMIT = -150.0;
 
     public TimerTracker() {
         reset();
@@ -70,7 +70,7 @@ public class TimerTracker {
             // 当赤字过大时将 balance 钳位，防止惩罚后长期无法恢复
             balance = DEFICIT_LIMIT;
 
-            if (violationBuffer > 5.0) {
+            if (violationBuffer > 2.0) {
                 return true;
             }
         } else {

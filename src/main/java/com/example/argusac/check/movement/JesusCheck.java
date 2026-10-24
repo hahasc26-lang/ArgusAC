@@ -22,23 +22,21 @@ import java.util.Map;
  * 专门检测并拦截：
  * 1. 水面虚假接地 (Water Ground Spoof: 脚下全是深水却宣称接地)
  * 2. 水面异常平飞锁死 (Solid Jesus: 在水面水平移动但垂直位移绝对为 0，无原版水波浮沉)
- * 3. 水面超速奔跑 (WaterWalk Speed: 在水面未潜水游泳却以陆地疾跑速度奔跑)
- * 4. 持续水面停留 (Surface Linger: 长时间在水面移动而不下沉，即使模拟了微小波浪)
- *
- * 【P0 修复】检测-回弹间隙利用漏洞：
- * - 引入 waterSurfaceTicks 跨检测周期累积追踪，仅在真正离开水面/深潜时重置
- * - 回弹免疫期间继续累积水面停留计数，仅推迟触发惩罚，杜绝免疫窗口内的非法位移偷跑
- * - 收紧 deltaY 重置阈值，防止通过微小振荡反复重置检测器
+ * 3. 水面超速奔跑 (WaterWalk Speed: 在深水水面未潜水游泳却持续以陆地疾跑速度奔跑)
+ * 4. 持续水面停留 (Surface Linger: 长时间在水面上方凌空移动而不下沉，即使模拟了微小波浪)
  */
 public class JesusCheck extends AbstractCheck {
 
     private boolean detectGroundSpoof = true;
     private double maxWaterSpeed = 0.28;
     private int maxSolidHoverTicks = 4;
-    // 持续水面停留检测阈值：在水面上持续移动超过此 tick 数即触发 (配置项)
+    // 持续水面停留检测阈值：在水面上持续凌空移动超过此 tick 数即触发
     private int maxWaterSurfaceTicks = 15;
-    // 垂直振荡重置阈值：deltaY 绝对值超过此值才视为合法跳跃/下沉 (收紧以防微振规避)
+    // 垂直振荡重置阈值：deltaY 绝对值超过此值才视为合法跳跃/下沉
     private double verticalResetThreshold = 0.12;
+
+    // 岸边实体支撑脱离后的冲水惯性宽限期 (毫秒)，防止从岸上对着水疾跑入水瞬间因残余初速度误判
+    private static final long SOLID_SUPPORT_GRACE_MS = 250L;
 
     public JesusCheck(ArgusACPlugin plugin) {
         super(plugin, "Jesus", CheckType.MOVEMENT);
@@ -73,15 +71,12 @@ public class JesusCheck extends AbstractCheck {
             return;
         }
 
-        // 合法高机动期、登录豁免期 — 同时重置所有追踪
-        if (data.hasAnyLegalVelocity() || data.isInGracePeriod()) {
+        // 合法高机动期、登录豁免期、近期受击退 — 同时重置所有追踪
+        if (data.hasAnyLegalVelocity() || data.isInGracePeriod() || data.hasRecentVelocity(1000L)) {
             resetAllWaterTracking(data);
             return;
         }
 
-        // 【P0 修复】回弹自免疫期：不再直接返回！
-        // 免疫期间仍然执行水面状态追踪和累积计数，只是暂不触发惩罚
-        // 这样作弊者无法利用回弹-检测间隙在水面上自由行动
         boolean isSetbackImmune = data.isSetbackImmune();
 
         Location from = event.getFrom();
@@ -101,10 +96,12 @@ public class JesusCheck extends AbstractCheck {
 
         Block feetBlock = to.getBlock();
         Block underBlock = to.clone().subtract(0, 0.4, 0).getBlock();
+        Block deepUnderBlock = to.clone().subtract(0, 1.05, 0).getBlock();
         Block headBlock = to.clone().add(0, 1.0, 0).getBlock();
         double hDist = MathUtil.getHorizontalDistance(from, to);
         double deltaY = to.getY() - from.getY();
 
+        Block fromFeetBlock = from.getBlock();
         Block fromUnderBlock = from.clone().subtract(0, 0.4, 0).getBlock();
         Block fromHeadBlock = from.clone().add(0, 1.0, 0).getBlock();
         boolean fromOnWaterSurface = adapter.isLiquid(fromUnderBlock)
@@ -115,14 +112,18 @@ public class JesusCheck extends AbstractCheck {
         boolean underInLiquid = adapter.isLiquid(underBlock);
         boolean headInLiquid = adapter.isLiquid(headBlock);
 
-        // 如果脚下根本没有液体，玩家已经真正离开水面 — 重置所有追踪（含累积计数）
+        // 如果脚下根本没有液体，玩家已经真正离开水面 — 标记地面支撑并重置所有追踪
         if (!feetInLiquid && !underInLiquid) {
+            if (data.isOnGround() || adapter.isStandable(underBlock) || adapter.isStandable(fromUnderBlock)) {
+                data.markSolidSupportNow();
+            }
             resetAllWaterTracking(data);
             return;
         }
 
-        // 如果头部也在水中（深潜/全身入水），重置所有追踪 — 这是正常的水下活动
-        if (headInLiquid && adapter.isLiquid(feetBlock)) {
+        // 如果头部也在水中（深潜/全身入水）或处于气泡柱中，重置所有追踪 — 这是正常的水下活动
+        if ((headInLiquid && feetInLiquid)
+                || isBubbleColumn(feetBlock) || isBubbleColumn(underBlock) || isBubbleColumn(headBlock)) {
             resetAllWaterTracking(data);
             return;
         }
@@ -133,19 +134,38 @@ public class JesusCheck extends AbstractCheck {
             return;
         }
 
-        // 若脚下或落足点为睡莲、脚手架、活板门、地毯、半砖等可落足方块，直接判定为合法物理踩踏，重置水面追踪
-        if (adapter.isStandable(feetBlock) || adapter.isStandable(underBlock) || adapter.isStandable(fromUnderBlock)) {
+        // 若脚下、水底（一格浅水）或落足点为睡莲、脚手架、活板门、地毯、半砖等可落足方块，直接判定为合法物理踩踏
+        if (data.isOnGround()
+                || adapter.isStandable(feetBlock) || adapter.isStandable(underBlock)
+                || adapter.isStandable(deepUnderBlock) || adapter.isStandable(fromFeetBlock)
+                || adapter.isStandable(fromUnderBlock)) {
+            data.markSolidSupportNow();
             resetAllWaterTracking(data);
             return;
         }
 
-        // 检查是否有物理承托方块 (荷叶、睡莲、半砖、地毯、雪片、船、脚手架等)
-        boolean hasSupport = hasSupportingSurface(to, adapter);
+        // 检查起点与终点周围及一格水深水底是否有物理承托方块 (岸边方块、一格浅水底、荷叶、半砖、台阶、船等)
+        boolean hasSupport = hasSupportingSurface(to, adapter) || hasSupportingSurface(from, adapter);
         // 检查靴子是否带有冰霜行者附魔 (Frost Walker)
         boolean frostWalker = hasFrostWalker(player);
 
-        // 如果有荷叶或冰霜行者支撑，完全豁免并重置
         if (hasSupport || frostWalker) {
+            data.markSolidSupportNow();
+            resetAllWaterTracking(data);
+            return;
+        }
+
+        // 深度确认：仅在脚下 1.25 格内全为液体（非一格浅水）时才执行水上漂判定
+        boolean deepWaterBelow = isAllLiquidBelow(to, adapter, 1.25);
+        if (!deepWaterBelow) {
+            data.markSolidSupportNow();
+            resetAllWaterTracking(data);
+            return;
+        }
+
+        boolean recentlyLeftSolid = (System.currentTimeMillis() - data.getLastSolidSupportTime()) < SOLID_SUPPORT_GRACE_MS;
+        // 刚离开岸边冲入水中且正在正常下沉 (deltaY < -0.005) 时，属于正常入水过渡
+        if (recentlyLeftSolid && deltaY < -0.005) {
             resetAllWaterTracking(data);
             return;
         }
@@ -164,26 +184,24 @@ public class JesusCheck extends AbstractCheck {
         // 收紧垂直振荡重置阈值：仅当 deltaY 超过更高的阈值时，才认定为真正的跳跃/下沉
         if (Math.abs(deltaY) > verticalResetThreshold) {
             data.resetWaterHoverTicks();
+            data.resetWaterSpeedTicks();
             return;
         }
 
         // ==============================================================================
         // 1. 水面虚假接地检测 (Water Ground Spoof)
-        // 客户端声明处于地面 (onGround=true)，但脚下和落足点全为深水，且无荷叶/船/冰霜行者
+        // 客户端声明处于地面 (onGround=true)，但脚下和落足点全为深水，且无荷叶/船/冰霜行者/岸边支撑
         // ==============================================================================
         if (detectGroundSpoof && fromOnWaterSurface && !adapter.isInWater(player)
                 && !adapter.isSwimming(player)) {
             boolean clientClaimGround = data.isClientOnGround();
             if (clientClaimGround && !data.isOnGround() && (feetInLiquid || underInLiquid)) {
-                // 深度检查脚底 1.2 格内是否全为液体
-                boolean allLiquidBelow = isAllLiquidBelow(to, adapter, 1.2);
-                if (allLiquidBelow) {
-                    if (!isSetbackImmune) {
-                        flag(player, 2, "Water ground spoof (claiming onGround on water)", event);
-                    }
-                    data.resetWaterHoverTicks();
-                    return;
+                if (!isSetbackImmune) {
+                    event.setCancelled(true);
+                    flag(player, 2, "Water ground spoof (claiming onGround on water)", event);
                 }
+                data.resetWaterHoverTicks();
+                return;
             }
         }
 
@@ -193,15 +211,20 @@ public class JesusCheck extends AbstractCheck {
         // ==============================================================================
         boolean onWaterSurface = fromOnWaterSurface && underInLiquid
                 && !adapter.isLiquid(headBlock) && !adapter.isSwimming(player);
-        if (onWaterSurface && hDist > 0.08
+        Block ceilingBlock = to.clone().add(0, 1.85, 0).getBlock();
+        boolean headBlocked = adapter.isSolidBlock(ceilingBlock);
+
+        if (onWaterSurface && !headBlocked && hDist > 0.08
                 && !adapter.hasPotionEffect(player, CompatPotionType.LEVITATION)
                 && !adapter.hasPotionEffect(player, CompatPotionType.SLOW_FALLING)) {
-            if (Math.abs(deltaY) < 0.003) {
+            if (Math.abs(deltaY) < 0.002) {
                 data.incrementWaterHoverTicks();
                 if (data.getWaterHoverTicks() > maxSolidHoverTicks) {
                     if (!isSetbackImmune) {
+                        event.setCancelled(true);
                         flag(player, 1, String.format("Solid Jesus: flat water walk ticks=%d, hDist=%.3f, deltaY=%.4f",
                                 data.getWaterHoverTicks(), hDist, deltaY), event);
+                        data.setWaterHoverTicks(maxSolidHoverTicks / 2);
                     }
                     return;
                 }
@@ -214,29 +237,37 @@ public class JesusCheck extends AbstractCheck {
 
         // ==============================================================================
         // 3. 水面超速行走检测 (WaterWalk Speed)
-        // 处于水面移动时未潜水冲刺，无海豚恩惠，移动速度却达到甚至超越陆地疾跑速度
+        // 处于深水水面移动时未潜水冲刺，无海豚恩惠，移动速度却持续超越水面极限速度
         // ==============================================================================
-        if (onWaterSurface && !adapter.hasPotionEffect(player, CompatPotionType.DOLPHINS_GRACE)) {
-            int depthStrider = getDepthStriderLevel(player);
+        if (onWaterSurface && !recentlyLeftSolid && !adapter.hasPotionEffect(player, CompatPotionType.DOLPHINS_GRACE)) {
+            int depthStrider = adapter.getDepthStriderLevel(player);
             double allowedSpeed = (depthStrider > 0)
-                    ? (0.28 + depthStrider * 0.05)
+                    ? (0.28 + depthStrider * 0.06)
                     : maxWaterSpeed;
-            if (player.isSprinting()) {
-                allowedSpeed *= 1.35;
-            }
+            // 原版玩家对着水面按住疾跑时，客户端碰水瞬间可能取消服务端 sprinting 标记但仍保持疾跑冲量，
+            // 因此统一给予水面疾跑涉水系数与波浪冲击余量，并通过连续超速帧数过滤单帧冲水惯性
+            allowedSpeed *= 1.35;
             int speedAmp = adapter.getPotionAmplifier(player, CompatPotionType.SPEED);
             if (speedAmp >= 0) {
                 allowedSpeed += (speedAmp + 1) * 0.06;
             }
-            // 流水冲刷与表面浮沉轻微冲击容差
             allowedSpeed += 0.05;
 
-            if (hDist > allowedSpeed && hDist > 0.32) {
-                if (!isSetbackImmune) {
-                    flag(player, 1, String.format("WaterWalk Speed: hDist=%.3f, limit=%.3f (DS=%d)",
-                            hDist, allowedSpeed, depthStrider), event);
+            if (hDist > allowedSpeed && hDist > 0.36) {
+                data.incrementWaterSpeedTicks();
+                if (data.getWaterSpeedTicks() >= 3) {
+                    if (!isSetbackImmune) {
+                        event.setCancelled(true);
+                        flag(player, 1, String.format("WaterWalk Speed: hDist=%.3f, limit=%.3f (DS=%d, ticks=%d)",
+                                hDist, allowedSpeed, depthStrider, data.getWaterSpeedTicks()), event);
+                        data.setWaterSpeedTicks(1);
+                    }
                 }
+            } else {
+                data.resetWaterSpeedTicks();
             }
+        } else {
+            data.resetWaterSpeedTicks();
         }
 
         // ==============================================================================
@@ -249,6 +280,7 @@ public class JesusCheck extends AbstractCheck {
                 && !adapter.hasPotionEffect(player, CompatPotionType.SLOW_FALLING)
                 && data.getWaterSurfaceTicks() > maxWaterSurfaceTicks) {
             if (!isSetbackImmune) {
+                event.setCancelled(true);
                 flag(player, 2, String.format("WaterSurface: lingering on water surfaceTicks=%d, hDist=%.3f, deltaY=%.4f",
                         data.getWaterSurfaceTicks(), hDist, deltaY), event);
                 // 惩罚触发后保留半数计数作为追踪缓冲，防止利用回弹间隙逃脱
@@ -258,44 +290,50 @@ public class JesusCheck extends AbstractCheck {
     }
 
     /**
-     * 统一重置所有水面追踪状态（仅在玩家确认完全离开水面时调用）
+     * 统一重置所有水面追踪状态（仅在玩家确认离开深水水面或有实体支撑时调用）
      */
     private void resetAllWaterTracking(PlayerData data) {
-        data.resetWaterHoverTicks();
-        data.resetWaterSurfaceTicks();
+        data.resetWaterTrackingState();
     }
 
-
-
+    private boolean isBubbleColumn(Block b) {
+        return b != null && b.getType().name().contains("BUBBLE_COLUMN");
+    }
 
     private boolean isAllLiquidBelow(Location loc, VersionAdapter adapter, double maxDepth) {
         if (loc == null || loc.getWorld() == null) return false;
-        for (double dy = 0.0; dy >= -maxDepth; dy -= 0.25) {
+        for (double dy = -0.15; dy >= -maxDepth; dy -= 0.25) {
             Block b = loc.clone().add(0, dy, 0).getBlock();
-            if (!adapter.isLiquid(b)) {
+            if (!adapter.isLiquid(b) || adapter.isStandable(b)) {
                 return false;
             }
         }
         return true;
     }
 
+    /**
+     * 检查玩家周围（水平半径 0.45 格，覆盖岸边方块边缘与一格水坑）及脚下（垂直向下 1.35 格，覆盖一格深浅水水底）
+     * 是否存在任何实体支撑面、台阶、睡莲、地毯或船只。
+     * 解决当玩家在 Y=62.94 对着一格水疾跑时，旧逻辑仅向下检查 0.8 格 (62.14) 无法探测到 blockY=61 水底方块的 Bug。
+     */
     private boolean hasSupportingSurface(Location loc, VersionAdapter adapter) {
         if (loc == null || loc.getWorld() == null) return false;
         double[][] offsets = {
                 {0, 0},
-                {-0.35, 0}, {0.35, 0}, {0, -0.35}, {0, 0.35},
-                {-0.35, -0.35}, {0.35, -0.35}, {-0.35, 0.35}, {0.35, 0.35}
+                {-0.45, 0}, {0.45, 0}, {0, -0.45}, {0, 0.45},
+                {-0.45, -0.45}, {0.45, -0.45}, {-0.45, 0.45}, {0.45, 0.45}
         };
         for (double[] off : offsets) {
             Location checkLoc = loc.clone().add(off[0], 0, off[1]);
-            for (double dy = 0.0; dy >= -0.8; dy -= 0.2) {
+            for (double dy = 0.0; dy >= -1.35; dy -= 0.27) {
                 Block b = checkLoc.clone().add(0, dy, 0).getBlock();
                 if (adapter.isStandable(b) && !adapter.isLiquid(b)) {
                     return true;
                 }
                 String name = b.getType().name();
                 if (name.contains("LILY") || name.contains("CARPET") || name.contains("SLAB")
-                        || name.contains("SNOW") || name.contains("BOAT")) {
+                        || name.contains("SNOW") || name.contains("BOAT") || name.contains("FARMLAND")
+                        || name.contains("PATH") || name.contains("SOUL_SAND") || name.contains("MUD")) {
                     return true;
                 }
             }
@@ -317,16 +355,5 @@ public class JesusCheck extends AbstractCheck {
             }
         } catch (Throwable ignored) {}
         return false;
-    }
-
-    private int getDepthStriderLevel(Player player) {
-        if (player == null) return 0;
-        try {
-            ItemStack boots = player.getInventory().getBoots();
-            if (boots != null && boots.hasItemMeta()) {
-                return boots.getEnchantmentLevel(org.bukkit.enchantments.Enchantment.DEPTH_STRIDER);
-            }
-        } catch (Throwable ignored) {}
-        return 0;
     }
 }

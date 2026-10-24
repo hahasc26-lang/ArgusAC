@@ -50,6 +50,7 @@ public class PlayerData {
     private int groundTicks = 0;
     private volatile boolean onGround = true; // Also read by the packet listener off the main thread.
     private boolean lastOnGround = true;
+    private volatile boolean airborneFromIce = false; // 标记当前滞空是否起源于冰面/粘液块
 
     // 击退响应追踪 (Velocity Check)
     private Vector expectedVelocity = null;
@@ -361,11 +362,27 @@ public class PlayerData {
     }
 
     public void setExpectedVelocity(Vector expectedVelocity) {
+        if (expectedVelocity == null || expectedVelocity.lengthSquared() < 0.0001) {
+            clearExpectedVelocity();
+            return;
+        }
         this.expectedVelocity = expectedVelocity;
         this.lastVelocityReceivedTime = System.currentTimeMillis();
         this.velocityHandled = false;
-        if (expectedVelocity != null) {
+        if (this.physicsState != null) {
             this.physicsState.addPendingVelocity(expectedVelocity.getX(), expectedVelocity.getY(), expectedVelocity.getZ());
+        }
+    }
+
+    /**
+     * 对齐 GrimAC：回退或定身时清空速度预期状态与外部击退时效，杜绝利用零速度包获取免检时间
+     */
+    public void clearExpectedVelocity() {
+        this.expectedVelocity = null;
+        this.lastVelocityReceivedTime = 0L;
+        this.velocityHandled = true;
+        if (this.physicsState != null) {
+            this.physicsState.clearPendingVelocities();
         }
     }
 
@@ -509,9 +526,21 @@ public class PlayerData {
         this.lastDamageTime = lastDamageTime;
     }
 
+    public boolean isAirborneFromIce() {
+        return airborneFromIce;
+    }
+
+    public void setAirborneFromIce(boolean airborneFromIce) {
+        this.airborneFromIce = airborneFromIce;
+    }
+
     public boolean hasRecentVelocity(long thresholdMs) {
         long now = System.currentTimeMillis();
-        return (now - lastVelocityReceivedTime < thresholdMs) || (now - lastDamageTime < thresholdMs);
+        // 原版空中空气阻力小 (0.91)，若玩家仍处于空中滞空未着地，击退/受击抛物线通常持续 15~20 ticks (750~1000ms)，额外延长 500ms
+        long effectiveThreshold = (!onGround || airTicks > 0) ? thresholdMs + 500L : thresholdMs;
+        boolean recentVel = (lastVelocityReceivedTime > 0L) && (now - lastVelocityReceivedTime < effectiveThreshold);
+        boolean recentDmg = (lastDamageTime > 0L) && (now - lastDamageTime < effectiveThreshold);
+        return recentVel || recentDmg;
     }
 
     public int getBreaksThisTick() {
@@ -574,6 +603,7 @@ public class PlayerData {
         speedBuffer = 0.0;
         lastSpeedCheckNanos = 0L;
         iceTicks = 0;
+        resetWaterTrackingState();
     }
 
     public double getSpeedBuffer() {
@@ -627,6 +657,8 @@ public class PlayerData {
 
     // 水面平移与悬浮追踪 (JesusCheck)
     private int waterHoverTicks = 0;
+    private int waterSpeedTicks = 0;
+    private long lastSolidSupportTime = 0L;
     private long lastWaterHoverTickNanos = 0L;
 
     // 水面持续停留累积追踪 (跨检测周期，仅离开水面/深潜时重置)
@@ -687,6 +719,36 @@ public class PlayerData {
      */
     public void setWaterSurfaceTicks(int ticks) {
         this.waterSurfaceTicks = Math.max(0, ticks);
+    }
+
+    public int getWaterSpeedTicks() {
+        return waterSpeedTicks;
+    }
+
+    public void incrementWaterSpeedTicks() {
+        this.waterSpeedTicks++;
+    }
+
+    public void resetWaterSpeedTicks() {
+        this.waterSpeedTicks = 0;
+    }
+
+    public void setWaterSpeedTicks(int ticks) {
+        this.waterSpeedTicks = Math.max(0, ticks);
+    }
+
+    public long getLastSolidSupportTime() {
+        return lastSolidSupportTime;
+    }
+
+    public void markSolidSupportNow() {
+        this.lastSolidSupportTime = System.currentTimeMillis();
+    }
+
+    public void resetWaterTrackingState() {
+        resetWaterHoverTicks();
+        resetWaterSurfaceTicks();
+        resetWaterSpeedTicks();
     }
 
 

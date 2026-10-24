@@ -138,9 +138,10 @@ public class FastEatCheck extends AbstractCheck {
         long baseMs = getExpectedItemMs(mat);
 
         // 计算此物品类型按配置比例放宽后的最小要求阈值
-        float ratio = (float) minAllowedTicks / 32.0f;
-        int expectedMinTicks = Math.max(4, Math.round(baseTicks * ratio));
-        long expectedMinMs = Math.max(200L, Math.round(baseMs * ratio));
+        float tickRatio = (float) minAllowedTicks / 32.0f;
+        float msRatio = (float) minAllowedMs / 1600.0f;
+        int expectedMinTicks = Math.max(4, Math.round(baseTicks * tickRatio));
+        long expectedMinMs = Math.max(200L, Math.round(baseMs * msRatio));
 
         // 2. 动态 RTT 延迟补偿 (Ping-adaptive Lag Compensation)
         int adjustedMinTicks = expectedMinTicks;
@@ -217,5 +218,13 @@ public class FastEatCheck extends AbstractCheck {
         } catch (Throwable t) {
             return System.currentTimeMillis() / 50L;
         }
+    }
+
+    public long getMinAllowedMs() {
+        return minAllowedMs;
+    }
+
+    public int getMinAllowedTicks() {
+        return minAllowedTicks;
     }
 }

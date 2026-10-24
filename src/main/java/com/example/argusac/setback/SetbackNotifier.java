@@ -96,6 +96,7 @@ public class SetbackNotifier {
                 pData.setOnGround(false);
             }
             pData.resetSpeedTracking();
+            pData.getTimerTracker().reset();
             pData.addLog(log, maxLogs);
         }
 

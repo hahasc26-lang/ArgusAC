@@ -124,7 +124,8 @@ setback:
   # HARD: Schedules synchronous teleport on main thread, canceling velocity and fall distance
   default-mode: "CANCEL"
 
-  # Cooldown between setbacks (ms) to prevent high-frequency jitter or network overload
+  # Cooldown between notification/administrative broadcasts (ms).
+  # Note: Movement physical setbacks follow GrimAC zero-cooldown desync mitigation (instant and continuous).
   cooldown-ms: 350
 
   # Default minimum Violation Level (VL) required to trigger a setback (1 = immediate setback on violation)

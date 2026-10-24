@@ -75,6 +75,24 @@ public class BadPacketsCheck extends AbstractCheck {
         if (player.isSleeping() && (event.getFrom().distanceSquared(to) > 0.05)) {
             event.setCancelled(true);
             flag(player, 2, "Moving while sleeping", event);
+            return;
         }
+
+        // 5. 客户端重复冗余位置包检测 (Duplicate Move Packets)
+        if (checkDuplicateMove) {
+            Location from = event.getFrom();
+            if (from.getX() == to.getX() && from.getY() == to.getY() && from.getZ() == to.getZ()
+                    && from.getYaw() == to.getYaw() && from.getPitch() == to.getPitch()) {
+                flag(player, 1, "Duplicate redundant move packet", event);
+            }
+        }
+    }
+
+    public boolean isStrictPitch() {
+        return strictPitch;
+    }
+
+    public boolean isCheckDuplicateMove() {
+        return checkDuplicateMove;
     }
 }

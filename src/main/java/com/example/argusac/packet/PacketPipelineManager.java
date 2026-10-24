@@ -43,7 +43,8 @@ public class PacketPipelineManager extends PacketListenerAbstract {
         if (active) {
             try {
                 PacketEvents.getAPI().getEventManager().unregisterListener(this);
-            } catch (Exception ignored) {}
+            } catch (Exception ignored) {
+            }
             this.active = false;
         }
     }
@@ -55,13 +56,16 @@ public class PacketPipelineManager extends PacketListenerAbstract {
     @Override
     public void onPacketReceive(PacketReceiveEvent event) {
         User user = event.getUser();
-        if (user == null) return;
+        if (user == null)
+            return;
 
         Object playerObj = event.getPlayer();
-        if (!(playerObj instanceof Player player)) return;
+        if (!(playerObj instanceof Player player))
+            return;
 
         PlayerData data = plugin.getPlayerManager().getPlayerData(player);
-        if (data == null) return;
+        if (data == null)
+            return;
 
         // 1. 拦截客户端移动数据包族 (Flying, Position, Rotation, PositionLook)
         if (WrapperPlayClientPlayerFlying.isFlying(event.getPacketType())) {
@@ -97,7 +101,8 @@ public class PacketPipelineManager extends PacketListenerAbstract {
     }
 
     private void handleIncomingUseItemPacket(Player player, PlayerData data) {
-        if (player == null || data == null || plugin.getCheckManager() == null) return;
+        if (player == null || data == null || plugin.getCheckManager() == null)
+            return;
         try {
             org.bukkit.inventory.ItemStack main = player.getInventory().getItemInMainHand();
             org.bukkit.inventory.ItemStack off = player.getInventory().getItemInOffHand();
@@ -106,24 +111,27 @@ public class PacketPipelineManager extends PacketListenerAbstract {
             } else if (off != null && (off.getType().name().equals("BOW") || off.getType().name().equals("CROSSBOW"))) {
                 plugin.getCheckManager().getFastBowCheck().handleBowStart(player, off);
             }
-        } catch (Throwable ignored) {}
+        } catch (Throwable ignored) {
+        }
     }
 
     private void handleIncomingTeleportConfirm(Player player, PlayerData data, PacketReceiveEvent event) {
         int teleportId = -1;
         try {
-            com.github.retrooper.packetevents.wrapper.play.client.WrapperPlayClientTeleportConfirm confirm =
-                    new com.github.retrooper.packetevents.wrapper.play.client.WrapperPlayClientTeleportConfirm(event);
+            com.github.retrooper.packetevents.wrapper.play.client.WrapperPlayClientTeleportConfirm confirm = new com.github.retrooper.packetevents.wrapper.play.client.WrapperPlayClientTeleportConfirm(
+                    event);
             teleportId = confirm.getTeleportId();
         } catch (Throwable t) {
             try {
                 java.lang.reflect.Method m = event.getClass().getMethod("getTeleportId");
                 teleportId = (int) m.invoke(event);
-            } catch (Throwable ignored) {}
+            } catch (Throwable ignored) {
+            }
         }
 
         if (plugin.getSetbackManager() != null) {
-            com.example.argusac.setback.PlayerSetbackContext context = plugin.getSetbackManager().getContext(player.getUniqueId());
+            com.example.argusac.setback.PlayerSetbackContext context = plugin.getSetbackManager()
+                    .getContext(player.getUniqueId());
             if (context != null) {
                 context.confirmTeleport(teleportId);
             }
@@ -144,16 +152,24 @@ public class PacketPipelineManager extends PacketListenerAbstract {
                 PlayerData data = plugin.getPlayerManager().getPlayerData(player);
                 if (data != null) {
                     try {
-                        com.github.retrooper.packetevents.wrapper.play.server.WrapperPlayServerEntityVelocity velocityWrapper =
-                                new com.github.retrooper.packetevents.wrapper.play.server.WrapperPlayServerEntityVelocity(event);
+                        com.github.retrooper.packetevents.wrapper.play.server.WrapperPlayServerEntityVelocity velocityWrapper = new com.github.retrooper.packetevents.wrapper.play.server.WrapperPlayServerEntityVelocity(
+                                event);
                         if (velocityWrapper.getEntityId() == player.getEntityId()) {
                             com.github.retrooper.packetevents.util.Vector3d vel = velocityWrapper.getVelocity();
                             if (vel != null) {
-                                data.getPhysicsState().addPendingVelocity(vel.getX(), vel.getY(), vel.getZ());
-                                data.setExpectedVelocity(new org.bukkit.util.Vector(vel.getX(), vel.getY(), vel.getZ()));
+                                double lenSq = vel.getX() * vel.getX() + vel.getY() * vel.getY() + vel.getZ() * vel.getZ();
+                                if (lenSq < 0.0001) {
+                                    // 回退/定身时下发的零速度包：对齐 GrimAC，重置速度状态，彻底清除动量与击退标记
+                                    data.clearExpectedVelocity();
+                                } else {
+                                    data.getPhysicsState().addPendingVelocity(vel.getX(), vel.getY(), vel.getZ());
+                                    data.setExpectedVelocity(
+                                            new org.bukkit.util.Vector(vel.getX(), vel.getY(), vel.getZ()));
+                                }
                             }
                         }
-                    } catch (Throwable ignored) {}
+                    } catch (Throwable ignored) {
+                    }
                 }
             }
         }
@@ -177,7 +193,56 @@ public class PacketPipelineManager extends PacketListenerAbstract {
      * 针对底层原生移动包进行协议级异常检测与状态追踪
      */
     private void handleIncomingFlyingPacket(Player player, PlayerData data, User user,
-                                           WrapperPlayClientPlayerFlying flying, PacketReceiveEvent event) {
+            WrapperPlayClientPlayerFlying flying, PacketReceiveEvent event) {
+        // 0. 对标 GrimAC 协议级 In-Flight 硬阻断与装聋作哑 (Ignore Teleport) 逃避补刀反制：
+        // 服务端发出了位置重置包，在客户端回传 TELEPORT_CONFIRM 前，客户端发来的所有位移数据包属于在途作废位移。
+        // 必须在协议管线最底层直接取消拦截，同时将数据包内部坐标硬重写为锚点坐标，从源头扼死作弊客户端的蹭步蠕动！
+        if (plugin.getSetbackManager() != null) {
+            com.example.argusac.setback.PlayerSetbackContext setbackCtx = plugin.getSetbackManager()
+                    .getContext(player.getUniqueId());
+            if (setbackCtx != null && setbackCtx.isTeleportInFlight()) {
+                org.bukkit.Location target = setbackCtx.getTeleportInFlightTarget();
+                if (target != null) {
+                    double px = flying.getLocation().getX();
+                    double py = flying.getLocation().getY();
+                    double pz = flying.getLocation().getZ();
+                    double dx = px - target.getX();
+                    double dy = py - target.getY();
+                    double dz = pz - target.getZ();
+
+                    // 若客户端发包坐标尚未到达纠正目标点，执行双重硬核镇压：
+                    if ((dx * dx + dy * dy + dz * dz) > 0.0025) {
+                        // 1. 数据包直接在底层取消
+                        event.setCancelled(true);
+
+                        // 2. 坐标硬重写覆盖 (Coordinate Hard-Clamp Invariant)：防止任何穿透逻辑读取到违规微位移
+                        try {
+                            com.github.retrooper.packetevents.protocol.world.Location cur = flying.getLocation();
+                            float yaw = (cur != null) ? cur.getYaw() : target.getYaw();
+                            float pitch = (cur != null) ? cur.getPitch() : target.getPitch();
+                            flying.setLocation(new com.github.retrooper.packetevents.protocol.world.Location(
+                                    target.getX(), target.getY(), target.getZ(), yaw, pitch
+                            ));
+                        } catch (Throwable ignored) {
+                        }
+
+                        // 3. 对标 GrimAC BadPacketsN：检测作弊客户端是否在故意装聋作哑丢弃回退包
+                        if (setbackCtx.recordUnackedMovePacket()) {
+                            // 当场原地补刀重发回退数据包，并彻底清空残余动量！
+                            plugin.getSetbackManager().sendPositionSyncPacket(player, target,
+                                    setbackCtx.getInFlightTeleportId());
+                            player.setVelocity(new org.bukkit.util.Vector(0, 0, 0));
+                            if (data != null && data.getPhysicsState() != null) {
+                                data.getPhysicsState().reset(target);
+                                data.getPhysicsState().clearPendingVelocities();
+                            }
+                        }
+                        return;
+                    }
+                }
+            }
+        }
+
         // 1. 浮点越界校验 (NaN / Infinite)
         if (flying.hasPositionChanged()) {
             double x = flying.getLocation().getX();
@@ -217,7 +282,8 @@ public class PacketPipelineManager extends PacketListenerAbstract {
         data.setClientOnGround(flying.isOnGround());
 
         // 创造/旁观、允许飞行、坐船/矿车等载具、或鞘翅滑翔完全豁免协议层 Timer 与 NoFall
-        if (player.getGameMode() == org.bukkit.GameMode.CREATIVE || player.getGameMode() == org.bukkit.GameMode.SPECTATOR
+        if (player.getGameMode() == org.bukkit.GameMode.CREATIVE
+                || player.getGameMode() == org.bukkit.GameMode.SPECTATOR
                 || player.isFlying() || player.getAllowFlight() || player.isInsideVehicle()
                 || plugin.getCheckManager().isGlidingExempt(player, data)) {
             return;
@@ -226,16 +292,22 @@ public class PacketPipelineManager extends PacketListenerAbstract {
         // 3. 协议层 Timer 变速时钟平衡检测 (Clock Drift Engine)
         if (!plugin.isPlayerExempt(player) && !data.isSetbackImmune() && !data.isInGracePeriod()) {
             if (data.getTimerTracker().onFlyingPacket()) {
+                event.setCancelled(true);
                 plugin.getViolationManager().flag(player, plugin.getCheckManager().getBadPacketsCheck(),
                         2, String.format("Timer balance=%.1fms, buf=%.2f",
                                 data.getTimerTracker().getBalance(), data.getTimerTracker().getViolationBuffer()));
+                if (plugin.getSetbackManager() != null) {
+                    plugin.getSetbackManager().mitigate(player, plugin.getCheckManager().getBadPacketsCheck(),
+                            2, "Timer packet spam balance exceeded", null);
+                }
             }
         }
 
         // 4. 虚假地面状态检测 (NoFall Ground Spoof)
         // 排除梯子/藤蔓等可攀爬物以及液体环境 (攀爬和涉水在原版协议中存在特殊的接地过渡)
         org.bukkit.block.Block feet = player.getLocation().getBlock();
-        com.example.argusac.compat.VersionAdapter adapter = com.example.argusac.compat.VersionAdapterFactory.getAdapter();
+        com.example.argusac.compat.VersionAdapter adapter = com.example.argusac.compat.VersionAdapterFactory
+                .getAdapter();
         boolean specialEnvironment = adapter.isLiquid(feet) || adapter.isClimbable(feet)
                 || adapter.isStandable(feet) || adapter.isStandable(feet.getRelative(0, -1, 0));
 
@@ -258,26 +330,47 @@ public class PacketPipelineManager extends PacketListenerAbstract {
 
     /**
      * 客户端实体交互包 (Interact Entity) 捕获
+     * 对齐 GrimAC SetbackBlocker：回退在途或违规锁死状态下严禁交互与攻击，杜绝借机抽刀与载具二次穿透
      */
     private void handleIncomingInteractEntityPacket(Player player, PlayerData data, PacketReceiveEvent event) {
+        if (plugin.getSetbackManager() != null) {
+            com.example.argusac.setback.PlayerSetbackContext setbackCtx = plugin.getSetbackManager()
+                    .getContext(player.getUniqueId());
+            if (setbackCtx != null && (setbackCtx.isTeleportInFlight() || setbackCtx.isUnderViolationLock())) {
+                event.setCancelled(true);
+                return;
+            }
+        }
+
         try {
-            com.github.retrooper.packetevents.wrapper.play.client.WrapperPlayClientInteractEntity interactWrapper =
-                    new com.github.retrooper.packetevents.wrapper.play.client.WrapperPlayClientInteractEntity(event);
-            if (interactWrapper.getAction() == com.github.retrooper.packetevents.wrapper.play.client.WrapperPlayClientInteractEntity.InteractAction.ATTACK) {
+            com.github.retrooper.packetevents.wrapper.play.client.WrapperPlayClientInteractEntity interactWrapper = new com.github.retrooper.packetevents.wrapper.play.client.WrapperPlayClientInteractEntity(
+                    event);
+            if (interactWrapper
+                    .getAction() == com.github.retrooper.packetevents.wrapper.play.client.WrapperPlayClientInteractEntity.InteractAction.ATTACK) {
                 if (plugin.getCombatMitigationHandler() != null) {
-                    plugin.getCombatMitigationHandler().handlePacketAttack(player, data, interactWrapper.getEntityId(), event);
+                    plugin.getCombatMitigationHandler().handlePacketAttack(player, data, interactWrapper.getEntityId(),
+                            event);
                 }
             }
-        } catch (Throwable ignored) {}
+        } catch (Throwable ignored) {
+        }
     }
 
     /**
      * 客户端方块挖掘状态追踪 (区分左键挥臂攻击与连续方块破坏，彻底根除挖矿时的 AutoClicker 误判)
      */
     private void handleIncomingPlayerDiggingPacket(Player player, PlayerData data, PacketReceiveEvent event) {
+        if (plugin.getSetbackManager() != null) {
+            com.example.argusac.setback.PlayerSetbackContext setbackCtx = plugin.getSetbackManager()
+                    .getContext(player.getUniqueId());
+            if (setbackCtx != null && setbackCtx.isTeleportInFlight()) {
+                event.setCancelled(true);
+                return;
+            }
+        }
         try {
-            com.github.retrooper.packetevents.wrapper.play.client.WrapperPlayClientPlayerDigging digWrapper =
-                    new com.github.retrooper.packetevents.wrapper.play.client.WrapperPlayClientPlayerDigging(event);
+            com.github.retrooper.packetevents.wrapper.play.client.WrapperPlayClientPlayerDigging digWrapper = new com.github.retrooper.packetevents.wrapper.play.client.WrapperPlayClientPlayerDigging(
+                    event);
             Object action = digWrapper.getAction();
             if (action != null) {
                 String actionName = action.toString();
@@ -285,11 +378,13 @@ public class PacketPipelineManager extends PacketListenerAbstract {
                     data.setDigging(true);
                     data.setLastDiggingTime(System.currentTimeMillis());
                     data.getClickTimestamps().clear();
-                } else if (actionName.contains("CANCEL") || actionName.contains("FINISH") || actionName.contains("ABORT") || actionName.contains("STOP")) {
+                } else if (actionName.contains("CANCEL") || actionName.contains("FINISH")
+                        || actionName.contains("ABORT") || actionName.contains("STOP")) {
                     data.setDigging(false);
                     data.setLastDiggingTime(System.currentTimeMillis());
                 }
             }
-        } catch (Throwable ignored) {}
+        } catch (Throwable ignored) {
+        }
     }
 }

@@ -22,8 +22,25 @@ public class SafeLocationFinder {
     public boolean isGrounded(Player player, Location loc, PlayerData pData) {
         if (loc == null || loc.getWorld() == null) return false;
         if (pData != null && pData.isOnGround()) return true;
-        Block blockBelow = loc.clone().subtract(0, 0.1, 0).getBlock();
-        return blockBelow.getType().isSolid();
+        VersionAdapter adapter = VersionAdapterFactory.getAdapter();
+        // 探测中心点及四个底角 (AABB 半径 0.28)，覆盖台阶、半砖、雪层、边缘与异形方块
+        double[][] points = {
+                {0, 0},
+                {-0.28, -0.28},
+                {0.28, -0.28},
+                {-0.28, 0.28},
+                {0.28, 0.28}
+        };
+        for (double[] p : points) {
+            Location checkLoc = loc.clone().add(p[0], 0, p[1]);
+            for (double yOffset = 0.0; yOffset >= -0.60; yOffset -= 0.15) {
+                Block b = checkLoc.clone().add(0, yOffset, 0).getBlock();
+                if (b.getType().isSolid() || adapter.isStandable(b)) {
+                    return true;
+                }
+            }
+        }
+        return false;
     }
 
     /**

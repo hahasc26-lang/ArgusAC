@@ -38,8 +38,8 @@ public class SpeedCheck extends AbstractCheck {
         this.maxHorizontalSpeed = getChecksConfig().getDouble(path + "max-horizontal-speed", 0.65);
         this.iceModifier = getChecksConfig().getDouble(path + "ice-modifier", 1.45);
         this.speedPotionMultiplier = getChecksConfig().getDouble(path + "speed-potion-multiplier", 0.20);
-        this.speedBufferMax = getChecksConfig().getDouble(path + "speed-buffer-max", 0.40);
-        this.speedBufferDecay = getChecksConfig().getDouble(path + "speed-buffer-decay", 0.08);
+        this.speedBufferMax = getChecksConfig().getDouble(path + "speed-buffer-max", 0.25);
+        this.speedBufferDecay = getChecksConfig().getDouble(path + "speed-buffer-decay", 0.10);
     }
 
     /**
@@ -70,10 +70,17 @@ public class SpeedCheck extends AbstractCheck {
             return;
         }
 
-        // 处于传送或登录豁免缓冲期，或处于回退自免疫期、合法高机动期、近期 1200ms 内受到击退/风珠/伤害
-        if (data.isSetbackImmune() || data.hasAnyLegalVelocity() || data.isInGracePeriod() || data.hasRecentVelocity(1200L)) {
-            data.setSpeedBuffer(0.0);
-            return;
+        com.example.argusac.setback.PlayerSetbackContext setbackContext =
+                plugin.getSetbackManager() != null ? plugin.getSetbackManager().getContext(player.getUniqueId()) : null;
+        boolean underViolationLock = setbackContext != null && (setbackContext.isTeleportInFlight() || setbackContext.isUnderViolationLock());
+
+        // 对标 GrimAC shouldBlockMovement：处于违规锁定期 (2000ms) 或在途传送时，严禁享受任何击退或免检豁免！
+        if (!underViolationLock) {
+            // 处于传送或登录豁免缓冲期，或合法高机动期、近期 1000ms 内受到真实击退/伤害
+            if (data.isSetbackImmune() || data.hasAnyLegalVelocity() || data.isInGracePeriod() || data.hasRecentVelocity(1000L)) {
+                data.setSpeedBuffer(0.0);
+                return;
+            }
         }
 
         Location from = event.getFrom();
@@ -101,27 +108,38 @@ public class SpeedCheck extends AbstractCheck {
             return;
         }
 
-        // 1. 判断真实冰面与粘液块物理环境 (必须是脚下 0.5 格内有冰方块，或在 4 tick 惯性记忆期内)
+        boolean airborne = !data.isOnGround();
+        int airTicks = data.getAirTicks();
+
+        // 1. 判断真实冰面与粘液块物理环境 (必须是脚下 0.5 格内有冰方块，在 4 tick 惯性记忆期内，或处于冰面起跳滞空中)
         Block underFrom = from.clone().subtract(0, 0.5, 0).getBlock();
         Block underTo = to.clone().subtract(0, 0.5, 0).getBlock();
         boolean onIce = adapter.isIce(underFrom) || adapter.isIce(underTo)
                 || adapter.isSlime(underFrom) || adapter.isSlime(underTo)
-                || data.getIceTicks() > 0;
+                || data.getIceTicks() > 0
+                || (airborne && data.isAirborneFromIce());
 
         // 2. 原版真实物理基准速度分类 (彻底阻断在普通泥土/草地上伪造滑冰 0.45+ 的 Slippery 外挂)
         double baseLimit;
         boolean sprinting = player.isSprinting();
-        boolean airborne = !data.isOnGround();
-        int airTicks = data.getAirTicks();
 
-        if (airborne || verticalDistance > 0.05) {
-            // 空中移动阶段：
-            if (airTicks <= 1) {
-                // 首帧疾跑起跳冲量 (Sprint Jump Launch)
-                baseLimit = onIce ? Math.max(0.75, maxHorizontalSpeed * (iceModifier / 1.45 * 1.15)) : Math.min(maxHorizontalSpeed, 0.61);
+        // 原版真实物理：按空格起跳瞬间，或前一帧刚离地，或跳跃上升阶段
+        boolean jumping = (to.getY() - from.getY()) > 0.03 || verticalDistance > 0.05;
+
+        if (airborne || jumping) {
+            // 空中移动阶段或起跳瞬间：
+            if (airTicks <= 1 || jumping) {
+                // 原版疾跑起跳冲量 (Sprint Jump Launch): 
+                // 起跳瞬间冲量: vx' = vx + cos(yaw)*0.2, vz' = vz + sin(yaw)*0.2，平地初速冲到 0.36~0.38 格/tick
+                // 疾跑时给予 0.44 稳健容限；普通走路跳跃约 0.28，给予 0.35 容限
+                double jumpLaunchLimit = sprinting ? 0.44 : 0.35;
+                baseLimit = onIce ? Math.max(0.68, maxHorizontalSpeed * (iceModifier / 1.45 * 1.15)) : Math.min(maxHorizontalSpeed, jumpLaunchLimit);
+            } else if (airTicks == 2) {
+                // 滞空第 2 帧：首帧 0.38 经原版 0.91 空气阻力衰减后约为 0.346~0.355 格，需给 0.38 充分物理宽限
+                baseLimit = onIce ? (0.42 * iceModifier) : 0.38;
             } else {
-                // 滞空中期：空气阻力 0.91 强制衰减
-                baseLimit = onIce ? (0.38 * iceModifier) : 0.36;
+                // 滞空中后期：空气阻力 0.91 持续衰减至 0.31 以下，给予 0.34 稳健阈值
+                baseLimit = onIce ? (0.36 * iceModifier) : 0.34;
             }
         } else {
             // 纯地面平跑阶段 (On Ground)：
@@ -130,9 +148,15 @@ public class SpeedCheck extends AbstractCheck {
                 baseLimit = sprinting ? (0.29 * iceModifier) : 0.28;
             } else {
                 // 普通非冰地面 (泥土、石头、木板等)：
-                // 原版绝对物理极限制：走路 0.215，疾跑 0.287！
-                // 给予 0.02 宽限容差，绝不允许普通地面达到 0.4+ 的滑冰加速！
-                baseLimit = sprinting ? 0.31 : 0.23;
+                // 若为空中疾跑刚着陆的过渡帧 (groundTicks <= 2)，原版物理落地帧由于方块摩擦力延迟一帧结算，
+                // 保留空中跳跃末速度 (0.33~0.36)，且连跳 (Bunnyhop) 起跳过渡帧瞬时位移较高，
+                // 给予 0.40 容错冲量，彻底消除连跳落地瞬间累积违规缓冲；
+                // 连续地面疾跑基准为 0.340 (覆盖 45 度 Strafe 疾跑 0.32~0.33)，普通走路 0.23
+                if (sprinting) {
+                    baseLimit = (data.getGroundTicks() <= 2) ? 0.40 : 0.340;
+                } else {
+                    baseLimit = 0.23;
+                }
             }
         }
 
@@ -171,6 +195,17 @@ public class SpeedCheck extends AbstractCheck {
             }
         }
 
+        // 下台阶 / 下坡重力势能转水平动量容差 (如 64.00 -> 63.84 下降 0.16 格)
+        double fallDelta = from.getY() - to.getY();
+        if (fallDelta > 0.05) {
+            // 原版下楼梯/半砖台阶每级下落约 0.15~0.16 格，水平位移瞬时可达 0.39~0.42
+            if (fallDelta >= 0.12) {
+                allowedLimit *= 1.30;
+            } else {
+                allowedLimit *= 1.20;
+            }
+        }
+
         // 速度药水加成 (按比例加成)
         int speedAmp = adapter.getPotionAmplifier(player, CompatPotionType.SPEED);
         if (speedAmp >= 0) {
@@ -193,40 +228,29 @@ public class SpeedCheck extends AbstractCheck {
         allowedLimit *= boundedElapsed;
 
         // 速度阈值判定与平滑缓冲区 (Speed Violation Buffer)
+        // 对齐 GrimAC：处于违规锁定期 (2000ms) 内执行收紧容限 (0.04)，杜绝蹭步偷跑且避免浮点微动连环拉回死循环
+        double currentBufferMax = underViolationLock ? 0.04 : speedBufferMax;
         if (distance > allowedLimit) {
             double diff = distance - allowedLimit;
-            double previousBuffer = data.getSpeedBuffer();
+            double previousBuffer = underViolationLock ? 0.0 : data.getSpeedBuffer();
             double currentBuffer = previousBuffer + diff;
 
-            if (currentBuffer > speedBufferMax) {
-                // 超出平滑缓冲容限，判定蓄意超速作弊：达到 min-vl 门槛后方才直接取消事件，未达门槛则平滑截断，杜绝误触回退
-                int currentVl = plugin.getViolationManager().getViolationLevel(player.getUniqueId(), this);
-                if (currentVl + 1 >= getSetbackMinVl()) {
-                    event.setCancelled(true);
-                } else {
-                    double ratio = allowedLimit / distance;
-                    Location clampedTo = from.clone();
-                    clampedTo.setX(from.getX() + (to.getX() - from.getX()) * ratio);
-                    clampedTo.setZ(from.getZ() + (to.getZ() - from.getZ()) * ratio);
-                    clampedTo.setY(to.getY());
-                    clampedTo.setYaw(to.getYaw());
-                    clampedTo.setPitch(to.getPitch());
-                    event.setTo(clampedTo);
-                }
-                String details = String.format("dist=%.3f, max=%.3f, buf=%.3f, onIce=%b, airTicks=%d",
-                        distance, allowedLimit, currentBuffer, onIce, airTicks);
+            // 核心直通硬拦截机制 (Instant Hard Cut):
+            // 仅对明显脱离原版物理极限的恶劣超速 (例如单帧超速 diff >= 0.18 格，或超出允许上限 50% 以上)
+            // 认定为确凿蓄意作弊，首帧直接拦截并回退；
+            // 对于轻微单帧抖动 (diff < 0.18)，必须由平滑缓冲区 (speedBufferMax = 0.12) 进行平滑累加判定，
+            // 既杜绝下坡/跳跃落地的误报，又在持续超速 2~3 帧内 (0.15秒) 彻底定身作弊者！
+            boolean instantViolation = (diff >= 0.18) || (distance > allowedLimit * 1.50);
+
+            if (currentBuffer > currentBufferMax || instantViolation) {
+                // 超出平滑缓冲容限或触发瞬发直通拦截：坚决原地拦截，绝对不帮作弊者裁剪放行！
+                event.setCancelled(true);
+                String details = String.format("dist=%.3f, max=%.3f, diff=%.3f, buf=%.3f, onIce=%b, airTicks=%d, lock=%b, inst=%b",
+                        distance, allowedLimit, diff, currentBuffer, onIce, airTicks, underViolationLock, instantViolation);
                 flag(player, 1, details, event);
-                data.setSpeedBuffer(currentBuffer - (speedBufferMax * 0.5));
+                data.setSpeedBuffer(underViolationLock ? 0.0 : Math.max(0.0, currentBuffer - (currentBufferMax * 0.5)));
             } else {
-                // 仍在缓冲区容差之内 (轻微网络抖动/台阶起跳)：平滑截断多余矢量，保持玩家前行连贯，彻底消除误报卡顿
-                double ratio = allowedLimit / distance;
-                Location clampedTo = from.clone();
-                clampedTo.setX(from.getX() + (to.getX() - from.getX()) * ratio);
-                clampedTo.setZ(from.getZ() + (to.getZ() - from.getZ()) * ratio);
-                clampedTo.setY(to.getY());
-                clampedTo.setYaw(to.getYaw());
-                clampedTo.setPitch(to.getPitch());
-                event.setTo(clampedTo);
+                // 仅偶发微弱抖动 (diff < 0.18) 才累加缓冲区
                 data.setSpeedBuffer(currentBuffer);
             }
         } else {
@@ -237,16 +261,5 @@ public class SpeedCheck extends AbstractCheck {
 
     private boolean isBubbleColumn(Block b) {
         return b != null && b.getType().name().contains("BUBBLE_COLUMN");
-    }
-
-    private int getDepthStriderLevel(Player player) {
-        if (player == null) return 0;
-        try {
-            org.bukkit.inventory.ItemStack boots = player.getInventory().getBoots();
-            if (boots != null && boots.hasItemMeta()) {
-                return boots.getEnchantmentLevel(org.bukkit.enchantments.Enchantment.DEPTH_STRIDER);
-            }
-        } catch (Throwable ignored) {}
-        return 0;
     }
 }

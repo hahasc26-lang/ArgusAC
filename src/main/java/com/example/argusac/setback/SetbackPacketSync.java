@@ -48,6 +48,16 @@ public class SetbackPacketSync {
                                 );
                         user.sendPacket(packet);
                         packetSent = true;
+
+                        // 对齐 GrimAC：下发位置同步的同时下发 0 速度包，扑灭客户端本地预测惯性与按键残余加速度
+                        try {
+                            com.github.retrooper.packetevents.wrapper.play.server.WrapperPlayServerEntityVelocity zeroVelocityPacket =
+                                    new com.github.retrooper.packetevents.wrapper.play.server.WrapperPlayServerEntityVelocity(
+                                            player.getEntityId(),
+                                            new com.github.retrooper.packetevents.util.Vector3d(0.0, 0.0, 0.0)
+                                    );
+                            user.sendPacket(zeroVelocityPacket);
+                        } catch (Throwable ignored) {}
                     } catch (Throwable t) {
                         // 备用兼容反射构造器
                         try {
@@ -61,6 +71,15 @@ public class SetbackPacketSync {
                             );
                             user.sendPacket((com.github.retrooper.packetevents.wrapper.PacketWrapper<?>) packet);
                             packetSent = true;
+
+                            try {
+                                com.github.retrooper.packetevents.wrapper.play.server.WrapperPlayServerEntityVelocity zeroVelocityPacket =
+                                        new com.github.retrooper.packetevents.wrapper.play.server.WrapperPlayServerEntityVelocity(
+                                                player.getEntityId(),
+                                                new com.github.retrooper.packetevents.util.Vector3d(0.0, 0.0, 0.0)
+                                        );
+                                user.sendPacket(zeroVelocityPacket);
+                            } catch (Throwable ignored) {}
                         } catch (Throwable ignored) {}
                     }
                 }

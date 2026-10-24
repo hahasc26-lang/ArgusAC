@@ -67,18 +67,14 @@ public class FlyCheck extends AbstractCheck {
         VersionAdapter adapter = VersionAdapterFactory.getAdapter();
         double deltaY = to.getY() - from.getY();
 
-        // 检查是否接触爬梯、藤蔓、脚手架、蜘蛛网等攀爬缓冲方块，或全身深潜入水/正常游泳
-        if (isFullySubmergedOrClimbable(player, adapter, from, to)) {
+        // 检查是否处于流体环境 (水、岩浆) 或攀爬方块 (梯子、藤蔓、脚手架、蜘蛛网)
+        // 只要玩家处于液体中 (isInWater、脚或身体接触液体、游泳或在水面浮水踩水)，均享有原版流体浮力；
+        // 流体环境下的水面行走、虚假接地由 JesusCheck 专项高精检测，FlyCheck 严禁误判流体浮动
+        if (isInLiquidOrClimbable(player, adapter, from, to)) {
             data.setAirTicks(0);
+            data.resetFlatHoverTicks();
+            data.resetAntiGravityTicks();
             return;
-        }
-
-        // 【P0 修复】若双脚接触水面但头部未入水且未深潜，不再无条件重置滞空计数
-        // 旧逻辑：脚碰到水就重置 → 作弊者可以在水面悬浮而逃脱飞行检测
-        // 新逻辑：仅在全身深潜入水（脚和头都在水中）或正在游泳时才重置
-        // 水面行走状态（脚在水面、头在空中）继续作为「滞空」累积 airTicks
-        if (isFullySubmergedInLiquid(player, adapter, from, to)) {
-            data.setAirTicks(0);
         }
 
         // 检查脚下及周围是否有物理支撑面
@@ -100,30 +96,44 @@ public class FlyCheck extends AbstractCheck {
             int airTicks = data.getAirTicks();
 
             int jumpAmp = adapter.getPotionAmplifier(player, CompatPotionType.JUMP_BOOST);
-            double maxAllowedLaunchAscent = (0.65 + Math.max(0, jumpAmp + 1) * 0.15) * elapsedTicks;
-            double maxAllowedAirAscent = verticalAscentThreshold
-                    + (jumpAmp >= 0 ? (jumpAmp + 1) * 0.15 : 0.0);
-            maxAllowedAirAscent *= elapsedTicks;
+            // 允许首帧合法上升高度：原版物理台阶跨越 (Step-up 最大 0.60 格) + 跳跃初速度 (0.42 格) 叠加为 1.02 格
+            // 给予 1.05 基准容差，药水每级 +0.20 格，彻底杜绝半砖/台阶跳跃 (Step-up Jump，deltaY 约 0.86~0.92) 首帧误判
+            double baseLaunchLimit = 1.05 + (jumpAmp >= 0 ? (jumpAmp + 1) * 0.20 : 0.0);
+            double maxAllowedLaunchAscent = baseLaunchLimit * elapsedTicks;
 
             // 1. 非法垂直向上飞升检测 (IllegalAscent)
-            // 首帧起跳 (airTicks <= 1) 允许正常起跳冲量 (包含台阶/坡度起跳 Step-up，容差放宽至 0.65+);
+            // 首帧起跳 (airTicks <= 1) 允许正常起跳冲量 (包含台阶/坡度起跳 Step-up，容差放宽至 1.05 以容纳原版 0.86~0.92 台阶跳跃);
             // 升空中期严格按原版重力递减衰减：跳跃第 5 tick 达到最高点后垂直速度必定转为负值 (下落)；
-            // 若 airTicks >= 5 仍持续向上拔高 (> 0.001)，或在滞空中期垂直冲量超出递减包络线，首帧即判定为反重力/喷气飞升作弊
-            boolean hasAscentExemption = adapter.hasPotionEffect(player, CompatPotionType.LEVITATION)
+            // 若 airTicks >= 5 仍持续向上拔高 (> 0.001)，或在滞空中期垂直冲量超出递减包络线，即判定为反重力/喷气飞升作弊
+            com.example.argusac.setback.PlayerSetbackContext setbackContext =
+                    plugin.getSetbackManager() != null ? plugin.getSetbackManager().getContext(player.getUniqueId()) : null;
+            boolean underViolationLock = setbackContext != null && (setbackContext.isTeleportInFlight() || setbackContext.isUnderViolationLock());
+
+            boolean hasAscentExemption = !underViolationLock && (adapter.hasPotionEffect(player, CompatPotionType.LEVITATION)
                     || adapter.isRiptiding(player)
                     || adapter.isGliding(player)
                     || data.isElytraGliding()
                     || data.hasAnyLegalVelocity()
                     || data.hasRecentVelocity(1000L)
-                    || (recentlyPlacedBlock && hasBlockBelow(to, adapter, 1.20));
+                    || (recentlyPlacedBlock && hasBlockBelow(to, adapter, 1.20)));
             if (!hasAscentExemption && !data.isSetbackImmune()) {
                 if (airTicks <= 1 && deltaY > maxAllowedLaunchAscent) {
                     flag(player, 2, String.format("IllegalAscent (Launch) deltaY=%.3f, max=%.3f", deltaY, maxAllowedLaunchAscent), event);
                     return;
                 } else if (airTicks > 1) {
-                    double allowedAscent = (airTicks >= 5)
-                            ? (jumpAmp >= 0 ? (jumpAmp + 1) * 0.10 : 0.001)
-                            : (Math.max(0.0, 0.42 - (airTicks - 1) * 0.08) + (jumpAmp >= 0 ? (jumpAmp + 1) * 0.15 : 0.0)) * elapsedTicks;
+                    double allowedAscent;
+                    if (airTicks >= 7) {
+                        // 原版跳跃在第 6 Tick 走完最高点，第 7 Tick 起垂直速度必定彻底转为负值 (下落)；
+                        // 除非拥有跳跃提升药水，否则第 7 Tick 及以后严禁持续向上拔高 (> 0.001)
+                        allowedAscent = (jumpAmp >= 0 ? (jumpAmp + 1) * 0.10 : 0.001);
+                    } else {
+                        // airTicks 2~6：平滑重力抛物线递减包络线 (原版: 2:0.333, 3:0.248, 4:0.165, 5:0.083, 6:0.003)
+                        double decayAllowance = Math.max(0.02, (verticalAscentThreshold + 0.06) - (airTicks - 1) * 0.075);
+                        if (jumpAmp >= 0) {
+                            decayAllowance += (jumpAmp + 1) * 0.15;
+                        }
+                        allowedAscent = decayAllowance * elapsedTicks;
+                    }
                     if (deltaY > allowedAscent) {
                         flag(player, 2, String.format("IllegalAscent (Air) airTicks=%d, deltaY=%.3f, maxAllowed=%.3f", airTicks, deltaY, allowedAscent), event);
                         return;
@@ -132,9 +142,8 @@ public class FlyCheck extends AbstractCheck {
             }
 
             // 2. 悬空滞空与异常重力下坠检测 (Hover & Anti-Gravity)
-            // A. 完全平飞悬空：原版跳跃顶点仅能维持 1 tick 瞬时零点 (deltaY ~ 0.003)，必须连续 3 tick 以上滞空方才判定悬空
-            // B. 慢速反重力漂浮：原版跳跃在第 5 tick 之后必定加速下坠 (第 6 tick -0.078, 第 7 tick -0.155)；
-            //    必须连续 4 tick 以上未维持正常重力下坠且排除蜘蛛网、缓降、蜂蜜块、粘液反弹方可判定
+            // A. 完全平飞悬空：连续 3 tick (150ms) 保持绝对平飞即刻定身回退，杜绝跳跃顶点 1~2 tick 物理微调误判
+            // B. 慢速反重力漂浮：原版跳跃在第 5 tick 之后必定加速下坠；滞空 5 tick 且连续 3 tick 未维持正常重力下坠当场拉回
             boolean slowingBlockOrBounce = isSlowingOrBounceBlock(from) || isSlowingOrBounceBlock(to) || data.getSlimeTicks() > 0;
             if (!hasAscentExemption
                     && !slowingBlockOrBounce
@@ -142,7 +151,7 @@ public class FlyCheck extends AbstractCheck {
                     && !adapter.hasPotionEffect(player, CompatPotionType.LEVITATION)) {
                 if (Math.abs(deltaY) < 0.006) {
                     data.incrementFlatHoverTicks();
-                    if (data.getFlatHoverTicks() >= 3 && airTicks >= 4) {
+                    if (data.getFlatHoverTicks() >= 3 && airTicks >= 3) {
                         flag(player, 2, String.format("Hover (Flat) airTicks=%d, hoverTicks=%d, deltaY=%.4f",
                                 airTicks, data.getFlatHoverTicks(), deltaY), event);
                         return;
@@ -153,13 +162,20 @@ public class FlyCheck extends AbstractCheck {
 
                 if (deltaY > -0.05 && deltaY <= 0.0) {
                     data.incrementAntiGravityTicks();
-                    if (data.getAntiGravityTicks() >= 4 && airTicks >= 6) {
+                    if (data.getAntiGravityTicks() >= 3 && airTicks >= 7) {
                         flag(player, 2, String.format("Hover (Anti-Gravity) airTicks=%d, antiGravTicks=%d, deltaY=%.3f",
                                 airTicks, data.getAntiGravityTicks(), deltaY), event);
                         return;
                     }
                 } else if (deltaY < -0.05) {
                     data.resetAntiGravityTicks();
+                }
+
+                // C. 超长无支撑滞空检测 (MaxAirTicks，即时拦截超长悬停)
+                if (airTicks > maxAirTicks && deltaY >= -0.05) {
+                    flag(player, 2, String.format("Hover (MaxAirTicks) airTicks=%d, max=%d, deltaY=%.3f",
+                            airTicks, maxAirTicks, deltaY), event);
+                    return;
                 }
             } else {
                 data.resetFlatHoverTicks();
@@ -173,33 +189,8 @@ public class FlyCheck extends AbstractCheck {
         }
     }
 
-    private boolean isFullySubmergedOrClimbable(Player player, VersionAdapter adapter, Location from, Location to) {
-        Location[] locs = {player.getLocation(), from, to};
-        for (Location l : locs) {
-            if (l != null && l.getWorld() != null) {
-                Block feet = l.getBlock();
-                Block head = l.clone().add(0, 1.0, 0).getBlock();
-                // 梯子、藤蔓、脚手架、蜘蛛网始终豁免
-                if (adapter.isClimbable(feet) || adapter.isClimbable(head)) {
-                    return true;
-                }
-                // 正常 3D 游泳或全身浸入深水豁免
-                if (adapter.isSwimming(player) || (adapter.isLiquid(feet) && adapter.isLiquid(head))) {
-                    return true;
-                }
-            }
-        }
-        return false;
-    }
-
-
-    /**
-     * 判断玩家是否真正深潜入水（脚和头都在液体中）或处于游泳姿态
-     * 与 isFeetInLiquid 的区别：水面行走（脚在水面、头在空中）不被认定为深潜
-     */
-    private boolean isFullySubmergedInLiquid(Player player, VersionAdapter adapter, Location from, Location to) {
-        // 游泳姿态直接认定
-        if (adapter.isSwimming(player)) {
+    private boolean isInLiquidOrClimbable(Player player, VersionAdapter adapter, Location from, Location to) {
+        if (adapter.isInWater(player) || adapter.isSwimming(player)) {
             return true;
         }
         Location[] locs = {player.getLocation(), from, to};
@@ -207,8 +198,13 @@ public class FlyCheck extends AbstractCheck {
             if (l != null && l.getWorld() != null) {
                 Block feet = l.getBlock();
                 Block head = l.clone().add(0, 1.0, 0).getBlock();
-                // 脚和头都在液体中 = 真正的深潜/全身入水
-                if (adapter.isLiquid(feet) && adapter.isLiquid(head)) {
+                Block under = l.clone().subtract(0, 0.4, 0).getBlock();
+                // 梯子、藤蔓、脚手架、蜘蛛网始终豁免
+                if (adapter.isClimbable(feet) || adapter.isClimbable(head)) {
+                    return true;
+                }
+                // 身体、头部处于液体中，或双脚浸水/在水面踩水起跳
+                if (adapter.isLiquid(feet) || adapter.isLiquid(head) || adapter.isLiquid(under)) {
                     return true;
                 }
             }
@@ -232,7 +228,7 @@ public class FlyCheck extends AbstractCheck {
         };
         for (double[] p : points) {
             Location checkLoc = loc.clone().add(p[0], 0, p[1]);
-            for (double yOffset = -0.05; yOffset >= -maxDepth; yOffset -= 0.15) {
+            for (double yOffset = 0.0; yOffset >= -maxDepth; yOffset -= 0.15) {
                 Block b = checkLoc.clone().add(0, yOffset, 0).getBlock();
                 if (adapter.isStandable(b)) {
                     return true;
@@ -257,5 +253,13 @@ public class FlyCheck extends AbstractCheck {
         Block under = loc.clone().subtract(0, 0.5, 0).getBlock();
         String underName = under.getType().name();
         return underName.contains("HONEY") || underName.contains("SLIME") || underName.contains("BUBBLE");
+    }
+
+    public int getMaxAirTicks() {
+        return maxAirTicks;
+    }
+
+    public double getVerticalAscentThreshold() {
+        return verticalAscentThreshold;
     }
 }

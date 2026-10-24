@@ -195,13 +195,17 @@ public class FastBowCheck extends AbstractCheck {
         }
     }
 
+    @SuppressWarnings("deprecation")
     private int getQuickChargeLevel(ItemStack item) {
         if (item == null || !item.hasItemMeta()) {
             return 0;
         }
         for (java.util.Map.Entry<org.bukkit.enchantments.Enchantment, Integer> entry : item.getEnchantments().entrySet()) {
-            if (entry.getKey() != null && entry.getKey().getName().toUpperCase().contains("QUICK_CHARGE")) {
-                return entry.getValue();
+            if (entry.getKey() != null) {
+                String enchName = entry.getKey().getName();
+                if (enchName != null && enchName.toUpperCase().contains("QUICK_CHARGE")) {
+                    return entry.getValue();
+                }
             }
         }
         return 0;

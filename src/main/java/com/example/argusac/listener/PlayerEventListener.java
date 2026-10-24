@@ -192,8 +192,10 @@ public class PlayerEventListener implements Listener {
         }
 
         com.example.argusac.setback.PlayerSetbackContext context = plugin.getSetbackManager().getContext(player.getUniqueId());
-        if (context != null) {
-            context.confirmTeleport(0);
+        if (context != null && event.getTo() != null) {
+            java.util.UUID vehicleId = (player.isInsideVehicle() && player.getVehicle() != null)
+                    ? player.getVehicle().getUniqueId() : null;
+            context.reset(event.getTo(), player.isInsideVehicle(), vehicleId);
             context.clearLockedAnchor();
         }
 
@@ -308,7 +310,7 @@ public class PlayerEventListener implements Listener {
 
         // 对齐 GrimAC 传送传输中 (Teleport In-Flight) 机制：
         // 服务端发出的位置重置包在客户端收到并回复 ACK 之前存在 1 个 RTT 延迟。
-        // 期间来自客户端的旧移动包必须宽容接纳并约束至目标点，绝不重复触发二次判定与连环拉回
+        // 期间来自客户端的旧移动包必须坚决阻断取消，严禁推动玩家位置或触发二次误判
         com.example.argusac.setback.PlayerSetbackContext setbackCtx = plugin.getSetbackManager().getContext(player.getUniqueId());
         if (setbackCtx != null && setbackCtx.isTeleportInFlight()) {
             if (setbackCtx.matchesCorrection(to)) {
@@ -318,6 +320,7 @@ public class PlayerEventListener implements Listener {
                 if (inFlightTarget != null) {
                     event.setTo(inFlightTarget);
                 }
+                event.setCancelled(true);
                 return;
             }
         }
@@ -342,18 +345,33 @@ public class PlayerEventListener implements Listener {
         if (!player.isOnGround() && (to.getY() - from.getY()) > 0.05 && !hasSupportingBlockBelow(to, adapter, 0.15)) {
             onGround = false;
         }
+        data.setLastOnGround(data.isOnGround());
         data.setOnGround(onGround);
 
-        // 【P0 修复】若在地面或真正深潜入水/游泳中，即刻重置空中滞空计时
-        // 水面行走（脚在水面但头在空中）不再重置 airTicks，让 FlyCheck 能够检测水面悬浮
-        boolean trulyInWater = adapter.isSwimming(player)
-                || (adapter.isLiquid(to.getBlock()) && adapter.isLiquid(to.clone().add(0, 1.0, 0).getBlock()));
-        if (onGround || trulyInWater) {
+        // 接地与流体/滞空状态维护 (水、岩浆等流体拥有原版浮力与阻力，不计为真空空气滞空)
+        boolean inLiquid = adapter.isInWater(player)
+                || adapter.isSwimming(player)
+                || adapter.isLiquid(to.getBlock())
+                || adapter.isLiquid(from.getBlock())
+                || adapter.isLiquid(to.clone().subtract(0, 0.4, 0).getBlock());
+        Block under = to.clone().subtract(0, 0.5, 0).getBlock();
+        if (onGround || inLiquid) {
             data.setAirTicks(0);
+            data.incrementGroundTicks();
+            // 落地且已脱离冰面与滑行记忆期，重置空中冰面起跳惯性
+            if (!adapter.isIce(under) && !adapter.isSlime(under) && data.getIceTicks() <= 0) {
+                data.setAirborneFromIce(false);
+            }
+        } else {
+            data.setGroundTicks(0);
+            // 离地起跳帧：若脚下为冰/粘液或处于冰面记忆期，标记本次滞空继承冰面起跳大动量
+            Block underFrom = from.clone().subtract(0, 0.5, 0).getBlock();
+            if (data.getIceTicks() > 0 || adapter.isIce(underFrom) || adapter.isSlime(underFrom)) {
+                data.setAirborneFromIce(true);
+            }
         }
 
         // 冰面与粘液块滑行惯性追踪 (离开冰面后维持 4 tick 原版真实摩擦衰减，杜绝利用 25 tick 惯性盲区虚假滑冰)
-        Block under = to.clone().subtract(0, 0.5, 0).getBlock();
         if (adapter.isIce(under) || adapter.isSlime(under)) {
             data.setIceTicks(4);
         } else {
@@ -435,11 +453,12 @@ public class PlayerEventListener implements Listener {
         // 若本 tick 移动完全合法且未触发任何取消/回退，且玩家安全处于稳固地面上，
         // 在距最后一次取消违规一定安全窗口 (400ms) 之后，平稳解除原位锁定锚点
         if (!event.isCancelled() && !hasSetbackOccurred(originalTo, event.getTo())) {
-            if (onGround) {
+            if (onGround || inLiquid) {
                 com.example.argusac.setback.PlayerSetbackContext setbackContext =
                         plugin.getSetbackManager().getContext(player.getUniqueId());
                 if (setbackContext != null && setbackContext.getLockedAnchorLocation() != null) {
-                    if (System.currentTimeMillis() - setbackContext.getLastCancellationViolationTime() > 400L) {
+                    // 对标 GrimAC 锚点守恒法则：必须完整度过 2000ms 违规锁死周期，且在地面稳定合法移动，才允许解除锁定锚点！
+                    if (!setbackContext.isUnderViolationLock()) {
                         setbackContext.clearLockedAnchor();
                     }
                 }
