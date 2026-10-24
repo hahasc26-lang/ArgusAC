@@ -154,6 +154,9 @@ public class CombatMitigationHandler {
                     return true;
                 }
             }
+
+            // 数据包层初筛通过：标记为合法放行攻击，避免主线程 Bukkit 事件层重复核验导致双重计分与时间戳污染
+            data.recordVerifiedAttack(victim.getUniqueId());
         }
 
         return false;

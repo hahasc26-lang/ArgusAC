@@ -61,6 +61,20 @@ public class PlayerData {
     private long lastTeleportTime = 0L;
     private long lastFlightToggleTime = 0L;
     private long lastJoinTime = 0L;
+    private long lastRespawnTime = 0L;
+
+    // 数据包层实时位置与视角追踪 (Netty Thread Safe Packet Position & Rotation)
+    private volatile double packetX;
+    private volatile double packetY;
+    private volatile double packetZ;
+    private volatile float packetYaw;
+    private volatile float packetPitch;
+    private volatile boolean hasPacketLocation = false;
+    private volatile long lastPacketLocationTime = 0L;
+
+    // 最近一次在 Netty 数据包层已核验放行的攻击记录
+    private volatile UUID lastVerifiedAttackTarget = null;
+    private volatile long lastVerifiedAttackTime = 0L;
 
     // 加入游戏后的豁免期时长（毫秒）
     private static final long GRACE_PERIOD_MS = 5000L;
@@ -992,5 +1006,65 @@ public class PlayerData {
 
     public void setLastMaceSmashTime(long lastMaceSmashTime) {
         this.lastMaceSmashTime = lastMaceSmashTime;
+    }
+
+    public long getLastRespawnTime() {
+        return lastRespawnTime;
+    }
+
+    public void setLastRespawnTime(long lastRespawnTime) {
+        this.lastRespawnTime = lastRespawnTime;
+    }
+
+    public void updatePacketLocation(double x, double y, double z, float yaw, float pitch) {
+        this.packetX = x;
+        this.packetY = y;
+        this.packetZ = z;
+        this.packetYaw = yaw;
+        this.packetPitch = pitch;
+        this.lastLookYaw = yaw;
+        this.lastLookPitch = pitch;
+        this.hasPacketLocation = true;
+        this.lastPacketLocationTime = System.currentTimeMillis();
+    }
+
+    public void updatePacketPosition(double x, double y, double z) {
+        this.packetX = x;
+        this.packetY = y;
+        this.packetZ = z;
+        this.hasPacketLocation = true;
+        this.lastPacketLocationTime = System.currentTimeMillis();
+    }
+
+    public void updatePacketRotation(float yaw, float pitch) {
+        this.packetYaw = yaw;
+        this.packetPitch = pitch;
+        this.lastLookYaw = yaw;
+        this.lastLookPitch = pitch;
+        this.lastPacketLocationTime = System.currentTimeMillis();
+    }
+
+    public Location getLatestPacketEyeLocation(org.bukkit.World world, double fallbackEyeHeight) {
+        if (world == null) return null;
+        if (hasPacketLocation && (System.currentTimeMillis() - lastPacketLocationTime < 5000L)) {
+            return new Location(world, packetX, packetY + fallbackEyeHeight, packetZ, packetYaw, packetPitch);
+        }
+        if (toLocation != null && toLocation.getWorld() == world) {
+            return new Location(world, toLocation.getX(), toLocation.getY() + fallbackEyeHeight, toLocation.getZ(),
+                    lastLookYaw, lastLookPitch);
+        }
+        return null;
+    }
+
+    public void recordVerifiedAttack(UUID targetUuid) {
+        this.lastVerifiedAttackTarget = targetUuid;
+        this.lastVerifiedAttackTime = System.currentTimeMillis();
+    }
+
+    public boolean isAttackRecentlyVerified(UUID targetUuid, long windowMs) {
+        if (targetUuid == null || lastVerifiedAttackTarget == null || !lastVerifiedAttackTarget.equals(targetUuid)) {
+            return false;
+        }
+        return (System.currentTimeMillis() - lastVerifiedAttackTime) <= windowMs;
     }
 }

@@ -54,6 +54,10 @@ public class PlayerEventListener implements Listener {
         PlayerData data = plugin.getPlayerManager().getPlayerData(player);
         if (data != null) {
             data.getElytraData().resetAll();
+            Location loc = player.getLocation();
+            if (loc != null) {
+                data.updatePacketLocation(loc.getX(), loc.getY(), loc.getZ(), loc.getYaw(), loc.getPitch());
+            }
         }
 
         // 记录统一会话 SESSION 加入日志
@@ -134,6 +138,14 @@ public class PlayerEventListener implements Listener {
             data.getElytraData().resetAll();
             data.getPhysicsState().reset(event.getRespawnLocation());
             data.resetMaceFallState(event.getRespawnLocation().getY());
+            data.clearExpectedVelocity();
+            data.setVelocityHandled(true);
+            data.setLastRespawnTime(System.currentTimeMillis());
+            Location respawnLoc = event.getRespawnLocation();
+            if (respawnLoc != null) {
+                data.updatePacketLocation(respawnLoc.getX(), respawnLoc.getY(), respawnLoc.getZ(),
+                        respawnLoc.getYaw(), respawnLoc.getPitch());
+            }
         }
     }
 
@@ -148,6 +160,10 @@ public class PlayerEventListener implements Listener {
             data.getElytraData().resetAll();
             data.getPhysicsState().reset(player.getLocation());
             data.resetMaceFallState(player.getLocation().getY());
+            Location loc = player.getLocation();
+            if (loc != null) {
+                data.updatePacketLocation(loc.getX(), loc.getY(), loc.getZ(), loc.getYaw(), loc.getPitch());
+            }
         }
 
         // 记录跨世界 SESSION 日志
@@ -522,6 +538,11 @@ public class PlayerEventListener implements Listener {
             return;
         }
 
+        // 豁免横扫溅射伤害 (Sweeping Edge / ENTITY_SWEEP_ATTACK)：横扫属于服务端自动广播的群体伤害，准星非主动瞄准
+        if (event.getCause() == EntityDamageEvent.DamageCause.ENTITY_SWEEP_ATTACK) {
+            return;
+        }
+
         // 第三阶段 Bukkit 层兜底防御 (Fallback)：
         // 正常情况下违规攻击已在 Netty 进包阶段 (PacketPlayInUseEntity) 被直接丢弃，本事件不应被触发；
         // 若因同 tick 多包穿透或外部插件直接构造事件触发至此，首先检查攻击者是否已处于抑制窗口
@@ -531,6 +552,14 @@ public class PlayerEventListener implements Listener {
                 event.setDamage(0.0);
             } catch (Throwable ignored) {}
             return;
+        }
+
+        PlayerData data = plugin.getPlayerManager().getPlayerData(attacker);
+        if (data != null && event.getEntity() != null) {
+            // 若该次攻击已在 Netty 进包管道初筛放行，Bukkit 层无需二次重复核验，直接放行伤害
+            if (data.isAttackRecentlyVerified(event.getEntity().getUniqueId(), 200L)) {
+                return;
+            }
         }
 
         // 若目标实体为首次交互的非玩家生物（尚未进入 EntityHistoryTracker 索引），当场补录进索引缓存

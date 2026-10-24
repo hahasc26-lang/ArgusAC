@@ -4,6 +4,7 @@ import com.example.argusac.ArgusACPlugin;
 import com.example.argusac.api.CheckType;
 import com.example.argusac.check.AbstractCheck;
 import com.example.argusac.combat.CombatVerdict;
+import com.example.argusac.compat.CompatBoundingBox;
 import com.example.argusac.compat.VersionAdapter;
 import com.example.argusac.compat.VersionAdapterFactory;
 import com.example.argusac.data.PlayerData;
@@ -16,14 +17,15 @@ import org.bukkit.entity.Entity;
 import org.bukkit.entity.LivingEntity;
 import org.bukkit.entity.Player;
 import org.bukkit.event.entity.EntityDamageByEntityEvent;
-import org.bukkit.util.Vector;
 
+import java.util.List;
 import java.util.UUID;
 
 /**
  * 杀戮光环检测 (KillAuraCheck)
  * 采用多维度算法矩阵检测异常攻击视角、盲区发包、穿墙透打与自瞄突变。
- * 全面支持 Netty 进包阶段 (PacketPlayInUseEntity) 即时初筛裁决与分级处置策略。
+ * 基于视线射线到目标 AABB 碰撞盒的多维最小偏转角 (Min Angle to Box) 与 Netty 数据包级实时状态，
+ * 彻底消除原版瞄准躯干/脚部/边缘或视角微调时的视角误报。
  */
 public class KillAuraCheck extends AbstractCheck {
 
@@ -103,25 +105,52 @@ public class KillAuraCheck extends AbstractCheck {
         }
         Location victimEye = victimLoc.clone().add(0, victimEyeHeight, 0);
 
-        Vector eyeDirection = eyeLoc.getDirection();
-        Vector toTarget = victimEye.toVector().subtract(eyeLoc.toVector());
-        if (toTarget.lengthSquared() < 0.01) {
+        CompatBoundingBox targetBox = null;
+        if (plugin.getHistoryTracker() != null) {
+            targetBox = plugin.getHistoryTracker().getCompensatedBox(livingVictim, ping);
+        }
+        if (targetBox == null) {
+            try {
+                targetBox = adapter.getEntityBoundingBox(livingVictim);
+            } catch (Throwable ignored) {
+            }
+        }
+        if (targetBox == null) {
             return CombatVerdict.pass();
         }
 
-        double distance = eyeLoc.distance(victimEye);
-        double angle = MathUtil.getAngleBetweenVectors(eyeDirection, toTarget);
+        // 计算玩家视线与目标碰撞箱的多维最小夹角 (Min Angle to Box)：
+        // 若准星直接正对生物的胸膛、肚子、脚部或外缘，minAngle 恒等于 0.0°
+        double minAngle = MathUtil.getMinAngleToBox(eyeLoc, targetBox, victimEyeHeight);
 
-        // 1. 盲区与背身反向攻击拦截 (Blindspot Check: 完全背对或偏离超过 90 度发包攻击 -> 高确信明显作弊)
-        if (blindspotCheck && distance > 0.8 && angle > 90.0) {
-            return CombatVerdict.highConfidence(this, 3,
-                    String.format("Blindspot Attack angle=%.1f deg (>90.0) (Backtracked)", angle));
+        // 如果存在延迟历史快照候选盒，在时间窗口内所有候选盒中取视线偏角极小值
+        if (plugin.getHistoryTracker() != null && minAngle > 0.0) {
+            List<HistoricalBox> candidates = plugin.getHistoryTracker().getCompensatedCandidateBoxes(livingVictim, ping);
+            for (HistoricalBox hb : candidates) {
+                if (hb.getBox() != null) {
+                    double candAngle = MathUtil.getMinAngleToBox(eyeLoc, hb.getBox(), hb.getEyeHeight());
+                    if (candAngle < minAngle) {
+                        minAngle = candAngle;
+                        if (minAngle == 0.0) {
+                            break;
+                        }
+                    }
+                }
+            }
         }
 
-        // 2. 视角夹角检测 (Angle Check，基于回溯坐标对齐，支持分级处置)
-        if (distance > 1.0 && angle > maxAngle) {
-            double angleExcess = angle - maxAngle;
-            String detail = String.format("Impossible Angle angle=%.1f deg, max=%.1f (Backtracked)", angle, maxAngle);
+        double distance = eyeLoc.distance(victimEye);
+
+        // 1. 盲区与背身反向攻击拦截 (Blindspot Check: 完全背对或偏离目标盒超过 90 度发包攻击 -> 高确信明显作弊)
+        if (blindspotCheck && distance > 0.8 && minAngle > 90.0) {
+            return CombatVerdict.highConfidence(this, 3,
+                    String.format("Blindspot Attack minAngle=%.1f deg (>90.0) (Backtracked)", minAngle));
+        }
+
+        // 2. 视角夹角检测 (Angle Check，基于回溯盒边缘对齐，支持分级处置)
+        if (distance > 1.0 && minAngle > maxAngle) {
+            double angleExcess = minAngle - maxAngle;
+            String detail = String.format("Impossible Angle minAngle=%.1f deg, max=%.1f (Backtracked)", minAngle, maxAngle);
             if (angleExcess <= ANGLE_LOW_CONFIDENCE_MARGIN) {
                 return CombatVerdict.lowConfidenceDrop(this, detail);
             }
@@ -129,21 +158,23 @@ public class KillAuraCheck extends AbstractCheck {
         }
 
         // 3. 准星光线脱靶命中检测 (Silent Aim / Aimbot RayTrace Miss)
-        if (distance > 1.2 && angle > 65.0) {
+        // 严格限定在最小视线夹角超出 75 度且距离超出目标碰撞盒外缘 1.8 格以上，防止常规追击转身近战误判
+        if (distance > 1.5 && minAngle > 75.0) {
             double distanceToCompensatedBox = (plugin.getHistoryTracker() != null)
                     ? plugin.getHistoryTracker().getCompensatedMinDistance(eyeLoc, livingVictim, ping)
-                    : adapter.getEntityBoundingBox(livingVictim).distanceTo(eyeLoc);
+                    : targetBox.distanceTo(eyeLoc);
 
-            if (distanceToCompensatedBox > distance + 1.2) {
+            if (distanceToCompensatedBox > distance + 1.8) {
                 return CombatVerdict.highConfidence(this, 2,
-                        String.format("Aimbot Ray Miss angle=%.1f, ping=%d (Backtracked)", angle, ping));
+                        String.format("Aimbot Ray Miss minAngle=%.1f, ping=%d (Backtracked)", minAngle, ping));
             }
         }
 
-        // 4. 隔墙穿透攻击检测 (RayTrace Blocks，跨版本安全适配)
+        // 4. 隔墙穿透攻击检测 (RayTrace Blocks，双点双向防半砖误判)
         if (raytraceBlocks && distance > 1.2) {
             try {
-                if (adapter.isRayOccluded(eyeLoc, victimEye)) {
+                Location victimCenter = victimLoc.clone().add(0, victimEyeHeight * 0.55, 0);
+                if (adapter.isRayOccluded(eyeLoc, victimEye) && adapter.isRayOccluded(eyeLoc, victimCenter)) {
                     return CombatVerdict.highConfidence(this, 2, "Attack Through Wall");
                 }
             } catch (Throwable ignored) {
@@ -157,14 +188,13 @@ public class KillAuraCheck extends AbstractCheck {
             float yawDelta = Math.abs(currentYaw - lastYaw);
             if (yawDelta > 180.0f) yawDelta = 360.0f - yawDelta;
 
-            // 攻击瞬间产生大跨度偏转且立刻命中：区分人类单次快速拉枪甩枪 (Flick Shot) 与自瞄程序
-            if (yawDelta > snapAngleThreshold && angle < 25.0) {
+            // 突变锁头：必须连续 3 次突变且直指目标，绝不在单次正常甩枪拉枪时误伤
+            if (yawDelta > snapAngleThreshold && minAngle < 15.0) {
                 long snapNow = System.currentTimeMillis();
                 int snaps = data.recordSnap(snapNow);
-                // 仅对连续两次以上异常吸附或极端非人自瞄突变 (>110度且精准直指) 执行高确信拦截
-                if (snaps >= 2 || (yawDelta > 110.0f && angle < 12.0)) {
+                if (snaps >= 3) {
                     return CombatVerdict.highConfidence(this, 2,
-                            String.format("Aimbot Snap deltaYaw=%.1f, angle=%.1f, count=%d", yawDelta, angle, snaps));
+                            String.format("Aimbot Snap deltaYaw=%.1f, minAngle=%.1f, count=%d", yawDelta, minAngle, snaps));
                 }
             } else {
                 data.resetSnap();
@@ -213,13 +243,18 @@ public class KillAuraCheck extends AbstractCheck {
             eyeHeight = attacker.getEyeHeight();
         } catch (Throwable ignored) {
         }
-        if (data != null && data.getPhysicsState() != null && data.getPhysicsState().hasLastPosition() && attacker.getWorld() != null) {
-            var ps = data.getPhysicsState();
-            return new Location(attacker.getWorld(), ps.getLastX(), ps.getLastY() + eyeHeight, ps.getLastZ(),
-                    ps.getLastYaw(), ps.getLastPitch());
+        if (data != null && attacker.getWorld() != null) {
+            Location packetEye = data.getLatestPacketEyeLocation(attacker.getWorld(), eyeHeight);
+            if (packetEye != null) {
+                return packetEye;
+            }
         }
-        if (data != null && data.getToLocation() != null) {
-            return data.getToLocation().clone().add(0, eyeHeight, 0);
+        if (Bukkit.isPrimaryThread()) {
+            return attacker.getEyeLocation();
+        }
+        Location loc = attacker.getLocation();
+        if (loc != null && loc.getWorld() != null) {
+            return new Location(loc.getWorld(), loc.getX(), loc.getY() + eyeHeight, loc.getZ(), loc.getYaw(), loc.getPitch());
         }
         return attacker.getEyeLocation();
     }

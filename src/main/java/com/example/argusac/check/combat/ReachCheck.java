@@ -78,10 +78,10 @@ public class ReachCheck extends AbstractCheck {
             return CombatVerdict.pass();
         }
 
-        // 若受害者存在历史快照，使用回溯物理极限加上网络延迟微量容差；若为怪物或无快照，应用网络延迟 Ping 补偿
+        // 若受害者存在历史快照，使用回溯物理极限加上网络延迟与服务端 Tick 插值容差；若为怪物或无快照，应用网络延迟 Ping 补偿
         boolean hasTrackedHistory = (plugin.getHistoryTracker() != null && plugin.getHistoryTracker().hasHistory(victim.getUniqueId()));
         double dynamicLimit = hasTrackedHistory
-                ? (maxReach + 0.05 + Math.min(0.12, (ping / 500.0) * 0.10))
+                ? (maxReach + 0.10 + Math.min(0.20, (ping / 500.0) * 0.15))
                 : Math.min(maxReach + Math.min(0.40, (ping / 100.0) * 0.08), maxPingReach);
 
         if (distanceToBox > dynamicLimit) {
@@ -117,7 +117,7 @@ public class ReachCheck extends AbstractCheck {
     }
 
     /**
-     * 跨线程安全获取攻击者最新眼睛位置 (优先使用协议同步的物理状态机或 ToLocation)
+     * 跨线程安全获取攻击者最新眼睛位置 (优先使用 Netty 数据包级实时位置与视角)
      */
     private Location resolveAttackerEyeLocation(Player attacker, PlayerData data) {
         double eyeHeight = 1.62;
@@ -125,13 +125,18 @@ public class ReachCheck extends AbstractCheck {
             eyeHeight = attacker.getEyeHeight();
         } catch (Throwable ignored) {
         }
-        if (data != null && data.getPhysicsState() != null && data.getPhysicsState().hasLastPosition() && attacker.getWorld() != null) {
-            var ps = data.getPhysicsState();
-            return new Location(attacker.getWorld(), ps.getLastX(), ps.getLastY() + eyeHeight, ps.getLastZ(),
-                    ps.getLastYaw(), ps.getLastPitch());
+        if (data != null && attacker.getWorld() != null) {
+            Location packetEye = data.getLatestPacketEyeLocation(attacker.getWorld(), eyeHeight);
+            if (packetEye != null) {
+                return packetEye;
+            }
         }
-        if (data != null && data.getToLocation() != null) {
-            return data.getToLocation().clone().add(0, eyeHeight, 0);
+        if (org.bukkit.Bukkit.isPrimaryThread()) {
+            return attacker.getEyeLocation();
+        }
+        Location loc = attacker.getLocation();
+        if (loc != null && loc.getWorld() != null) {
+            return new Location(loc.getWorld(), loc.getX(), loc.getY() + eyeHeight, loc.getZ(), loc.getYaw(), loc.getPitch());
         }
         return attacker.getEyeLocation();
     }

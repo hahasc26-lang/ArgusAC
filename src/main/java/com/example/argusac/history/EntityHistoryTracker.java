@@ -236,6 +236,69 @@ public class EntityHistoryTracker {
     }
 
     /**
+     * 获取指定延迟时刻最匹配的目标实体历史碰撞盒 (用于 KillAura 与 Reach 高精度检测)
+     */
+    public CompatBoundingBox getCompensatedBox(Entity target, int pingMs) {
+        if (target == null) return null;
+        Deque<HistoricalBox> deque = historyMap.get(target.getUniqueId());
+        if (deque != null && !deque.isEmpty()) {
+            if (pingMs <= 15) {
+                HistoricalBox latest = deque.peekLast();
+                if (latest != null && latest.getBox() != null) {
+                    return latest.getBox();
+                }
+            } else {
+                long targetTimestamp = System.currentTimeMillis() - pingMs;
+                HistoricalBox closestBox = null;
+                long minDiff = Long.MAX_VALUE;
+                for (HistoricalBox hb : deque) {
+                    long diff = Math.abs(hb.getTimestamp() - targetTimestamp);
+                    if (diff < minDiff) {
+                        minDiff = diff;
+                        closestBox = hb;
+                    }
+                }
+                if (closestBox != null && minDiff < 200L && closestBox.getBox() != null) {
+                    return closestBox.getBox();
+                }
+            }
+        }
+        try {
+            return VersionAdapterFactory.getAdapter().getEntityBoundingBox(target);
+        } catch (Throwable ignored) {
+            return null;
+        }
+    }
+
+    /**
+     * 获取延迟窗口内所有候选历史盒快照列表，支持多候选盒无误报匹配
+     */
+    public List<HistoricalBox> getCompensatedCandidateBoxes(Entity target, int pingMs) {
+        List<HistoricalBox> candidates = new ArrayList<>();
+        if (target == null) return candidates;
+
+        Deque<HistoricalBox> deque = historyMap.get(target.getUniqueId());
+        if (deque != null && !deque.isEmpty()) {
+            HistoricalBox latest = deque.peekLast();
+            if (latest != null) {
+                candidates.add(latest);
+            }
+            if (pingMs > 15) {
+                long now = System.currentTimeMillis();
+                long targetTimestamp = now - pingMs;
+                long windowStart = targetTimestamp - 60L;
+                long windowEnd = targetTimestamp + 60L;
+                for (HistoricalBox hb : deque) {
+                    if (hb != latest && hb.getTimestamp() >= windowStart && hb.getTimestamp() <= windowEnd) {
+                        candidates.add(hb);
+                    }
+                }
+            }
+        }
+        return candidates;
+    }
+
+    /**
      * 检查目标实体是否存在已采样的历史盒快照
      */
     public boolean hasHistory(UUID uuid) {

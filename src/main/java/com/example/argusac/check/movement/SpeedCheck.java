@@ -119,6 +119,13 @@ public class SpeedCheck extends AbstractCheck {
                 || data.getIceTicks() > 0
                 || (airborne && data.isAirborneFromIce());
 
+        // 缓慢药水动力学衰减系数 (原版每级削减 15% 基础地面属性速度)
+        int slownessAmp = adapter.getPotionAmplifier(player, CompatPotionType.SLOWNESS);
+        double slownessFactor = 1.0;
+        if (slownessAmp >= 0) {
+            slownessFactor = Math.max(0.35, 1.0 - ((slownessAmp + 1) * 0.15));
+        }
+
         // 2. 原版真实物理基准速度分类 (彻底阻断在普通泥土/草地上伪造滑冰 0.45+ 的 Slippery 外挂)
         double baseLimit;
         boolean sprinting = player.isSprinting();
@@ -130,32 +137,40 @@ public class SpeedCheck extends AbstractCheck {
             // 空中移动阶段或起跳瞬间：
             if (airTicks <= 1 || jumping) {
                 // 原版疾跑起跳冲量 (Sprint Jump Launch): 
-                // 起跳瞬间冲量: vx' = vx + cos(yaw)*0.2, vz' = vz + sin(yaw)*0.2，平地初速冲到 0.36~0.38 格/tick
-                // 疾跑时给予 0.44 稳健容限；普通走路跳跃约 0.28，给予 0.35 容限
-                double jumpLaunchLimit = sprinting ? 0.44 : 0.35;
+                // 原版物理核心机制：起跳瞬间的 0.20F 水平冲量由玩家空格键物理跳跃直接产生，完全不受缓慢药水减速削减！
+                // 真正受缓慢削减的仅为起跳前地面的初速度 (0.22~0.24 * slownessFactor)
+                double jumpBase = sprinting ? (0.22 * slownessFactor + 0.20) : (0.15 * slownessFactor + 0.20);
+                double jumpLaunchLimit = jumpBase * 1.06;
                 baseLimit = onIce ? Math.max(0.68, maxHorizontalSpeed * (iceModifier / 1.45 * 1.15)) : Math.min(maxHorizontalSpeed, jumpLaunchLimit);
             } else if (airTicks == 2) {
-                // 滞空第 2 帧：首帧 0.38 经原版 0.91 空气阻力衰减后约为 0.346~0.355 格，需给 0.38 充分物理宽限
-                baseLimit = onIce ? (0.42 * iceModifier) : 0.38;
+                // 滞空第 2 帧：首帧经原版 0.91 空气阻力衰减与空中前进加速度
+                double air2Base = sprinting ? (0.19 * slownessFactor + 0.18) : (0.13 * slownessFactor + 0.18);
+                baseLimit = onIce ? (0.42 * iceModifier) : (air2Base * 1.05);
             } else {
-                // 滞空中后期：空气阻力 0.91 持续衰减至 0.31 以下，给予 0.34 稳健阈值
-                baseLimit = onIce ? (0.36 * iceModifier) : 0.34;
+                // 滞空中后期：空气动力学主导，空中无地面摩擦力阻滞，缓慢药水仅提供弱阻尼
+                double airLateBase = sprinting ? 0.34 : 0.26;
+                double airSlownessFactor = 0.50 + 0.50 * slownessFactor;
+                baseLimit = onIce ? (0.36 * iceModifier) : (airLateBase * airSlownessFactor);
             }
         } else {
             // 纯地面平跑阶段 (On Ground)：
             if (onIce) {
                 // 真实冰面：允许滑动加速 (原版冰面疾跑约 0.40)
-                baseLimit = sprinting ? (0.29 * iceModifier) : 0.28;
+                baseLimit = sprinting ? (0.29 * iceModifier * slownessFactor) : (0.28 * slownessFactor);
             } else {
                 // 普通非冰地面 (泥土、石头、木板等)：
                 // 若为空中疾跑刚着陆的过渡帧 (groundTicks <= 2)，原版物理落地帧由于方块摩擦力延迟一帧结算，
-                // 保留空中跳跃末速度 (0.33~0.36)，且连跳 (Bunnyhop) 起跳过渡帧瞬时位移较高，
-                // 给予 0.40 容错冲量，彻底消除连跳落地瞬间累积违规缓冲；
-                // 连续地面疾跑基准为 0.340 (覆盖 45 度 Strafe 疾跑 0.32~0.33)，普通走路 0.23
+                // 必须承接空中跳跃末速度 (0.32~0.36)，绝不能按纯地面死板压低导致落地瞬间爆缓冲区！
                 if (sprinting) {
-                    baseLimit = (data.getGroundTicks() <= 2) ? 0.40 : 0.340;
+                    if (data.getGroundTicks() <= 2) {
+                        double landingBase = Math.max(0.32, 0.40 * (0.45 + 0.55 * slownessFactor));
+                        baseLimit = landingBase;
+                    } else {
+                        // 连续地面疾跑：基准为 0.340 (覆盖 45 度 Strafe 疾跑)，受缓慢因子等比缩放
+                        baseLimit = 0.340 * slownessFactor;
+                    }
                 } else {
-                    baseLimit = 0.23;
+                    baseLimit = 0.23 * slownessFactor;
                 }
             }
         }
@@ -210,12 +225,6 @@ public class SpeedCheck extends AbstractCheck {
         int speedAmp = adapter.getPotionAmplifier(player, CompatPotionType.SPEED);
         if (speedAmp >= 0) {
             allowedLimit += (speedAmp + 1) * (baseLimit * speedPotionMultiplier);
-        }
-
-        // 缓慢药水减速约束 (防无视缓慢效果 Anti-Slowness)
-        int slownessAmp = adapter.getPotionAmplifier(player, CompatPotionType.SLOWNESS);
-        if (slownessAmp >= 0) {
-            allowedLimit *= Math.max(0.40, 1.0 - ((slownessAmp + 1) * 0.15));
         }
 
         // 水中海豚的恩惠或三叉戟加速保守容差

@@ -289,6 +289,28 @@ public class PacketPipelineManager extends PacketListenerAbstract {
 
         data.setClientOnGround(flying.isOnGround());
 
+        // 实时同步 Netty 数据包级最新坐标与视角，确保后续战斗进包裁决 100% 对齐客户端本地屏幕
+        if (flying.hasPositionChanged() && flying.hasRotationChanged()) {
+            data.updatePacketLocation(
+                    flying.getLocation().getX(),
+                    flying.getLocation().getY(),
+                    flying.getLocation().getZ(),
+                    flying.getLocation().getYaw(),
+                    flying.getLocation().getPitch()
+            );
+        } else if (flying.hasPositionChanged()) {
+            data.updatePacketPosition(
+                    flying.getLocation().getX(),
+                    flying.getLocation().getY(),
+                    flying.getLocation().getZ()
+            );
+        } else if (flying.hasRotationChanged()) {
+            data.updatePacketRotation(
+                    flying.getLocation().getYaw(),
+                    flying.getLocation().getPitch()
+            );
+        }
+
         // 创造/旁观、允许飞行、坐船/矿车等载具、或鞘翅滑翔完全豁免协议层 Timer 与 NoFall
         if (player.getGameMode() == org.bukkit.GameMode.CREATIVE
                 || player.getGameMode() == org.bukkit.GameMode.SPECTATOR
