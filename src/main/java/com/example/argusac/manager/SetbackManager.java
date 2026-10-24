@@ -381,7 +381,8 @@ public class SetbackManager implements Listener {
         context.incrementConsecutiveCancellationViolations();
         context.setLastSetbackTimestamp(check.getName(), now);
 
-        boolean isAirborne = (data != null && !data.isOnGround()) || !isGrounded(player, from);
+        boolean physicallyGrounded = isGrounded(player, from) || (data != null && data.isOnGround());
+        boolean isAirborne = !physicallyGrounded;
         String checkLower = check.getName().toLowerCase();
         boolean isFlightOrWaterCheck = checkLower.contains("fly")
                 || checkLower.contains("hover")
@@ -393,6 +394,11 @@ public class SetbackManager implements Listener {
         if (lockedAnchor != null && from.getWorld() != null && from.getWorld().equals(lockedAnchor.getWorld())
                 && (now - previousCancelTime < 4000L)) {
             cancelTarget = lockedAnchor.clone();
+            // 校验历史锚点有效性：若锚点低于脚下方块顶面，立即对齐坚实表面，杜绝历史穿模死锁
+            Location anchorGround = findSafeGroundNear(cancelTarget, 0.6);
+            if (anchorGround != null && cancelTarget.getY() < anchorGround.getY()) {
+                cancelTarget.setY(anchorGround.getY());
+            }
         } else {
             if (isAirborne || isFlightOrWaterCheck) {
                 Location nearGround = findSafeGroundNear(from, 1.5);
@@ -402,7 +408,13 @@ public class SetbackManager implements Listener {
                     cancelTarget = from.clone();
                 }
             } else {
-                cancelTarget = from.clone();
+                // 平地移动直接取消：优先吸附对齐支撑面 (Surface Y)，消除浮点微小下沉
+                Location nearGround = findSafeGroundNear(from, 0.5);
+                if (nearGround != null && Math.abs(nearGround.getY() - from.getY()) <= 0.15) {
+                    cancelTarget = nearGround.clone();
+                } else {
+                    cancelTarget = from.clone();
+                }
             }
             context.setLockedAnchorLocation(cancelTarget);
         }
@@ -428,6 +440,13 @@ public class SetbackManager implements Listener {
             }
         }
         if ((isAirborne || isFlightOrWaterCheck) && !inLiquid) {
+            // 获取脚下最近的稳固地面支撑高度作为物理硬底线 (Ground Floor)
+            Location groundBelow = findSafeGroundNear(from, 1.5);
+            if (groundBelow == null) {
+                groundBelow = findSafeGroundBelow(from);
+            }
+            double minAllowedY = (groundBelow != null) ? groundBelow.getY() : (from.getWorld() != null ? from.getWorld().getMinHeight() : -64.0);
+
             if (to != null && to.getY() > cancelTarget.getY()) {
                 cancelTarget.setY(Math.min(cancelTarget.getY(), from.getY()));
             }
@@ -436,7 +455,9 @@ public class SetbackManager implements Listener {
             double expectedFall = computeVanillaGravityFall(Math.max(airTicks, consec));
             double currentDeltaY = (to != null) ? (to.getY() - from.getY()) : 0.0;
             if (currentDeltaY > expectedFall) {
-                double newY = Math.min(cancelTarget.getY(), from.getY() + expectedFall);
+                double targetY = Math.min(cancelTarget.getY(), from.getY() + expectedFall);
+                // 严禁重力加速度将玩家压穿坚实方块表面 (Surface Y)！最低只降至 minAllowedY！
+                double newY = Math.max(minAllowedY, targetY);
                 cancelTarget.setY(newY);
                 if (context.getLockedAnchorLocation() != null) {
                     context.getLockedAnchorLocation().setY(newY);

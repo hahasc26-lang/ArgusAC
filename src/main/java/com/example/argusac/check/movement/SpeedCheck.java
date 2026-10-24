@@ -111,6 +111,9 @@ public class SpeedCheck extends AbstractCheck {
         boolean airborne = !data.isOnGround();
         int airTicks = data.getAirTicks();
 
+        // 原版真实物理：按空格起跳瞬间，或前一帧刚离地，或跳跃上升阶段
+        boolean jumping = (to.getY() - from.getY()) > 0.03 || verticalDistance > 0.05;
+
         // 1. 判断真实冰面与粘液块物理环境 (必须是脚下 0.5 格内有冰方块，在 4 tick 惯性记忆期内，或处于冰面起跳滞空中)
         Block underFrom = from.clone().subtract(0, 0.5, 0).getBlock();
         Block underTo = to.clone().subtract(0, 0.5, 0).getBlock();
@@ -128,10 +131,6 @@ public class SpeedCheck extends AbstractCheck {
 
         // 2. 原版真实物理基准速度分类 (彻底阻断在普通泥土/草地上伪造滑冰 0.45+ 的 Slippery 外挂)
         double baseLimit;
-        boolean sprinting = player.isSprinting();
-
-        // 原版真实物理：按空格起跳瞬间，或前一帧刚离地，或跳跃上升阶段
-        boolean jumping = (to.getY() - from.getY()) > 0.03 || verticalDistance > 0.05;
 
         if (airborne || jumping) {
             // 空中移动阶段或起跳瞬间：
@@ -139,16 +138,17 @@ public class SpeedCheck extends AbstractCheck {
                 // 原版疾跑起跳冲量 (Sprint Jump Launch): 
                 // 原版物理核心机制：起跳瞬间的 0.20F 水平冲量由玩家空格键物理跳跃直接产生，完全不受缓慢药水减速削减！
                 // 真正受缓慢削减的仅为起跳前地面的初速度 (0.22~0.24 * slownessFactor)
-                double jumpBase = sprinting ? (0.22 * slownessFactor + 0.20) : (0.15 * slownessFactor + 0.20);
+                // 对标 GrimAC 物理包络：不因服务端 sprinting 状态更新延迟压低门槛，统一放行原版合法起跳
+                double jumpBase = (0.22 * slownessFactor + 0.20);
                 double jumpLaunchLimit = jumpBase * 1.06;
                 baseLimit = onIce ? Math.max(0.68, maxHorizontalSpeed * (iceModifier / 1.45 * 1.15)) : Math.min(maxHorizontalSpeed, jumpLaunchLimit);
             } else if (airTicks == 2) {
                 // 滞空第 2 帧：首帧经原版 0.91 空气阻力衰减与空中前进加速度
-                double air2Base = sprinting ? (0.19 * slownessFactor + 0.18) : (0.13 * slownessFactor + 0.18);
+                double air2Base = (0.19 * slownessFactor + 0.18);
                 baseLimit = onIce ? (0.42 * iceModifier) : (air2Base * 1.05);
             } else {
                 // 滞空中后期：空气动力学主导，空中无地面摩擦力阻滞，缓慢药水仅提供弱阻尼
-                double airLateBase = sprinting ? 0.34 : 0.26;
+                double airLateBase = 0.34;
                 double airSlownessFactor = 0.50 + 0.50 * slownessFactor;
                 baseLimit = onIce ? (0.36 * iceModifier) : (airLateBase * airSlownessFactor);
             }
@@ -156,21 +156,21 @@ public class SpeedCheck extends AbstractCheck {
             // 纯地面平跑阶段 (On Ground)：
             if (onIce) {
                 // 真实冰面：允许滑动加速 (原版冰面疾跑约 0.40)
-                baseLimit = sprinting ? (0.29 * iceModifier * slownessFactor) : (0.28 * slownessFactor);
+                baseLimit = Math.max(0.28 * slownessFactor + 0.06, 0.29 * iceModifier * slownessFactor);
             } else {
                 // 普通非冰地面 (泥土、石头、木板等)：
-                // 若为空中疾跑刚着陆的过渡帧 (groundTicks <= 2)，原版物理落地帧由于方块摩擦力延迟一帧结算，
-                // 必须承接空中跳跃末速度 (0.32~0.36)，绝不能按纯地面死板压低导致落地瞬间爆缓冲区！
-                if (sprinting) {
-                    if (data.getGroundTicks() <= 2) {
-                        double landingBase = Math.max(0.32, 0.40 * (0.45 + 0.55 * slownessFactor));
-                        baseLimit = landingBase;
-                    } else {
-                        // 连续地面疾跑：基准为 0.340 (覆盖 45 度 Strafe 疾跑)，受缓慢因子等比缩放
-                        baseLimit = 0.340 * slownessFactor;
-                    }
+                if (data.getGroundTicks() <= 2) {
+                    // 若为空中疾跑刚着陆的过渡帧 (groundTicks <= 2)，原版物理落地帧由于方块摩擦力延迟一帧结算，
+                    // 必须承接空中跳跃末速度 (0.32~0.36)，绝不能按纯地面死板压低导致落地瞬间爆缓冲区！
+                    baseLimit = Math.max(0.32, 0.40 * (0.45 + 0.55 * slownessFactor));
                 } else {
-                    baseLimit = 0.23 * slownessFactor;
+                    // 连续地面移动：对标 GrimAC 包络上限原则，统一以疾跑物理上限为基准包络 (0.28 * slowness + 0.06 绝对网络容限)
+                    // 无缓慢时: 0.28 + 0.06 = 0.340
+                    // 缓慢 I 时: 0.28 * 0.85 + 0.06 = 0.298 (容纳合法 0.238 疾跑与 45 度 Strafe)
+                    // 缓慢 II 时: 0.28 * 0.70 + 0.06 = 0.256
+                    // 缓慢 IV 时: 0.28 * 0.40 + 0.06 = 0.172
+                    // 绝不因服务端 sprinting 状态更新延迟将起跑步伐误杀回退
+                    baseLimit = 0.28 * slownessFactor + 0.06;
                 }
             }
         }
@@ -237,19 +237,19 @@ public class SpeedCheck extends AbstractCheck {
         allowedLimit *= boundedElapsed;
 
         // 速度阈值判定与平滑缓冲区 (Speed Violation Buffer)
-        // 对齐 GrimAC：处于违规锁定期 (2000ms) 内执行收紧容限 (0.04)，杜绝蹭步偷跑且避免浮点微动连环拉回死循环
-        double currentBufferMax = underViolationLock ? 0.04 : speedBufferMax;
+        // 对齐 GrimAC：处于违规锁定期 (2000ms) 内执行收紧容限 (0.05)，杜绝蹭步偷跑且避免浮点微动连环拉回死循环
+        double currentBufferMax = underViolationLock ? Math.max(0.05, speedBufferMax * 0.4) : speedBufferMax;
         if (distance > allowedLimit) {
             double diff = distance - allowedLimit;
             double previousBuffer = underViolationLock ? 0.0 : data.getSpeedBuffer();
             double currentBuffer = previousBuffer + diff;
 
             // 核心直通硬拦截机制 (Instant Hard Cut):
-            // 仅对明显脱离原版物理极限的恶劣超速 (例如单帧超速 diff >= 0.18 格，或超出允许上限 50% 以上)
+            // 仅对明显脱离原版物理极限的恶劣超速 (例如单帧超速 diff >= 0.18 格且总位移 >= 0.38 格，或超出允许上限 60% 且位移 >= 0.42 格)
             // 认定为确凿蓄意作弊，首帧直接拦截并回退；
-            // 对于轻微单帧抖动 (diff < 0.18)，必须由平滑缓冲区 (speedBufferMax = 0.12) 进行平滑累加判定，
-            // 既杜绝下坡/跳跃落地的误报，又在持续超速 2~3 帧内 (0.15秒) 彻底定身作弊者！
-            boolean instantViolation = (diff >= 0.18) || (distance > allowedLimit * 1.50);
+            // 对于低速挪动、起步或轻微抖动 (distance < 0.38 或 diff < 0.18)，坚决由平滑缓冲区 (speedBufferMax = 0.12) 进行平滑累加判定，
+            // 杜绝缓慢效果/潜行低速下因相对倍数误判首步瞬发回退！
+            boolean instantViolation = (diff >= 0.18 && distance >= 0.38) || (distance > allowedLimit * 1.60 && distance >= 0.42);
 
             if (currentBuffer > currentBufferMax || instantViolation) {
                 // 超出平滑缓冲容限或触发瞬发直通拦截：坚决原地拦截，绝对不帮作弊者裁剪放行！

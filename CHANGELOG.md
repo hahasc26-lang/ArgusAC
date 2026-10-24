@@ -7,7 +7,9 @@
 - **Hierarchical Mitigation Strategy**: Employs silent drops for low-confidence flags and strict setbacks for severe violations.
 - **Heavy Mace Exploit Defense**: Prevents fake-fall packet spoofing and flat-ground smash exploits.
 ### Fixed
-- **Slowness Sprint-Jumping**: Fixed false positive speed violations under Slowness potion effects.
+- **Slowness Ground & Airborne Dynamics**: Replaced fixed walk limits with an absolute network tolerance ground envelope (`0.28 * slowness + 0.06`), eliminating speed false positives during sprinting or turning under Slowness effects.
+- **Setback Ground Penetration Prevention**: Resolved critical bug where `directCancel` erroneously treated grounded players as airborne and forced a `-0.08` gravity drop, locking players underground (`-60.00` -> `-60.08` -> `-60.16`). Setbacks now strictly respect solid surface Y floors.
+- **Instant Cutoff Scale Enforcement**: Enforced minimum absolute displacement thresholds (`distance >= 0.38` / `0.42`) before applying instant hard-cut mitigation, preventing relative multiplier false cuts on low-speed movements.
 - **Combat Accuracy**: Resolved angle calculation errors and stale-angle blindspot false flags.
 ### Changed
 - **Combat Architecture**: Refactored to a centralized packet-level combat engine, demoting Bukkit events to fallbacks.
