@@ -7,7 +7,6 @@ import com.example.argusac.compat.CompatPotionType;
 import com.example.argusac.compat.VersionAdapter;
 import com.example.argusac.compat.VersionAdapterFactory;
 import com.example.argusac.data.PlayerData;
-import com.example.argusac.setback.PlayerSetbackContext;
 import com.example.argusac.util.MathUtil;
 import com.example.argusac.util.MovementPhysicsUtil;
 import org.bukkit.GameMode;

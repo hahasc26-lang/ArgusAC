@@ -10,41 +10,6 @@ import static org.junit.jupiter.api.Assertions.*;
  */
 public class SpeedCheckSlownessTest {
 
-    private double calculateSpeedLimit(boolean sprinting, boolean airborne, boolean jumping, int airTicks, int groundTicks, int slownessAmp) {
-        double slownessFactor = 1.0;
-        if (slownessAmp >= 0) {
-            slownessFactor = Math.max(0.35, 1.0 - ((slownessAmp + 1) * 0.15));
-        }
-
-        double baseLimit;
-        if (airborne || jumping) {
-            if (airTicks <= 1 || jumping) {
-                double jumpBase = (0.24 * slownessFactor + 0.20);
-                double jumpLaunchLimit = Math.max(0.40, jumpBase * 1.15);
-                baseLimit = jumpLaunchLimit;
-            } else if (airTicks == 2) {
-                double air2Base = (0.20 * slownessFactor + 0.18);
-                double air2Limit = Math.max(0.36, air2Base * 1.12);
-                baseLimit = air2Limit;
-            } else {
-                double airLateBase = Math.max(0.33, 0.36 * (0.50 + 0.50 * slownessFactor));
-                baseLimit = airLateBase;
-            }
-        } else {
-            if (groundTicks <= 2) {
-                baseLimit = Math.max(0.35, 0.40 * (0.45 + 0.55 * slownessFactor));
-            } else {
-                double groundSprintBase = 0.2806 * slownessFactor + 0.085;
-                baseLimit = Math.max(0.20, groundSprintBase);
-            }
-        }
-        return baseLimit;
-    }
-
-    private boolean isInstantViolation(double distance, double allowedLimit) {
-        double diff = distance - allowedLimit;
-        return (diff >= 0.18 && distance >= 0.38) || (distance > allowedLimit * 1.60 && distance >= 0.42);
-    }
 
     @Test
     public void testNoSlownessSprintJump() {
