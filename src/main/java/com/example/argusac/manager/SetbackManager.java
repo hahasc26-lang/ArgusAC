@@ -384,9 +384,6 @@ public class SetbackManager implements Listener {
         boolean physicallyGrounded = isGrounded(player, from) || (data != null && data.isOnGround());
         boolean isAirborne = !physicallyGrounded;
         String checkLower = check.getName().toLowerCase();
-        boolean isFlightOrWaterCheck = checkLower.contains("fly")
-                || checkLower.contains("hover")
-                || checkLower.contains("jesus");
 
         Location lockedAnchor = context.getLockedAnchorLocation();
         Location cancelTarget;
@@ -400,17 +397,18 @@ public class SetbackManager implements Listener {
                 cancelTarget.setY(anchorGround.getY());
             }
         } else {
-            if (isAirborne || isFlightOrWaterCheck) {
-                Location nearGround = findSafeGroundNear(from, 1.5);
-                if (nearGround != null) {
+            if (!isAirborne) {
+                // 地面移动或方块边缘：优先吸附对齐台面坚实表面 (Surface Y 与水平安全内侧，杜绝悬崖边缘下坠)
+                Location nearGround = findSafeGroundNear(from, 0.6);
+                if (nearGround != null && Math.abs(nearGround.getY() - from.getY()) <= 0.35) {
                     cancelTarget = nearGround.clone();
                 } else {
                     cancelTarget = from.clone();
                 }
             } else {
-                // 平地移动直接取消：优先吸附对齐支撑面 (Surface Y)，消除浮点微小下沉
-                Location nearGround = findSafeGroundNear(from, 0.5);
-                if (nearGround != null && Math.abs(nearGround.getY() - from.getY()) <= 0.15) {
+                // 真实空中悬浮滞空：向下搜索最近落脚点
+                Location nearGround = findSafeGroundNear(from, 1.5);
+                if (nearGround != null) {
                     cancelTarget = nearGround.clone();
                 } else {
                     cancelTarget = from.clone();
@@ -439,7 +437,7 @@ public class SetbackManager implements Listener {
                 context.getLockedAnchorLocation().setY(to.getY());
             }
         }
-        if ((isAirborne || isFlightOrWaterCheck) && !inLiquid) {
+        if (isAirborne && !inLiquid) {
             // 获取脚下最近的稳固地面支撑高度作为物理硬底线 (Ground Floor)
             Location groundBelow = findSafeGroundNear(from, 1.5);
             if (groundBelow == null) {

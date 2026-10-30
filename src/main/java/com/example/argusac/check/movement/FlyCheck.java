@@ -78,12 +78,23 @@ public class FlyCheck extends AbstractCheck {
         }
 
         // 检查脚下及周围是否有物理支撑面
-        boolean hasGroundNear = data.isOnGround() || hasBlockBelow(from, adapter) || hasBlockBelow(to, adapter);
+        boolean hasGroundNear = data.isOnGround() || hasBlockBelow(player, from, adapter) || hasBlockBelow(player, to, adapter);
+
+        // 原版潜行防掉落 (Sneak Edge Prevention) 物理机制豁免：
+        // 玩家按住 Shift 沿方块边缘挪动时，客户端碰撞引擎会限制玩家不掉落悬崖，
+        // 此时身体中心探出方块边缘，垂直无位移，必须豁免平飞悬停判定
+        boolean isSneakingOnEdge = player.isSneaking() && (hasGroundNear || hasBlockBelow(player, from, adapter, 0.45));
+        if (isSneakingOnEdge) {
+            hasGroundNear = true;
+            data.setAirTicks(0);
+            data.resetFlatHoverTicks();
+            data.resetAntiGravityTicks();
+        }
 
         // 放置方块/搭路 (Scaffold / Jump-Place) 宽限判定：
         // 玩家最近放置方块 (1200ms 内) 且脚下 1.2 格内存在实体支撑面
         boolean recentlyPlacedBlock = (System.currentTimeMillis() - data.getLastPlaceTime() < 1200L);
-        if (recentlyPlacedBlock && (hasGroundNear || hasBlockBelow(to, adapter, 1.20) || hasBlockBelow(from, adapter, 1.20))) {
+        if (recentlyPlacedBlock && (hasGroundNear || hasBlockBelow(player, to, adapter, 1.20) || hasBlockBelow(player, from, adapter, 1.20))) {
             hasGroundNear = true;
             data.setAirTicks(0);
         }
@@ -115,7 +126,7 @@ public class FlyCheck extends AbstractCheck {
                     || data.isElytraGliding()
                     || data.hasAnyLegalVelocity()
                     || data.hasRecentVelocity(1000L)
-                    || (recentlyPlacedBlock && hasBlockBelow(to, adapter, 1.20)));
+                    || (recentlyPlacedBlock && hasBlockBelow(player, to, adapter, 1.20)));
             if (!hasAscentExemption && !data.isSetbackImmune()) {
                 if (airTicks <= 1 && deltaY > maxAllowedLaunchAscent) {
                     flag(player, 2, String.format("IllegalAscent (Launch) deltaY=%.3f, max=%.3f", deltaY, maxAllowedLaunchAscent), event);
@@ -151,7 +162,7 @@ public class FlyCheck extends AbstractCheck {
                     && !adapter.hasPotionEffect(player, CompatPotionType.LEVITATION)) {
                 if (Math.abs(deltaY) < 0.006) {
                     data.incrementFlatHoverTicks();
-                    if (data.getFlatHoverTicks() >= 3 && airTicks >= 3) {
+                    if (data.getFlatHoverTicks() >= 6 && airTicks >= 6) {
                         flag(player, 2, String.format("Hover (Flat) airTicks=%d, hoverTicks=%d, deltaY=%.4f",
                                 airTicks, data.getFlatHoverTicks(), deltaY), event);
                         return;
@@ -212,19 +223,19 @@ public class FlyCheck extends AbstractCheck {
         return false;
     }
 
-    private boolean hasBlockBelow(Location loc, VersionAdapter adapter) {
-        return hasBlockBelow(loc, adapter, 0.60);
+    private boolean hasBlockBelow(Player player, Location loc, VersionAdapter adapter) {
+        return hasBlockBelow(player, loc, adapter, 0.60);
     }
 
-    private boolean hasBlockBelow(Location loc, VersionAdapter adapter, double maxDepth) {
+    private boolean hasBlockBelow(Player player, Location loc, VersionAdapter adapter, double maxDepth) {
         if (loc == null || loc.getWorld() == null) return false;
-        // 探测中心及边缘四角，防止方块边缘悬空误判
+        double reach = (player != null && player.isSneaking()) ? 0.42 : 0.32;
+        double diag = reach * 0.72;
+        // 探测中心、十字 4 点及斜向 4 点，全面覆盖边缘与拐角
         double[][] points = {
                 {0, 0},
-                {-0.28, -0.28},
-                {0.28, -0.28},
-                {-0.28, 0.28},
-                {0.28, 0.28}
+                {reach, 0}, {-reach, 0}, {0, reach}, {0, -reach},
+                {diag, diag}, {-diag, diag}, {diag, -diag}, {-diag, -diag}
         };
         for (double[] p : points) {
             Location checkLoc = loc.clone().add(p[0], 0, p[1]);
