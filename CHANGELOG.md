@@ -1,12 +1,26 @@
 # Changelog
 
-## [1.2.1] - 2026-10-24
+## [1.2.1] - 2026-10-30
 ### Added
 - **Netty Packet-Level Combat Mitigation**: Intercepts attacks at the Netty protocol layer with zero-latency drops.
 - **Downstream Broadcast Suppression**: Silences entity status, visual animations, and sound effects on blocked attacks.
 - **Hierarchical Mitigation Strategy**: Employs silent drops for low-confidence flags and strict setbacks for severe violations.
 - **Heavy Mace Exploit Defense**: Prevents fake-fall packet spoofing and flat-ground smash exploits.
 ### Fixed
+- **Thread-Safety & Packet Pipeline Fixes**: Eliminated off-main-thread `Entity#setVelocity` and asynchronous `World#getBlock` calls in `PacketPipelineManager`; synchronized `NoFall` ground-spoof checks with main-thread environment states to prevent false flags when landing on platform edges.
+- **Setback Mode Routing & Cancellation Consistency**: Fixed `SetbackManager#mitigate` and `ViolationManager` short-circuiting `SOFT`/`HARD` modes and `SetbackOverride` into `DIRECT_CANCEL`; removed raw `event.setCancelled(true)` calls in `SpeedCheck` and `JesusCheck` that bypassed `min-vl` thresholds.
+- **Combat Suppression & Predictor Integration**: Fixed timestamp expiry semantics in `CombatMitigationHandler#suppressAttack`, wired `DeterministicMovePredictor` into the active movement pipeline, and registered all 16 checks in `CompatibilityManager`.
+- **FastEat & FastBow False Positives**: Prevented repeated right-click interactions and off-hand checks from resetting `eatStartTick`/`bowChargeStartTick`; exempted `Multishot` crossbow secondary arrows within the same tick from `Gatling Rapid Fire` flags.
+- **Movement False Positives (`Fly`, `Speed`, `Jesus`, `ElytraFly`, `Timer`)**:
+  - Scaled `FlyCheck` air-tick and apex thresholds dynamically with `Jump Boost` amplifier, exempted slime/bed bounces from `IllegalAscent`, and added 1.5-block collision support for fences, walls, and bamboo.
+  - Integrated custom `walkSpeed` and `GENERIC_MOVEMENT_SPEED` attributes and 8-tick `Soul Speed` momentum retention into `SpeedCheck`.
+  - Added nearby `Boat`, `Raft`, and `Shulker` entity bounding-box support to `JesusCheck`.
+  - Added controlled lag catch-up balance (`MAX_CATCHUP_BALANCE`) to `TimerTracker` and `ElytraData` to prevent false `Timer` flags after network freezes (`>1000ms`), and relaxed `ElytraSpeed` for steep gravity dives.
+- **Combat & World False Positives (`Velocity`, `Mace`, `KillAura`, `FastBreak`, `Scaffold`)**:
+  - Added horizontal wall-obstruction checks and peak response tracking to `VelocityCheck`.
+  - Preserved recent high-fall apex states (`150ms` window) upon landing in `MaceCheck` to eliminate false `Ground smash` flags on frame-perfect landing hits.
+  - Expanded `KillAuraCheck` wall raytracing to 3 points (eye, center, feet) to prevent false flags through slab/stair gaps.
+  - Fixed `FastBreakCheck` to measure elapsed time from `diggingStartTime` (`START_DESTROY_BLOCK` / `BlockDamageEvent`) instead of the previous block's break timestamp, and relaxed `ScaffoldCheck` pitch limits when bridging on block edges.
 - **Sneak Edge Prevention & Cliff Setback Snapping**: Added 8-direction 0.42-block edge detection for vanilla sneaking edge mechanics, eliminating false `Fly (Hover)` flags when teetering on block edges; overhauled cliff setback snapping to pull players back onto the solid platform (`Y = -55.00`) instead of pushing them into the void.
 - **Slowness Ground & Airborne Dynamics**: Fully adapted to high-level Slowness (e.g. Slowness IV -60%) sprint-jump dynamics (0.40 launch, 0.33~0.36 airborne, 0.20 ground floor), completely eliminating Speed false positives under Splash Potion of Slowness.
 - **Setback Ground Penetration Prevention**: Resolved critical bug where `directCancel` erroneously treated grounded players as airborne and forced a `-0.08` gravity drop, locking players underground (`-60.00` -> `-60.08` -> `-60.16`). Setbacks now strictly respect solid surface Y floors.

@@ -197,7 +197,6 @@ public class JesusCheck extends AbstractCheck {
             boolean clientClaimGround = data.isClientOnGround();
             if (clientClaimGround && !data.isOnGround() && (feetInLiquid || underInLiquid)) {
                 if (!isSetbackImmune) {
-                    event.setCancelled(true);
                     flag(player, 2, "Water ground spoof (claiming onGround on water)", event);
                 }
                 data.resetWaterHoverTicks();
@@ -221,7 +220,6 @@ public class JesusCheck extends AbstractCheck {
                 data.incrementWaterHoverTicks();
                 if (data.getWaterHoverTicks() > maxSolidHoverTicks) {
                     if (!isSetbackImmune) {
-                        event.setCancelled(true);
                         flag(player, 1, String.format("Solid Jesus: flat water walk ticks=%d, hDist=%.3f, deltaY=%.4f",
                                 data.getWaterHoverTicks(), hDist, deltaY), event);
                         data.setWaterHoverTicks(maxSolidHoverTicks / 2);
@@ -245,7 +243,7 @@ public class JesusCheck extends AbstractCheck {
                     ? (0.28 + depthStrider * 0.06)
                     : maxWaterSpeed;
             // 原版玩家对着水面按住疾跑时，客户端碰水瞬间可能取消服务端 sprinting 标记但仍保持疾跑冲量，
-            // 因此统一给予水面疾跑涉水系数与波浪冲击余量，并通过连续超速帧数过滤单帧冲水惯性
+            // 因此统一给予水面疾跑涉水系数与波浪冲击余量，并通过连续超速帧数过滤单帧冲水惯性与网络合并包
             allowedSpeed *= 1.35;
             int speedAmp = adapter.getPotionAmplifier(player, CompatPotionType.SPEED);
             if (speedAmp >= 0) {
@@ -257,7 +255,6 @@ public class JesusCheck extends AbstractCheck {
                 data.incrementWaterSpeedTicks();
                 if (data.getWaterSpeedTicks() >= 3) {
                     if (!isSetbackImmune) {
-                        event.setCancelled(true);
                         flag(player, 1, String.format("WaterWalk Speed: hDist=%.3f, limit=%.3f (DS=%d, ticks=%d)",
                                 hDist, allowedSpeed, depthStrider, data.getWaterSpeedTicks()), event);
                         data.setWaterSpeedTicks(1);
@@ -280,7 +277,6 @@ public class JesusCheck extends AbstractCheck {
                 && !adapter.hasPotionEffect(player, CompatPotionType.SLOW_FALLING)
                 && data.getWaterSurfaceTicks() > maxWaterSurfaceTicks) {
             if (!isSetbackImmune) {
-                event.setCancelled(true);
                 flag(player, 2, String.format("WaterSurface: lingering on water surfaceTicks=%d, hDist=%.3f, deltaY=%.4f",
                         data.getWaterSurfaceTicks(), hDist, deltaY), event);
                 // 惩罚触发后保留半数计数作为追踪缓冲，防止利用回弹间隙逃脱
@@ -332,11 +328,21 @@ public class JesusCheck extends AbstractCheck {
                 }
                 String name = b.getType().name();
                 if (name.contains("LILY") || name.contains("CARPET") || name.contains("SLAB")
-                        || name.contains("SNOW") || name.contains("BOAT") || name.contains("FARMLAND")
+                        || name.contains("SNOW") || name.contains("FARMLAND")
                         || name.contains("PATH") || name.contains("SOUL_SAND") || name.contains("MUD")) {
                     return true;
                 }
             }
+        }
+        // 检查周围是否存在船只 (Boat / ChestBoat / Raft) 或潜影贝 (Shulker) 等实体物理碰撞箱支撑
+        try {
+            for (org.bukkit.entity.Entity entity : loc.getWorld().getNearbyEntities(loc, 1.6, 1.5, 1.6)) {
+                String typeName = entity.getType().name();
+                if (typeName.contains("BOAT") || typeName.contains("RAFT") || typeName.contains("SHULKER")) {
+                    return true;
+                }
+            }
+        } catch (Throwable ignored) {
         }
         return false;
     }

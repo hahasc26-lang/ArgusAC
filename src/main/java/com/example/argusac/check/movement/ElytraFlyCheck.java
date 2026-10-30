@@ -364,8 +364,15 @@ public class ElytraFlyCheck extends AbstractCheck {
                 }
             }
 
-            // 物理动量惯性补偿：俯冲拉平时因空气阻力 (~0.99/tick)，水平动量在 1-2 tick 内自然衰减
+            // 物理动量惯性补偿：
+            // 1. 俯冲拉平时因空气阻力 (~0.99/tick)，水平动量自然衰减；
+            // 2. 高空持续大角度俯冲 (pitch > 20 且真实消耗垂直高度 deltaY < -0.15) 时，重力势能每 tick 持续转化为水平动能，原版极速可达 ~3.2 blocks/tick
             double maxMomentumSpeed = elytraData.getLastHorizontalSpeed() * 0.992 + 0.05;
+            if (!fireworkBoosted && pitch > 20.0f && deltaY < -0.15) {
+                double diveGravityAccel = Math.sin(Math.toRadians(pitch)) * 0.12 + 0.05;
+                maxMomentumSpeed = Math.max(maxMomentumSpeed,
+                        Math.min(3.35, elytraData.getLastHorizontalSpeed() + diveGravityAccel));
+            }
 
             if (horizontalDistance > allowedSpeed && horizontalDistance > maxMomentumSpeed) {
                 double baseline = Math.max(allowedSpeed, maxMomentumSpeed);
@@ -554,11 +561,14 @@ public class ElytraFlyCheck extends AbstractCheck {
 
         if (willGlide) {
             // 校验地面状态：站立于实体方块上时无法开启滑翔姿态
+            // 注意：跑下台阶或触地同 tick 起跳开鞘翅时，客户端离地首帧服务端 isOnGround 可能尚未更新 (groundTicks <= 2)，此时仅静默拒绝不计违规分
             if (player.isOnGround()) {
                 Block under = player.getLocation().clone().subtract(0, 0.1, 0).getBlock();
                 if (under.getType().isSolid()) {
-                    flagSubCheck(player, data, glideStateSubCheck, 2,
-                            "[ElytraGlideState] Toggle rejected: cannot start gliding while standing on solid ground", null);
+                    if (data.getGroundTicks() > 2 && player.getFallDistance() < 0.05f) {
+                        flagSubCheck(player, data, glideStateSubCheck, 2,
+                                "[ElytraGlideState] Toggle rejected: cannot start gliding while standing on solid ground", null);
+                    }
                     event.setCancelled(true);
                     player.setGliding(false);
                     elytraData.resetGlideState();

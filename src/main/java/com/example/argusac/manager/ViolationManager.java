@@ -102,7 +102,14 @@ public class ViolationManager {
         String logMode = "LOG_ONLY";
 
         if (check.getType() == com.example.argusac.api.CheckType.MOVEMENT || (check.isSetbackEnabled() && moveEvent != null)) {
+            com.example.argusac.model.SetbackOverride override = plugin.getSetbackManager().getOverride(player.getUniqueId());
             String mode = check.getSetbackMode();
+            if (override == com.example.argusac.model.SetbackOverride.SOFT_ONLY) {
+                mode = "SOFT";
+            } else if (override == com.example.argusac.model.SetbackOverride.HARD_ONLY) {
+                mode = "HARD";
+            }
+
             if ("CANCEL".equalsIgnoreCase(mode) && moveEvent != null) {
                 // CANCEL 模式：达到 min-vl 门槛后立即在当前游戏刻直接阻断本次移动，无冷却无缝锚定
                 if (plugin.getSetbackManager().shouldCancel(player, check, currentVl)) {
@@ -112,11 +119,11 @@ public class ViolationManager {
                     logMode = "DIRECT_CANCEL";
                 }
             } else if (plugin.getSetbackManager().shouldSetback(player, check, currentVl)) {
-                // HARD / SOFT 回退模式：依独立冷却与历史快照平滑校正
+                // HARD / SOFT 回退模式：依独立策略与历史快照平滑校正
                 defaultPunishmentTriggered = plugin.getSetbackManager().mitigate(
                         player, check, currentVl, details, moveEvent
                 );
-                logMode = mode;
+                logMode = mode != null ? mode.toUpperCase() : "HARD";
             }
         } else {
             // 战斗、方块及数据包类违规，处置方式为取消非法交互并记录日志

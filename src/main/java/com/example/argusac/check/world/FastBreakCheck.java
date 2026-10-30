@@ -70,9 +70,15 @@ public class FastBreakCheck extends AbstractCheck {
         }
 
         long now = System.currentTimeMillis();
+        long digStart = data.getDiggingStartTime();
         long lastBreakTime = data.getLastBreakTimestamp();
-        long elapsed = (lastBreakTime > 0) ? (now - lastBreakTime) : 5000L;
+        long referenceStart = digStart > 0 ? digStart : lastBreakTime;
+        if (lastBreakTime > referenceStart) {
+            referenceStart = lastBreakTime;
+        }
+        long elapsed = (referenceStart > 0 && now >= referenceStart) ? (now - referenceStart) : 5000L;
         data.setLastBreakTimestamp(now);
+        data.setDiggingStartTime(now);
 
         VersionAdapter adapter = VersionAdapterFactory.getAdapter();
 

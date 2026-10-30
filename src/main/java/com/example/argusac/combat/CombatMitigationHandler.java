@@ -115,7 +115,7 @@ public class CombatMitigationHandler {
         if (checkManager.getAutoClickerCheck() != null) {
             CombatVerdict clickVerdict = checkManager.getAutoClickerCheck().evaluateClick(attacker);
             if (clickVerdict.isBlocked()) {
-                dropPacketAndMarkSuppression(attacker, targetEntityId, attacker.getLocation(), event);
+                executePacketMitigation(attacker, data, targetEntityId, attacker.getLocation(), event, clickVerdict);
                 return true;
             }
         }
@@ -473,9 +473,9 @@ public class CombatMitigationHandler {
      */
     public void suppressAttack(Player attacker, long durationMs) {
         if (attacker != null) {
-            long expiry = System.currentTimeMillis() + durationMs;
-            recentCancelledAttacks.put(attacker.getUniqueId(), expiry);
-            suppressedAttackerEntityIds.put(attacker.getEntityId(), expiry);
+            long effectiveTimestamp = System.currentTimeMillis() - PACKET_SUPPRESSION_WINDOW_MS + Math.max(0L, durationMs);
+            recentCancelledAttacks.put(attacker.getUniqueId(), effectiveTimestamp);
+            suppressedAttackerEntityIds.put(attacker.getEntityId(), effectiveTimestamp);
         }
     }
 

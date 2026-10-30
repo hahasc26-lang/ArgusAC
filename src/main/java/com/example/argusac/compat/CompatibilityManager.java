@@ -42,12 +42,18 @@ public class CompatibilityManager {
             markCheck("Fly", CheckCompatStatus.FULL, "compat.reason.fly-full");
         }
 
-        // 3. KillAura / Reach 战斗检测
+        // 3. KillAura / Reach / AutoClicker / Velocity / FastBow / FastEat 战斗检测
         if (ServerVersion.isOlderThan(ServerVersion.V1_13)) {
             markCheck("Reach", CheckCompatStatus.DEGRADED, "compat.reason.reach-degraded");
+            markCheck("KillAura", CheckCompatStatus.DEGRADED, "compat.reason.killaura-degraded");
         } else {
             markCheck("Reach", CheckCompatStatus.FULL, "compat.reason.reach-full");
+            markCheck("KillAura", CheckCompatStatus.FULL, "compat.reason.killaura-full");
         }
+        markCheck("AutoClicker", CheckCompatStatus.FULL, "compat.reason.autoclicker-full");
+        markCheck("Velocity", CheckCompatStatus.FULL, "compat.reason.velocity-full");
+        markCheck("FastBow", CheckCompatStatus.FULL, "compat.reason.fastbow-full");
+        markCheck("FastEat", CheckCompatStatus.FULL, "compat.reason.fasteat-full");
 
         // 4. BadPackets 协议检测 (真实检查底层数据包监听管线是否就绪)
         if (plugin.getPacketPipelineManager() != null && plugin.getPacketPipelineManager().isActive()) {
@@ -56,9 +62,10 @@ public class CompatibilityManager {
             markCheck("BadPackets", CheckCompatStatus.DEGRADED, "compat.reason.badpackets-degraded");
         }
 
-        // 5. 其余基础检测 (NoFall, FastBreak, Scaffold, InventoryMove)
+        // 5. 其余基础检测 (NoFall, FastBreak, Nuker, Scaffold, InventoryMove, Jesus)
         markCheck("NoFall", CheckCompatStatus.FULL, "compat.reason.nofall-full");
         markCheck("FastBreak", CheckCompatStatus.FULL, "compat.reason.fastbreak-full");
+        markCheck("Nuker", CheckCompatStatus.FULL, "compat.reason.nuker-full");
         markCheck("Scaffold", CheckCompatStatus.FULL, "compat.reason.scaffold-full");
         markCheck("InventoryMove", CheckCompatStatus.FULL, "compat.reason.inventorymove-full");
         markCheck("Jesus", CheckCompatStatus.FULL, "compat.reason.jesus-full");

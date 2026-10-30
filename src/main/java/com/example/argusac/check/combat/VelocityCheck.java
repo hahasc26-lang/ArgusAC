@@ -107,14 +107,22 @@ public class VelocityCheck extends AbstractCheck {
         double dz = to.getZ() - from.getZ();
         double actualHoriz = Math.hypot(dx, dz);
 
+        // 记录自收到击退以来在等待窗口内观察到的峰值响应位移，防止低延迟玩家在第 1 tick 已完成起跳、到窗口结束时已进入下落阶段被误判
+        data.recordObservedVelocityResponse(deltaY, actualHoriz);
+        double peakY = Math.max(deltaY, data.getMaxObservedVelocityY());
+        double peakHoriz = Math.max(actualHoriz, data.getMaxObservedVelocityH());
+
         double expectedHorizSq = expected.getX() * expected.getX() + expected.getZ() * expected.getZ();
         double expectedHoriz = Math.sqrt(expectedHorizSq) * horizontalRatio;
         double expectedY = expected.getY() * verticalRatio;
 
+        // 检查玩家水平方向是否贴靠墙壁、角落、栅栏或台阶 (撞墙会导致水平击退位移被物理阻挡为 0)
+        boolean horizontallyObstructed = hasHorizontalObstruction(from, adapter) || hasHorizontalObstruction(to, adapter);
+
         // 若处于下坠重力主导状态 (deltaY < -0.05)，微弱垂直击退会被向下惯性抵消
         boolean falling = deltaY < -0.05;
-        boolean satisfiedY = (expected.getY() <= 0.20) || (falling && expected.getY() <= 0.40) || (deltaY >= Math.max(0.08, expectedY * 0.65));
-        boolean satisfiedH = (expectedHorizSq <= 0.04) || (actualHoriz >= Math.max(0.08, expectedHoriz * 0.65));
+        boolean satisfiedY = (expected.getY() <= 0.20) || (falling && expected.getY() <= 0.40) || (peakY >= Math.max(0.08, expectedY * 0.65));
+        boolean satisfiedH = horizontallyObstructed || (expectedHorizSq <= 0.04) || (peakHoriz >= Math.max(0.08, expectedHoriz * 0.65));
 
         // 1. 玩家已产生响应位移，判定击退成功响应
         if (satisfiedY && satisfiedH) {
@@ -133,15 +141,34 @@ public class VelocityCheck extends AbstractCheck {
 
         // 3. 超过延迟等待窗口且在 600ms 内，如果依然完全没有击退位移响应，方才判定为非法消除击退 (Anti-KB)
         // 仅在期望垂直速度显著且未受下坠重力主导时检测
-        if (!satisfiedY && expected.getY() > 0.35 && !falling && deltaY < 0.01) {
-            flag(player, 2, String.format("Anti-KB(V) deltaY=%.2f, expected=%.2f, ping=%d", deltaY, expected.getY(), ping), event);
+        if (!satisfiedY && expected.getY() > 0.35 && !falling && peakY < 0.01) {
+            flag(player, 2, String.format("Anti-KB(V) deltaY=%.2f, expected=%.2f, ping=%d", peakY, expected.getY(), ping), event);
         }
         // 水平击退：若为微弱受击 (如远距离箭矢轻微擦中且玩家正在反向跑动冲刺对抗) 提高容差，避免正常走位误判
-        if (!satisfiedH && expectedHorizSq > 0.09 && actualHoriz < 0.01) {
-            flag(player, 2, String.format("Anti-KB(H) horiz=%.3f, expected=%.3f, ping=%d", actualHoriz, Math.sqrt(expectedHorizSq), ping), event);
+        if (!satisfiedH && expectedHorizSq > 0.09 && peakHoriz < 0.01) {
+            flag(player, 2, String.format("Anti-KB(H) horiz=%.3f, expected=%.3f, ping=%d", peakHoriz, Math.sqrt(expectedHorizSq), ping), event);
         }
 
         data.setVelocityHandled(true);
+    }
+
+    private boolean hasHorizontalObstruction(Location loc, com.example.argusac.compat.VersionAdapter adapter) {
+        if (loc == null || loc.getWorld() == null) {
+            return false;
+        }
+        double[][] offsets = {
+                {0.42, 0}, {-0.42, 0}, {0, 0.42}, {0, -0.42},
+                {0.35, 0.35}, {-0.35, 0.35}, {0.35, -0.35}, {-0.35, -0.35}
+        };
+        for (double[] off : offsets) {
+            Block low = loc.clone().add(off[0], 0.1, off[1]).getBlock();
+            Block mid = loc.clone().add(off[0], 1.0, off[1]).getBlock();
+            if (adapter.isSolidBlock(low) || adapter.isSolidBlock(mid)
+                    || adapter.isStandable(low) || adapter.isStandable(mid)) {
+                return true;
+            }
+        }
+        return false;
     }
 
     private boolean hasBlockAbove(Location loc) {

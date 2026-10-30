@@ -170,11 +170,14 @@ public class KillAuraCheck extends AbstractCheck {
             }
         }
 
-        // 4. 隔墙穿透攻击检测 (RayTrace Blocks，双点双向防半砖误判)
+        // 4. 隔墙穿透攻击检测 (RayTrace Blocks，三点防半砖/楼梯缺口露出脚部或头部时误判)
         if (raytraceBlocks && distance > 1.2) {
             try {
                 Location victimCenter = victimLoc.clone().add(0, victimEyeHeight * 0.55, 0);
-                if (adapter.isRayOccluded(eyeLoc, victimEye) && adapter.isRayOccluded(eyeLoc, victimCenter)) {
+                Location victimFeet = victimLoc.clone().add(0, 0.25, 0);
+                if (adapter.isRayOccluded(eyeLoc, victimEye)
+                        && adapter.isRayOccluded(eyeLoc, victimCenter)
+                        && adapter.isRayOccluded(eyeLoc, victimFeet)) {
                     return CombatVerdict.highConfidence(this, 2, "Attack Through Wall");
                 }
             } catch (Throwable ignored) {

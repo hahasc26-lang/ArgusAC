@@ -113,9 +113,16 @@ public class MaceCheck extends AbstractCheck {
         double currentY = (data.getPhysicsState() != null && data.getPhysicsState().hasLastPosition())
                 ? data.getPhysicsState().getLastY()
                 : attacker.getLocation().getY();
+        long now = System.currentTimeMillis();
+        boolean justLandedFromHighFall = (now - data.getLastLandedMaceTime()) <= 150L;
         double trueApexY = Math.max(currentY, data.getMaceApexY());
+        if (justLandedFromHighFall) {
+            trueApexY = Math.max(trueApexY, data.getLastLandedMaceApexY());
+        }
         double maxPhysicalFall = Math.max(0.0, trueApexY - currentY);
-        int airTicks = data.getMaceAirTicks();
+        int airTicks = justLandedFromHighFall
+                ? Math.max(data.getMaceAirTicks(), data.getLastLandedMaceAirTicks())
+                : data.getMaceAirTicks();
 
         // 1. 虚假下落高度与物理真峰值校验 (True Apex Fall Verification - MaceDMG)
         if (checkApexFall && reportedFall > (maxPhysicalFall + apexTolerance)) {
@@ -141,7 +148,6 @@ public class MaceCheck extends AbstractCheck {
 
         // 3. 连续重击最小间隔限制 (Smash Rate Limiting)
         if (reportedFall > 1.5f && minSmashIntervalMs > 0) {
-            long now = System.currentTimeMillis();
             long lastSmash = data.getLastMaceSmashTime();
             if (lastSmash > 0 && (now - lastSmash < minSmashIntervalMs)) {
                 return com.example.argusac.combat.CombatVerdict.highConfidence(this, 2,
@@ -230,7 +236,11 @@ public class MaceCheck extends AbstractCheck {
             }
         }
 
+        boolean justLandedFromHighFall = (now - data.getLastLandedMaceTime()) <= 150L && data.getGroundTicks() <= 2;
         double trueApexY = data.getMaceApexY();
+        if (justLandedFromHighFall) {
+            trueApexY = Math.max(trueApexY, data.getLastLandedMaceApexY());
+        }
         // 若真最高点低于当前位置 (例如刚起跳或异常漂移)，校准为当前位置
         if (trueApexY < currentY) {
             trueApexY = currentY;
@@ -239,8 +249,11 @@ public class MaceCheck extends AbstractCheck {
 
         double maxPhysicalFall = Math.max(0.0, trueApexY - currentY);
         float reportedFall = attacker.getFallDistance();
-        int airTicks = data.getMaceAirTicks();
-        boolean grounded = data.isOnGround() || ((Entity) attacker).isOnGround() || data.getGroundTicks() > 0;
+        int airTicks = justLandedFromHighFall
+                ? Math.max(data.getMaceAirTicks(), data.getLastLandedMaceAirTicks())
+                : data.getMaceAirTicks();
+        boolean grounded = !justLandedFromHighFall
+                && (data.isOnGround() || ((Entity) attacker).isOnGround() || data.getGroundTicks() > 0);
 
         // 5. 地面异常砸击校验 (Ground Smash Check)
         if (checkGroundSmash) {

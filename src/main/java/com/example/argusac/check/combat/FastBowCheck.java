@@ -93,6 +93,16 @@ public class FastBowCheck extends AbstractCheck {
 
         long currentTick = getCurrentServerTick();
         long now = System.currentTimeMillis();
+        ItemStack bow = event.getBow();
+        boolean isCrossbow = (bow != null && bow.getType().name().equals("CROSSBOW"));
+
+        // 0. 多重射击 (Multishot) 附魔弩同帧三连发箭矢豁免：
+        // 附魔多重射击的弩在单次射击时会在同一服务端 Tick 内连续触发 3 次 EntityShootBowEvent（左、中、右三支箭），
+        // 若主箭已在当前 Tick 通过核验，后续同 Tick 派生副箭直接放行，彻底根除 Multishot 100% 误报 Gatling Rapid Fire 的问题
+        if (isCrossbow && data.getLastBowShotTime() > 0
+                && (currentTick == data.getLastBowShotTick() || (now - data.getLastBowShotTime()) <= 10L)) {
+            return;
+        }
 
         // 1. 全局射击间隔硬限制 (Shot Rate Limiting)
         long lastShotTime = data.getLastBowShotTime();
@@ -117,13 +127,12 @@ public class FastBowCheck extends AbstractCheck {
         long startTick = data.getBowChargeStartTick();
         long startTimeMs = data.getBowChargeStartTimeMs();
         float force = event.getForce();
-        ItemStack bow = event.getBow();
 
         int expectedTicks = minChargeTicks;
         long expectedMs = minChargeMs;
 
         // 兼容 Crossbow 快速装填 (Quick Charge) 附魔缩短蓄力时间
-        if (bow != null && bow.getType().name().equals("CROSSBOW")) {
+        if (isCrossbow) {
             int quickChargeLevel = getQuickChargeLevel(bow);
             // 弩基础装填 25 ticks (1250ms)，每级快速装填减少 5 ticks (250ms)
             expectedTicks = Math.max(8, 25 - (quickChargeLevel * 5) - 2);
@@ -143,7 +152,6 @@ public class FastBowCheck extends AbstractCheck {
         if (startTick <= 0 || startTimeMs <= 0) {
             // 从未经过右键举弓蓄力直接发包射出 (普通弓 No-Draw / Instant Release Spoof)
             // 注意：预先填装好的弩 (Crossbow) 可随时瞬间发包射击，由全局冷却与滑动窗口限制其连发频次，豁免 charge 0 打点
-            boolean isCrossbow = (bow != null && bow.getType().name().equals("CROSSBOW"));
             if (force >= 0.5f && !isCrossbow) {
                 insufficientCharge = true;
             }

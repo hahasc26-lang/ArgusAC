@@ -167,7 +167,13 @@ public class ElytraData {
      * 记录一次移动间隔用于 Timer 滑动窗口
      */
     public void recordMoveInterval(long interval) {
-        if (interval > 0 && interval < 1000) {
+        if (interval >= 1000L) {
+            // 发生长网络卡顿或客户端挂起 (>1000ms)：清空旧窗口并存入受控的正向等待补偿，防止紧随其后的 TCP 补包潮拉低算术均值误报
+            moveIntervals.clear();
+            moveIntervals.addLast(Math.min(interval, 600L));
+            return;
+        }
+        if (interval >= 0L) {
             moveIntervals.addLast(interval);
             while (moveIntervals.size() > 20) {
                 moveIntervals.pollFirst();

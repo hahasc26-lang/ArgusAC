@@ -159,9 +159,9 @@ public class SpeedCheck extends AbstractCheck {
             }
         }
 
-        // 灵魂沙与灵魂土减速 / 灵魂疾行 (Soul Speed) 魔咒放行
-        if (adapter.isSoulSand(underFrom) || adapter.isSoulSand(underTo)) {
-            int soulSpeed = adapter.getSoulSpeedLevel(player);
+        // 灵魂沙与灵魂土减速 / 灵魂疾行 (Soul Speed) 魔咒放行 (含离开灵魂沙后的 8 ticks 动量衰减窗口)
+        int soulSpeed = adapter.getSoulSpeedLevel(player);
+        if (adapter.isSoulSand(underFrom) || adapter.isSoulSand(underTo) || (soulSpeed > 0 && data.getSoulSpeedTicks() > 0)) {
             if (soulSpeed > 0) {
                 baseLimit *= (1.0 + soulSpeed * 0.25);
             } else {
@@ -179,6 +179,19 @@ public class SpeedCheck extends AbstractCheck {
         }
 
         double allowedLimit = baseLimit;
+
+        // 自定义移速属性与 walkSpeed 插件/装备加成动态适配 (原版基准 walkSpeed=0.20, GENERIC_MOVEMENT_SPEED=0.10)
+        try {
+            double walkSpeedRatio = Math.max(1.0, player.getWalkSpeed() / 0.20);
+            double attrSpeed = adapter.getAttributeValue(player, com.example.argusac.compat.CompatAttribute.GENERIC_MOVEMENT_SPEED, 0.10);
+            // 注意：Bukkit 中 SPEED 药水可能已反映在 GENERIC_MOVEMENT_SPEED 属性中，因此仅当基础属性或 walkSpeed 高于原版默认值时进行额外倍率补偿
+            double baseAttrRatio = Math.max(1.0, attrSpeed / 0.10);
+            double customSpeedMultiplier = Math.max(walkSpeedRatio, baseAttrRatio);
+            if (customSpeedMultiplier > 1.01) {
+                allowedLimit *= customSpeedMultiplier;
+            }
+        } catch (Throwable ignored) {
+        }
 
         // 水中物理环境：深海疾行 (Depth Strider)、海豚恩惠、游泳姿态及向上游泳跃升
         if (inLiquid) {
@@ -236,8 +249,7 @@ public class SpeedCheck extends AbstractCheck {
             boolean instantViolation = MovementPhysicsUtil.isInstantViolation(distance, allowedLimit);
 
             if (currentBuffer > currentBufferMax || instantViolation) {
-                // 超出平滑缓冲容限或触发瞬发直通拦截：坚决原地拦截，绝对不帮作弊者裁剪放行！
-                event.setCancelled(true);
+                // 超出平滑缓冲容限或触发瞬发直通拦截：交由 ViolationManager -> SetbackManager 统一根据配置与 min-vl 执行安全锚定回退
                 String details = String.format("dist=%.3f, max=%.3f, diff=%.3f, buf=%.3f, onIce=%b, airTicks=%d, lock=%b, inst=%b",
                         distance, allowedLimit, diff, currentBuffer, onIce, airTicks, underViolationLock, instantViolation);
                 flag(player, 1, details, event);

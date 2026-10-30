@@ -16,6 +16,8 @@ public class TimerTracker {
 
     // 允许的最大正向时间储备 (防止长时间网络空闲积攒过多可用 balance)
     private static final double MAX_BALANCE = 50.0;
+    // 允许的网络卡顿补包恢复最大正余额 (最多吸收约 8 个积压补发包 = 400ms，消除断网抖动后的粘包误报)
+    private static final double MAX_CATCHUP_BALANCE = 400.0;
     // 允许的最大赤字容差 (毫秒，对齐标准 3~4 个 Tick 缓冲 -150ms，完全吸收正常网络抖动与回退同步冲击，持续超速仍能在 0.5s 内瞬捕)
     private static final double DEFICIT_LIMIT = -150.0;
 
@@ -47,9 +49,11 @@ public class TimerTracker {
         long elapsed = now - lastPacketTimestamp;
         lastPacketTimestamp = now;
 
-        // 如果单次包间隔过大 (> 1000ms)，说明客户端卡顿或挂起，重置平衡
+        // 如果单次包间隔过大 (> 1000ms)，说明客户端或网络长卡顿/挂起：
+        // 保留受控的补包储备额度 (MAX_CATCHUP_BALANCE)，以吸收紧随其后同一 TCP 批次到达的积压包，彻底根除卡顿恢复瞬间的 Timer 误报
         if (elapsed > 1000L) {
-            reset();
+            this.balance = Math.min(MAX_CATCHUP_BALANCE, elapsed - 50.0);
+            this.violationBuffer = 0.0;
             return false;
         }
 
@@ -57,9 +61,15 @@ public class TimerTracker {
         // balance 增加实际物理流逝时间，扣除客户端声明消耗的 50ms
         balance += (elapsed - 50.0);
 
-        // 上限裁剪：防止玩家发呆积累大额正平衡在后续瞬间加速消耗
-        if (balance > MAX_BALANCE) {
-            balance = MAX_BALANCE;
+        // 上限裁剪：若刚才发生了中度网络停顿 (elapsed > 100ms)，允许在 MAX_CATCHUP_BALANCE 内暂存真实等待额度以抵消后续粘包；
+        // 若为常规平稳发包，则将正向余额限制在 MAX_BALANCE，防止玩家静止发呆积攒过多额度
+        double currentCap = (elapsed > 100L || balance > MAX_BALANCE) ? MAX_CATCHUP_BALANCE : MAX_BALANCE;
+        if (balance > currentCap) {
+            balance = currentCap;
+        }
+        if (elapsed >= 40L && elapsed <= 65L && balance > MAX_BALANCE) {
+            // 当网络恢复正常平稳发包周期 (40~65ms) 时，平滑回落多余的卡顿补偿储备
+            balance = Math.max(MAX_BALANCE, balance - 50.0);
         }
 
         // 若 balance 严重透支赤字 (客户端发包速度显著快于真实物理时间)

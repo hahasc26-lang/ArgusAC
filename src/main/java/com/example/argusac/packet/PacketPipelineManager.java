@@ -129,16 +129,23 @@ public class PacketPipelineManager extends PacketListenerAbstract {
             }
         }
 
+        org.bukkit.Location confirmedTarget = null;
         if (plugin.getSetbackManager() != null) {
             com.example.argusac.setback.PlayerSetbackContext context = plugin.getSetbackManager()
                     .getContext(player.getUniqueId());
             if (context != null) {
+                confirmedTarget = context.getTeleportInFlightTarget();
                 context.confirmTeleport(teleportId);
             }
         }
 
         if (data != null && data.getPhysicsState() != null) {
-            data.getPhysicsState().reset(player.getLocation());
+            if (confirmedTarget != null) {
+                data.getPhysicsState().reset(confirmedTarget);
+            } else if (data.hasPacketLocation()) {
+                data.getPhysicsState().reset(data.getPacketX(), data.getPacketY(), data.getPacketZ(),
+                        data.getPacketYaw(), data.getPacketPitch());
+            }
             data.getPhysicsState().clearPendingVelocities();
         }
     }
@@ -190,8 +197,11 @@ public class PacketPipelineManager extends PacketListenerAbstract {
                 if (data != null) {
                     // 记录服务端发出的强制传送/回退时间戳与标记
                     data.setLastTeleportTime(System.currentTimeMillis());
-                    // 消除传送引起的动量畸变
-                    data.getPhysicsState().reset(player.getLocation());
+                    // 消除传送引起的动量畸变 (使用线程安全的数据包坐标缓存，主线程传送事件中会进一步校准目标点)
+                    if (data.hasPacketLocation()) {
+                        data.getPhysicsState().reset(data.getPacketX(), data.getPacketY(), data.getPacketZ(),
+                                data.getPacketYaw(), data.getPacketPitch());
+                    }
                 }
             }
         }
@@ -239,7 +249,15 @@ public class PacketPipelineManager extends PacketListenerAbstract {
                             // 当场原地补刀重发回退数据包，并彻底清空残余动量！
                             plugin.getSetbackManager().sendPositionSyncPacket(player, target,
                                     setbackCtx.getInFlightTeleportId());
-                            player.setVelocity(new org.bukkit.util.Vector(0, 0, 0));
+                            if (org.bukkit.Bukkit.isPrimaryThread()) {
+                                player.setVelocity(new org.bukkit.util.Vector(0, 0, 0));
+                            } else {
+                                org.bukkit.Bukkit.getScheduler().runTask(plugin, () -> {
+                                    if (player.isOnline()) {
+                                        player.setVelocity(new org.bukkit.util.Vector(0, 0, 0));
+                                    }
+                                });
+                            }
                             if (data != null && data.getPhysicsState() != null) {
                                 data.getPhysicsState().reset(target);
                                 data.getPhysicsState().clearPendingVelocities();
@@ -333,19 +351,15 @@ public class PacketPipelineManager extends PacketListenerAbstract {
             }
         }
 
-        // 4. 虚假地面状态检测 (NoFall Ground Spoof)
-        // 排除梯子/藤蔓等可攀爬物以及液体环境 (攀爬和涉水在原版协议中存在特殊的接地过渡)
-        org.bukkit.block.Block feet = player.getLocation().getBlock();
-        com.example.argusac.compat.VersionAdapter adapter = com.example.argusac.compat.VersionAdapterFactory
-                .getAdapter();
-        boolean specialEnvironment = adapter.isLiquid(feet) || adapter.isClimbable(feet)
-                || adapter.isStandable(feet) || adapter.isStandable(feet.getRelative(0, -1, 0));
-
-        boolean groundSpoof = flying.isOnGround() && data.getAirTicks() > 4 && !data.isOnGround()
-                && !data.isSetbackImmune() && !data.hasAnyLegalVelocity() && !specialEnvironment;
-        if (data.recordNoFallSpoofPacket(groundSpoof)) {
-            plugin.getViolationManager().flag(player, plugin.getCheckManager().getNoFallCheck(),
-                    1, String.format("Packet GroundSpoof airTicks=%d", data.getAirTicks()));
+        // 4. 虚假地面状态检测 (NoFall Ground Spoof - 针对无位移纯 Flying/Rotation 包的协议层拦截；
+        //    带位移的移动包交由主线程 onPlayerMove 在更新新坐标接地状态后同步核验，彻底杜绝异步 getBlock 及跳上平台首帧误判)
+        if (!flying.hasPositionChanged()) {
+            boolean groundSpoof = flying.isOnGround() && data.getAirTicks() > 4 && !data.isOnGround()
+                    && !data.isSetbackImmune() && !data.hasAnyLegalVelocity() && !data.isInSpecialEnvironment();
+            if (data.recordNoFallSpoofPacket(groundSpoof)) {
+                plugin.getViolationManager().flag(player, plugin.getCheckManager().getNoFallCheck(),
+                        1, String.format("Packet GroundSpoof airTicks=%d", data.getAirTicks()));
+            }
         }
     }
 
@@ -417,8 +431,10 @@ public class PacketPipelineManager extends PacketListenerAbstract {
             if (action != null) {
                 String actionName = action.toString();
                 if (actionName.contains("START")) {
+                    long now = System.currentTimeMillis();
                     data.setDigging(true);
-                    data.setLastDiggingTime(System.currentTimeMillis());
+                    data.setLastDiggingTime(now);
+                    data.setDiggingStartTime(now);
                     data.getClickTimestamps().clear();
                 } else if (actionName.contains("CANCEL") || actionName.contains("FINISH")
                         || actionName.contains("ABORT") || actionName.contains("STOP")) {

@@ -285,6 +285,7 @@ public class ArgusCommand implements CommandExecutor {
         int backlog = logMgr.getQueueBacklog();
         int cap = logMgr.getQueueCapacity();
         long dropped = logMgr.getDroppedCount();
+        long chainIndex = logMgr.getWrittenLinesCount();
         String hash = logMgr.getLatestHash();
         String flushTime = new SimpleDateFormat("HH:mm:ss").format(new Date(logMgr.getLastFlushTime()));
 
@@ -305,7 +306,7 @@ public class ArgusCommand implements CommandExecutor {
                 ? I18n.get(sender, "command.status.memory-high") 
                 : I18n.get(sender, "command.status.memory-healthy");
         I18n.send(sender, "command.status.queue", "queue_size", backlog, "capacity", cap, "memory_count", memStatus);
-        I18n.send(sender, "command.status.chain", "chain_index", dropped, "hash", (hash != null ? hash.substring(0, Math.min(hash.length(), 16)) + "..." : "None"));
+        I18n.send(sender, "command.status.chain", "chain_index", chainIndex, "hash", (hash != null ? hash.substring(0, Math.min(hash.length(), 16)) + "..." : "None"));
         I18n.send(sender, "command.status.archive", "archive_count", 0, "size", (size / 1024) + " KB");
         String droppedHint = dropped > 0 ? " " + I18n.get(sender, "command.status.dropped-hint", "dropped", dropped) : "";
         I18n.send(sender, "command.status.flush-time", "time", flushTime, "dropped", droppedHint);

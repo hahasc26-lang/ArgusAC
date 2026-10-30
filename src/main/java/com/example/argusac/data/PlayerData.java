@@ -56,6 +56,11 @@ public class PlayerData {
     private Vector expectedVelocity = null;
     private long lastVelocityReceivedTime = 0L;
     private boolean velocityHandled = true;
+    private double maxObservedVelocityY = 0.0;
+    private double maxObservedVelocityH = 0.0;
+
+    // 特殊环境标记 (由主线程更新，供 Netty 线程无锁读取)
+    private volatile boolean inSpecialEnvironment = false;
 
     // 基础缓冲时间戳
     private long lastTeleportTime = 0L;
@@ -98,10 +103,12 @@ public class PlayerData {
     private double speedBuffer = 0.0;
     private long lastSpeedCheckNanos = 0L;
     private int iceTicks = 0;
+    private int soulSpeedTicks = 0;
 
     // 挖掘与方块交互状态 (AutoClicker 豁免与挖掘动画追踪)
     private volatile boolean digging = false;
     private volatile long lastDiggingTime = 0L;
+    private volatile long diggingStartTime = 0L;
 
     // 方块破坏与放置追踪 (FastBreak, Nuker, Scaffold)
     private long lastBreakTick = -1L;
@@ -383,6 +390,8 @@ public class PlayerData {
         this.expectedVelocity = expectedVelocity;
         this.lastVelocityReceivedTime = System.currentTimeMillis();
         this.velocityHandled = false;
+        this.maxObservedVelocityY = 0.0;
+        this.maxObservedVelocityH = 0.0;
         if (this.physicsState != null) {
             this.physicsState.addPendingVelocity(expectedVelocity.getX(), expectedVelocity.getY(), expectedVelocity.getZ());
         }
@@ -395,9 +404,36 @@ public class PlayerData {
         this.expectedVelocity = null;
         this.lastVelocityReceivedTime = 0L;
         this.velocityHandled = true;
+        this.maxObservedVelocityY = 0.0;
+        this.maxObservedVelocityH = 0.0;
         if (this.physicsState != null) {
             this.physicsState.clearPendingVelocities();
         }
+    }
+
+    public void recordObservedVelocityResponse(double deltaY, double horizDist) {
+        if (deltaY > this.maxObservedVelocityY) {
+            this.maxObservedVelocityY = deltaY;
+        }
+        if (horizDist > this.maxObservedVelocityH) {
+            this.maxObservedVelocityH = horizDist;
+        }
+    }
+
+    public double getMaxObservedVelocityY() {
+        return maxObservedVelocityY;
+    }
+
+    public double getMaxObservedVelocityH() {
+        return maxObservedVelocityH;
+    }
+
+    public boolean isInSpecialEnvironment() {
+        return inSpecialEnvironment;
+    }
+
+    public void setInSpecialEnvironment(boolean inSpecialEnvironment) {
+        this.inSpecialEnvironment = inSpecialEnvironment;
     }
 
     public long getLastVelocityReceivedTime() {
@@ -490,6 +526,28 @@ public class PlayerData {
 
     public void setLastDiggingTime(long lastDiggingTime) {
         this.lastDiggingTime = lastDiggingTime;
+    }
+
+    public long getDiggingStartTime() {
+        return diggingStartTime;
+    }
+
+    public void setDiggingStartTime(long diggingStartTime) {
+        this.diggingStartTime = diggingStartTime;
+    }
+
+    public int getSoulSpeedTicks() {
+        return soulSpeedTicks;
+    }
+
+    public void setSoulSpeedTicks(int soulSpeedTicks) {
+        this.soulSpeedTicks = soulSpeedTicks;
+    }
+
+    public void decrementSoulSpeedTicks() {
+        if (this.soulSpeedTicks > 0) {
+            this.soulSpeedTicks--;
+        }
     }
 
     public long getLastClickTimestamp() {
@@ -876,6 +934,11 @@ public class PlayerData {
     private volatile String eatingItemType = null;
 
     public void startEating(long currentTick, long nowMs, String itemType) {
+        // 若已经在进食同一种物品且未超时 (2000ms 内)，避免重复右键交互重置起始时间导致 FastEat 误报
+        if (this.eating && itemType != null && itemType.equals(this.eatingItemType)
+                && this.eatStartTimeMs > 0L && (nowMs - this.eatStartTimeMs) < 2000L) {
+            return;
+        }
         this.eating = true;
         this.eatStartTick = currentTick;
         this.eatStartTimeMs = nowMs;
@@ -906,6 +969,10 @@ public class PlayerData {
     }
 
     public void startBowCharge(long currentTick, long nowMs) {
+        // 若已经处于拉弓蓄力状态且未超时 (3500ms 内)，避免准星划过方块再次触发交互重置蓄力起点导致 FastBow 误报
+        if (this.bowCharging && this.bowChargeStartTimeMs > 0L && (nowMs - this.bowChargeStartTimeMs) < 3500L) {
+            return;
+        }
         this.bowCharging = true;
         this.bowChargeStartTick = currentTick;
         this.bowChargeStartTimeMs = nowMs;
@@ -962,11 +1029,31 @@ public class PlayerData {
     private volatile double maceGroundY = 0.0;
     private volatile int maceAirTicks = 0;
     private volatile long lastMaceSmashTime = 0L;
+    private volatile double lastLandedMaceApexY = 0.0;
+    private volatile int lastLandedMaceAirTicks = 0;
+    private volatile long lastLandedMaceTime = 0L;
 
     public void resetMaceFallState(double currentY) {
+        if (this.maceAirTicks > 0 && (this.maceApexY - currentY) >= 1.45) {
+            this.lastLandedMaceApexY = this.maceApexY;
+            this.lastLandedMaceAirTicks = this.maceAirTicks;
+            this.lastLandedMaceTime = System.currentTimeMillis();
+        }
         this.maceApexY = currentY;
         this.maceGroundY = currentY;
         this.maceAirTicks = 0;
+    }
+
+    public double getLastLandedMaceApexY() {
+        return lastLandedMaceApexY;
+    }
+
+    public int getLastLandedMaceAirTicks() {
+        return lastLandedMaceAirTicks;
+    }
+
+    public long getLastLandedMaceTime() {
+        return lastLandedMaceTime;
     }
 
     public void updateMaceApex(double currentY) {
@@ -1042,6 +1129,30 @@ public class PlayerData {
         this.lastLookYaw = yaw;
         this.lastLookPitch = pitch;
         this.lastPacketLocationTime = System.currentTimeMillis();
+    }
+
+    public boolean hasPacketLocation() {
+        return hasPacketLocation;
+    }
+
+    public double getPacketX() {
+        return packetX;
+    }
+
+    public double getPacketY() {
+        return packetY;
+    }
+
+    public double getPacketZ() {
+        return packetZ;
+    }
+
+    public float getPacketYaw() {
+        return packetYaw;
+    }
+
+    public float getPacketPitch() {
+        return packetPitch;
     }
 
     public Location getLatestPacketEyeLocation(org.bukkit.World world, double fallbackEyeHeight) {

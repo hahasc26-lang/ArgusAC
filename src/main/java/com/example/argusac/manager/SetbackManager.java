@@ -519,8 +519,29 @@ public class SetbackManager implements Listener {
             return false;
         }
 
-        if (moveEvent != null) {
+        PlayerSetbackContext context = getContext(player.getUniqueId());
+        SetbackOverride override = context.getOverride();
+        String effectiveMode = check.getSetbackMode() != null ? check.getSetbackMode().toUpperCase() : defaultMode;
+        if (override == SetbackOverride.SOFT_ONLY) {
+            effectiveMode = "SOFT";
+        } else if (override == SetbackOverride.HARD_ONLY) {
+            effectiveMode = "HARD";
+        }
+
+        if ("CANCEL".equalsIgnoreCase(effectiveMode) && moveEvent != null) {
             return directCancel(player, check, currentVl, reason, moveEvent);
+        }
+
+        if ("SOFT".equalsIgnoreCase(effectiveMode) && moveEvent != null) {
+            applySafeAirCancellation(moveEvent);
+            Location from = moveEvent.getFrom();
+            Location target = moveEvent.getTo() != null ? moveEvent.getTo() : from;
+            context.setLastSetbackTimestamp(check.getName(), System.currentTimeMillis());
+            setbackNotifier.postSetbackSuccess(player, context, check.getName(), currentVl, reason, "SOFT",
+                    SafeLocationFinder.formatLoc(from), SafeLocationFinder.formatLoc(target), !isGrounded(player, from),
+                    LegitimateLocation.from(target, null, isGrounded(player, target), false, null),
+                    notifyPlayerChannel, notifyPlayerCooldownMs, notifyAdminEnabled);
+            return true;
         }
 
         if (!Bukkit.isPrimaryThread()) {
@@ -528,7 +549,9 @@ public class SetbackManager implements Listener {
             return true;
         }
 
-        PlayerSetbackContext context = getContext(player.getUniqueId());
+        if (moveEvent != null) {
+            moveEvent.setCancelled(true);
+        }
         Location curLoc = player.getLocation();
         String fromLocStr = SafeLocationFinder.formatLoc(curLoc);
         long now = System.currentTimeMillis();

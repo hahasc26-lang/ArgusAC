@@ -79,8 +79,11 @@ public class ScaffoldCheck extends AbstractCheck {
         }
 
         // 2. 异常放置角度 (平视甚至仰头却能直接凭空在正脚底下放置方块)
-        if (pitch < (float) minPitch) {
-            flag(player, 2, String.format("Impossible pitch scaffold pitch=%.1f, min=%.1f", pitch, minPitch));
+        // 区分玩家完全站在方块中心上方 (hDist <= 0.35，物理上必须大幅低头 >= minPitch)
+        // 与潜行探出方块边缘对准脚下方块侧面搭路 (0.35 < hDist <= 0.65，合法侧面视线角最低可达 ~50°)
+        double effectiveMinPitch = (hDistSq <= 0.35 * 0.35) ? minPitch : Math.min(minPitch, 50.0);
+        if (pitch < (float) effectiveMinPitch) {
+            flag(player, 2, String.format("Impossible pitch scaffold pitch=%.1f, min=%.1f", pitch, effectiveMinPitch));
         }
     }
 }

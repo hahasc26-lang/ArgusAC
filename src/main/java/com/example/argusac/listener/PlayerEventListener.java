@@ -395,16 +395,49 @@ public class PlayerEventListener implements Listener {
             }
         }
 
-        // 冰面与粘液块滑行惯性追踪 (离开冰面后维持 4 tick 原版真实摩擦衰减，杜绝利用 25 tick 惯性盲区虚假滑冰)
+        // 冰面与粘液块/床滑行及弹射惯性追踪 (离开冰面后维持 4 tick 原版真实摩擦衰减)
+        Block underFromBlock = from.clone().subtract(0, 0.5, 0).getBlock();
         if (adapter.isIce(under) || adapter.isSlime(under)) {
             data.setIceTicks(4);
         } else {
             data.decrementIceTicks();
         }
-        if (adapter.isSlime(under)) {
-            data.setSlimeTicks(20);
+        if (adapter.isSlime(under) || isBounceBed(under) || isBounceBed(to.getBlock()) || isBounceBed(from.getBlock())) {
+            data.setSlimeTicks(25);
         } else {
             data.decrementSlimeTicks();
+        }
+        if (adapter.isSoulSand(under) || adapter.isSoulSand(underFromBlock)) {
+            data.setSoulSpeedTicks(8);
+        } else {
+            data.decrementSoulSpeedTicks();
+        }
+
+        // 更新特殊环境标记供 Netty 线程无锁读取，并在主线程完成位移帧的 NoFall GroundSpoof 核验
+        boolean specialEnv = inLiquid || onGround
+                || adapter.isClimbable(to.getBlock()) || adapter.isClimbable(from.getBlock())
+                || adapter.isStandable(to.getBlock()) || adapter.isStandable(under);
+        data.setInSpecialEnvironment(specialEnv);
+        if (posChanged && !checkManager.isGlidingExempt(player, data)
+                && player.getGameMode() != org.bukkit.GameMode.CREATIVE
+                && player.getGameMode() != org.bukkit.GameMode.SPECTATOR
+                && !player.isFlying() && !player.getAllowFlight() && !player.isInsideVehicle()) {
+            boolean groundSpoof = data.isClientOnGround() && data.getAirTicks() > 4 && !onGround
+                    && !data.isSetbackImmune() && !data.hasAnyLegalVelocity() && !specialEnv && data.getSlimeTicks() <= 0;
+            if (data.recordNoFallSpoofPacket(groundSpoof)) {
+                plugin.getViolationManager().handleViolation(player, checkManager.getNoFallCheck(),
+                        1, String.format("Packet GroundSpoof airTicks=%d", data.getAirTicks()), event);
+            }
+        }
+
+        // 推进确定性物理预测器状态机，维护实时残差缓冲区供移动与战斗联动裁决使用
+        if (posChanged && plugin.getMovePredictor() != null && plugin.getMovePredictor().isEnabled()) {
+            plugin.getMovePredictor().predict(
+                    player, data,
+                    to.getX(), to.getY(), to.getZ(),
+                    to.getYaw(), to.getPitch(),
+                    data.isClientOnGround()
+            );
         }
 
         Location originalTo = to.clone();
@@ -600,18 +633,31 @@ public class PlayerEventListener implements Listener {
         }
         Action action = event.getAction();
         if (action == Action.RIGHT_CLICK_AIR || action == Action.RIGHT_CLICK_BLOCK) {
+            boolean mainHandConsumable = false;
+            boolean mainHandBow = false;
             if (event.getItem() != null) {
-                checkManager.getFastBowCheck().handleBowStart(event.getPlayer(), event.getItem());
-                checkManager.getFastEatCheck().handleItemStartUse(event.getPlayer(), event.getItem());
+                String mainType = event.getItem().getType().name();
+                mainHandBow = mainType.equals("BOW") || mainType.equals("CROSSBOW");
+                mainHandConsumable = checkManager.getFastEatCheck().isConsumable(event.getItem());
+                if (mainHandBow) {
+                    checkManager.getFastBowCheck().handleBowStart(event.getPlayer(), event.getItem());
+                }
+                if (mainHandConsumable) {
+                    checkManager.getFastEatCheck().handleItemStartUse(event.getPlayer(), event.getItem());
+                }
             }
             Player p = event.getPlayer();
-            if (p.getInventory() != null && p.getInventory().getItemInOffHand() != null) {
-                checkManager.getFastEatCheck().handleItemStartUse(p, p.getInventory().getItemInOffHand());
+            if (!mainHandConsumable && !mainHandBow && p.getInventory() != null && p.getInventory().getItemInOffHand() != null) {
+                org.bukkit.inventory.ItemStack offItem = p.getInventory().getItemInOffHand();
+                checkManager.getFastBowCheck().handleBowStart(p, offItem);
+                checkManager.getFastEatCheck().handleItemStartUse(p, offItem);
             }
         } else if (action == Action.LEFT_CLICK_BLOCK) {
             if (data != null) {
+                long now = System.currentTimeMillis();
                 data.setDigging(true);
-                data.setLastDiggingTime(System.currentTimeMillis());
+                data.setLastDiggingTime(now);
+                data.setDiggingStartTime(now);
                 data.getClickTimestamps().clear();
             }
         } else if (action == Action.LEFT_CLICK_AIR) {
@@ -630,8 +676,10 @@ public class PlayerEventListener implements Listener {
     public void onBlockDamage(BlockDamageEvent event) {
         PlayerData data = plugin.getPlayerManager().getPlayerData(event.getPlayer());
         if (data != null) {
+            long now = System.currentTimeMillis();
             data.setDigging(true);
-            data.setLastDiggingTime(System.currentTimeMillis());
+            data.setLastDiggingTime(now);
+            data.setDiggingStartTime(now);
             data.getClickTimestamps().clear();
         }
     }
@@ -814,5 +862,9 @@ public class PlayerEventListener implements Listener {
             }
         }
         return false;
+    }
+
+    private boolean isBounceBed(Block block) {
+        return block != null && block.getType().name().endsWith("_BED");
     }
 }

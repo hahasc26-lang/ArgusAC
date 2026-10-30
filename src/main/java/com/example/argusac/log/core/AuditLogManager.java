@@ -306,6 +306,7 @@ public class AuditLogManager {
 
     // Status Getters
     public long getDroppedCount() { return droppedLogsCount.get(); }
+    public long getWrittenLinesCount() { return writtenLinesCount.get(); }
     public int getQueueBacklog() { return diskQueue.size(); }
     public int getQueueCapacity() { return queueCapacity; }
     public long getCurrentFileSize() { return currentLogFile != null && currentLogFile.exists() ? currentLogFile.length() : 0L; }
