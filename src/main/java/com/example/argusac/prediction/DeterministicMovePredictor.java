@@ -92,14 +92,21 @@ public class DeterministicMovePredictor {
             return PredictionResult.exempt();
         }
 
-        // 创造/旁观、允许飞行、坐在载具中直接豁免
+        PlayerPhysicsState state = data.getPhysicsState();
+        if (state == null) {
+            return PredictionResult.exempt();
+        }
+
+        // 创造/旁观、允许飞行、坐在载具中直接豁免（同步更新状态机坐标，防止脱离豁免首帧产生跨期位移残差）
         if (player.getGameMode() == GameMode.CREATIVE || player.getGameMode() == GameMode.SPECTATOR
                 || player.isFlying() || player.getAllowFlight() || player.isInsideVehicle()) {
+            state.reset(toX, toY, toZ, yaw, pitch);
             return PredictionResult.exempt();
         }
 
         // 鞘翅滑翔完全移交 ElytraFly 处理
         if (plugin.getCheckManager().isGlidingExempt(player, data)) {
+            state.reset(toX, toY, toZ, yaw, pitch);
             return PredictionResult.exempt();
         }
 
@@ -107,13 +114,25 @@ public class DeterministicMovePredictor {
                 plugin.getSetbackManager() != null ? plugin.getSetbackManager().getContext(player.getUniqueId()) : null;
         boolean underViolationLock = setbackContext != null && (setbackContext.isTeleportInFlight() || setbackContext.isUnderViolationLock());
 
-        // 仅在非违规锁定期才允许合法高机动期与登录豁免期豁免
-        if (!underViolationLock && (data.isSetbackImmune() || data.hasAnyLegalVelocity() || data.isInGracePeriod())) {
-            return PredictionResult.exempt();
-        }
-
-        PlayerPhysicsState state = data.getPhysicsState();
-        if (state == null) {
+        // 仅在非违规锁定期才允许合法高机动期（含受击击退期）与登录豁免期豁免
+        if (!underViolationLock && (data.isSetbackImmune() || data.hasAnyLegalVelocity()
+                || data.hasRecentVelocity(1000L) || (System.currentTimeMillis() - data.getLastDamageTime() < 1000L)
+                || data.isInGracePeriod())) {
+            // 关键修复：在受伤/击退豁免期间必须实时跟进状态机坐标与当前帧动量，
+            // 否则当豁免窗口结束的首个 tick，toX - lastX 会将整段受击位移累加为单 tick 超速残差！
+            if (state.hasLastPosition()) {
+                state.setPrevVx(toX - state.getLastX());
+                state.setPrevVy(toY - state.getLastY());
+                state.setPrevVz(toZ - state.getLastZ());
+            }
+            state.setLastX(toX);
+            state.setLastY(toY);
+            state.setLastZ(toZ);
+            state.setLastYaw(yaw);
+            state.setLastPitch(pitch);
+            state.setWasOnGround(clientOnGround);
+            state.setHorizontalBuffer(0.0);
+            state.setVerticalBuffer(0.0);
             return PredictionResult.exempt();
         }
 
@@ -139,8 +158,9 @@ public class DeterministicMovePredictor {
         Location currentLoc = new Location(player.getWorld(), state.getLastX(), state.getLastY(), state.getLastZ(), yaw, pitch);
         Location targetLoc = new Location(player.getWorld(), toX, toY, toZ, yaw, pitch);
 
-        // 气泡柱 (Bubble Column) 产生极端垂直强推力，予以预测豁免
+        // 气泡柱 (Bubble Column) 产生极端垂直强推力，予以预测豁免并同步坐标
         if (isBubbleColumn(currentLoc) || isBubbleColumn(targetLoc)) {
+            state.reset(toX, toY, toZ, yaw, pitch);
             return PredictionResult.exempt();
         }
 

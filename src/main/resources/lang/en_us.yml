@@ -34,8 +34,15 @@ alert:
 
 # Mitigation and punishment messages
 punishment:
-  setback-notify: "<red>Irregular movement detected, your position has been smoothly setback!</red>"
+  move-cancel-notify: "<red>Irregular movement ({check}) detected, your movement has been cancelled!</red>"
+  setback-notify: "<red>Irregular movement ({check}) detected, your position has been setback!</red>"
+  combat-cancel-notify: "<red>Irregular combat behavior ({check}) detected, your attack has been cancelled!</red>"
+  combat-throttle-notify: "<red>[ArgusAC] Irregular combat behavior detected, melee attacks temporarily throttled!</red>"
+  world-cancel-notify: "<red>Irregular block interaction ({check}) detected, your action has been cancelled!</red>"
+  move-cancel-admin: "<gold>[MoveCancel]</gold> <yellow>{player}</yellow> <gray>movement cancelled by</gray> <red>{check}</red> <dark_gray>(</dark_gray><white>{old_loc}</white> <dark_gray>-></dark_gray> <green>{new_loc}</green><dark_gray>)</dark_gray> <dark_gray>[</dark_gray><aqua>{mode}</aqua><dark_gray>]</dark_gray>"
   setback-admin: "<gold>[Setback]</gold> <yellow>{player}</yellow> <gray>set back by</gray> <red>{check}</red> <dark_gray>(</dark_gray><white>{old_loc}</white> <dark_gray>-></dark_gray> <green>{new_loc}</green><dark_gray>)</dark_gray> <dark_gray>[</dark_gray><aqua>{mode}</aqua><dark_gray>]</dark_gray>"
+  combat-cancel-admin: "<gold>[CombatCancel]</gold> <yellow>{player}</yellow> <gray>attack/combat cancelled by</gray> <red>{check}</red> <dark_gray>[VL: <red>{vl}</red>]</dark_gray>"
+  world-cancel-admin: "<gold>[WorldCancel]</gold> <yellow>{player}</yellow> <gray>block interaction cancelled by</gray> <red>{check}</red> <dark_gray>[VL: <red>{vl}</red>]</dark_gray>"
   kick-reason: "<red>[ArgusAC] Irregular client behavior detected.\n<gray>Triggered Check: <yellow>{check}</yellow> <gray>(Code: <white>{code}</white>)</gray>"
   ban-reason: "<red>[ArgusAC] Your account has been permanently suspended for cheating.\n<gray>Reason: <yellow>{reason}</yellow>\n<gray>Appeal at staff support if you believe this is in error.</gray>"
 

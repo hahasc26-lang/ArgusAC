@@ -43,9 +43,17 @@ public class ViolationManager {
     }
 
     /**
-     * 外部与协议管线便捷标记入口 (委托调用 handleViolation)
+     * 外部与协议管线便捷标记入口 (支持从 Netty 线程安全切回主线程委托调用 handleViolation)
      */
     public void flag(Player player, Check check, int vlAmount, String details) {
+        if (!Bukkit.isPrimaryThread()) {
+            Bukkit.getScheduler().runTask(plugin, () -> {
+                if (player != null && player.isOnline()) {
+                    handleViolation(player, check, vlAmount, details, null);
+                }
+            });
+            return;
+        }
         handleViolation(player, check, vlAmount, details, null);
     }
 
@@ -126,8 +134,13 @@ public class ViolationManager {
                 logMode = mode != null ? mode.toUpperCase() : "HARD";
             }
         } else {
-            // 战斗、方块及数据包类违规，处置方式为取消非法交互并记录日志
+            // 战斗、方块及数据包类违规，处置方式为取消非法交互并记录日志，同时下发区分后的攻击取消/交互取消提示
             logMode = "CANCEL_INTERACTION";
+            if (plugin.getSetbackManager() != null
+                    && (check.getType() == com.example.argusac.api.CheckType.COMBAT
+                        || check.getType() == com.example.argusac.api.CheckType.WORLD)) {
+                plugin.getSetbackManager().notifyInteractionCancel(player, check, currentVl);
+            }
         }
 
         // 4. 若未被 SetbackManager 内部日志覆盖，在此记录统一结构化违规日志

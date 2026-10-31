@@ -99,6 +99,33 @@ public class PlayerData {
     private float lastLookYaw = 0.0f;
     private float lastLookPitch = 0.0f;
 
+    // 客户端虚拟时钟驱动与协议生命周期追踪 (Client Flying Virtual Clock & TCP Burst Defense)
+    private volatile long clientFlyingTicks = 0L;
+    private volatile long lastFlyingPacketNanos = 0L;
+    private volatile int clicksInCurrentFlyingTick = 0;
+    private volatile long lastFlyingPacketIntervalNanos = 50_000_000L;
+    private volatile long lastWindowFocusRecoveryTime = 0L;
+    private volatile long lastContainerCloseTick = 0L;
+
+    // 攻击与挥臂乱序配对 (Attack & Swing Packet Ordering)
+    private volatile long lastSwingClientTick = -1L;
+    private volatile long lastAttackClientTick = -1L;
+    private volatile int consecutiveNoSwingAttacks = 0;
+
+    // 右键实体孪生交互去重 (InteractAt & Interact Deduplication)
+    private volatile int lastInteractEntityId = -1;
+    private volatile long lastInteractAtClientTick = -1L;
+
+    // 快捷栏切换与手持物历史回溯缓冲 (Held Item History Buffer)
+    private volatile int currentHeldSlot = 0;
+    private volatile long lastSlotSwitchTime = 0L;
+    private final Deque<Long> heldItemSwitchTimes = new ConcurrentLinkedDeque<>();
+
+    // 连点器统计学分析样本队列 (Tick 间隔与毫秒间隔)
+    private final Deque<Integer> flyingIntervalSamples = new ConcurrentLinkedDeque<>();
+    private final Deque<Double> msIntervalSamples = new ConcurrentLinkedDeque<>();
+    private volatile boolean skipNextIntervalSample = false;
+
     // 移动平滑缓冲区与环境惯性追踪 (SpeedCheck)
     private double speedBuffer = 0.0;
     private long lastSpeedCheckNanos = 0L;
@@ -109,6 +136,7 @@ public class PlayerData {
     private volatile boolean digging = false;
     private volatile long lastDiggingTime = 0L;
     private volatile long diggingStartTime = 0L;
+    private volatile long lastDiggingStopTime = 0L;
 
     // 方块破坏与放置追踪 (FastBreak, Nuker, Scaffold)
     private long lastBreakTick = -1L;
@@ -129,6 +157,12 @@ public class PlayerData {
     public PlayerData(Player player) {
         this.uuid = player.getUniqueId();
         this.name = player.getName();
+        this.lastJoinTime = System.currentTimeMillis();
+    }
+
+    public PlayerData(UUID uuid, String name) {
+        this.uuid = uuid;
+        this.name = name;
         this.lastJoinTime = System.currentTimeMillis();
     }
 
@@ -219,8 +253,8 @@ public class PlayerData {
     }
 
     public long getSetbackImmunityUntil() {
-        com.example.argusac.setback.PlayerSetbackContext ctx =
-                com.example.argusac.ArgusACPlugin.getInstance().getSetbackManager().getContext(uuid);
+        com.example.argusac.setback.PlayerSetbackContext ctx = com.example.argusac.ArgusACPlugin.getInstance()
+                .getSetbackManager().getContext(uuid);
         return ctx != null ? ctx.getImmunityUntil() : 0L;
     }
 
@@ -393,7 +427,8 @@ public class PlayerData {
         this.maxObservedVelocityY = 0.0;
         this.maxObservedVelocityH = 0.0;
         if (this.physicsState != null) {
-            this.physicsState.addPendingVelocity(expectedVelocity.getX(), expectedVelocity.getY(), expectedVelocity.getZ());
+            this.physicsState.addPendingVelocity(expectedVelocity.getX(), expectedVelocity.getY(),
+                    expectedVelocity.getZ());
         }
     }
 
@@ -510,14 +545,36 @@ public class PlayerData {
     }
 
     public boolean isDigging() {
-        return digging || (System.currentTimeMillis() - lastDiggingTime < 350L);
+        long now = System.currentTimeMillis();
+        return digging || (now - lastDiggingTime < 300L) || (now - lastDiggingStopTime < 200L);
     }
 
     public void setDigging(boolean digging) {
-        this.digging = digging;
+        long now = System.currentTimeMillis();
         if (digging) {
-            this.lastDiggingTime = System.currentTimeMillis();
+            startDigging(now);
+        } else {
+            stopDigging(now);
         }
+    }
+
+    public void startDigging(long now) {
+        this.digging = true;
+        this.diggingStartTime = now;
+        this.lastDiggingTime = now;
+        this.clickTimestamps.clear();
+        this.flyingIntervalSamples.clear();
+        this.msIntervalSamples.clear();
+        this.skipNextIntervalSample = true;
+    }
+
+    public void stopDigging(long now) {
+        this.digging = false;
+        this.lastDiggingStopTime = now;
+        this.lastDiggingTime = now;
+        // 关键硬截断：退出挖掘状态后的首次战斗点击，绝不与挖掘期间最后一次挥臂算作间隔！
+        this.skipNextIntervalSample = true;
+        this.clickTimestamps.clear();
     }
 
     public long getLastDiggingTime() {
@@ -534,6 +591,146 @@ public class PlayerData {
 
     public void setDiggingStartTime(long diggingStartTime) {
         this.diggingStartTime = diggingStartTime;
+    }
+
+    public long getClientFlyingTicks() {
+        return clientFlyingTicks;
+    }
+
+    public long incrementClientFlyingTicks(long nowNanos) {
+        this.clientFlyingTicks++;
+        this.clicksInCurrentFlyingTick = 0;
+        if (lastFlyingPacketNanos > 0L) {
+            long diff = nowNanos - lastFlyingPacketNanos;
+            this.lastFlyingPacketIntervalNanos = diff;
+            // 客户端挂起恢复检测：超过 500ms（10 ticks）无移动包，说明发生了 Alt+Tab、切屏、F3+T 或长卡顿
+            if (diff > 500_000_000L) {
+                this.lastWindowFocusRecoveryTime = System.currentTimeMillis();
+                this.skipNextIntervalSample = true;
+            }
+        }
+        this.lastFlyingPacketNanos = nowNanos;
+        return this.clientFlyingTicks;
+    }
+
+    public int incrementClicksInCurrentFlyingTick() {
+        return ++this.clicksInCurrentFlyingTick;
+    }
+
+    public int getClicksInCurrentFlyingTick() {
+        return clicksInCurrentFlyingTick;
+    }
+
+    public boolean isInFocusRecoveryGracePeriod() {
+        long now = System.currentTimeMillis();
+        return (now - lastWindowFocusRecoveryTime < 350L)
+                || (now - lastInventoryCloseTime < 250L)
+                || (this.clientFlyingTicks - this.lastContainerCloseTick < 6L);
+    }
+
+    public long getLastFlyingPacketIntervalNanos() {
+        return lastFlyingPacketIntervalNanos;
+    }
+
+    public long getLastContainerCloseTick() {
+        return lastContainerCloseTick;
+    }
+
+    public void markContainerClosed(long now) {
+        this.lastInventoryCloseTime = now;
+        this.lastContainerCloseTick = this.clientFlyingTicks;
+        this.skipNextIntervalSample = true;
+    }
+
+    public boolean recordInteractEntity(int entityId, boolean isInteractAt) {
+        long currentTick = this.clientFlyingTicks;
+        if (isInteractAt) {
+            this.lastInteractEntityId = entityId;
+            this.lastInteractAtClientTick = currentTick;
+            return true;
+        } else {
+            // 若为普通 INTERACT 且在同 1 tick 内对同一实体发生，属于原版孪生包，标记为聚合去重
+            if (this.lastInteractEntityId == entityId && this.lastInteractAtClientTick == currentTick) {
+                return false;
+            }
+            this.lastInteractEntityId = entityId;
+            return true;
+        }
+    }
+
+    public void recordSlotSwitch(int newSlot) {
+        this.currentHeldSlot = newSlot;
+        long now = System.currentTimeMillis();
+        this.lastSlotSwitchTime = now;
+        this.heldItemSwitchTimes.addLast(now);
+        while (!heldItemSwitchTimes.isEmpty() && now - heldItemSwitchTimes.peekFirst() > 1000L) {
+            heldItemSwitchTimes.pollFirst();
+        }
+    }
+
+    public boolean hasRecentSlotSwitch(long windowMs) {
+        return (System.currentTimeMillis() - lastSlotSwitchTime) <= windowMs;
+    }
+
+    public int getCurrentHeldSlot() {
+        return currentHeldSlot;
+    }
+
+    public void recordSwing() {
+        this.lastSwingClientTick = this.clientFlyingTicks;
+        // 双向配对：若本 tick 或前 1 个 tick 刚刚发生了 Attack，挥臂后置补齐配对，消除翻转误判
+        if (lastAttackClientTick >= 0 && Math.abs(this.lastSwingClientTick - lastAttackClientTick) <= 1) {
+            this.consecutiveNoSwingAttacks = 0;
+        }
+    }
+
+    public void recordAttack() {
+        this.lastAttackClientTick = this.clientFlyingTicks;
+        // 双向配对：若本 tick 或前 1 个 tick 已经发生过 Swing，配对成功
+        if (lastSwingClientTick >= 0 && Math.abs(this.lastAttackClientTick - lastSwingClientTick) <= 1) {
+            this.consecutiveNoSwingAttacks = 0;
+        } else {
+            // 允许给可能后置到达的 Swing 预留 1 刻宽容窗口，仅在历史从未配对或连续多次时累积
+            this.consecutiveNoSwingAttacks++;
+        }
+    }
+
+    public int getConsecutiveNoSwingAttacks() {
+        return consecutiveNoSwingAttacks;
+    }
+
+    public void recordClickSample(double msInterval, int flyingTickInterval) {
+        if (skipNextIntervalSample) {
+            skipNextIntervalSample = false;
+            return;
+        }
+        if (msInterval > 15.0 && msInterval < 300.0) {
+            msIntervalSamples.addLast(msInterval);
+            while (msIntervalSamples.size() > 40) {
+                msIntervalSamples.pollFirst();
+            }
+        }
+        if (flyingTickInterval > 0 && flyingTickInterval <= 10) {
+            flyingIntervalSamples.addLast(flyingTickInterval);
+            while (flyingIntervalSamples.size() > 40) {
+                flyingIntervalSamples.pollFirst();
+            }
+        }
+    }
+
+    public Deque<Double> getMsIntervalSamples() {
+        return msIntervalSamples;
+    }
+
+    public Deque<Integer> getFlyingIntervalSamples() {
+        return flyingIntervalSamples;
+    }
+
+    public void resetClickIntervalTracking() {
+        this.skipNextIntervalSample = true;
+        this.clickTimestamps.clear();
+        this.msIntervalSamples.clear();
+        this.flyingIntervalSamples.clear();
     }
 
     public int getSoulSpeedTicks() {
@@ -608,7 +805,8 @@ public class PlayerData {
 
     public boolean hasRecentVelocity(long thresholdMs) {
         long now = System.currentTimeMillis();
-        // 原版空中空气阻力小 (0.91)，若玩家仍处于空中滞空未着地，击退/受击抛物线通常持续 15~20 ticks (750~1000ms)，额外延长 500ms
+        // 原版空中空气阻力小 (0.91)，若玩家仍处于空中滞空未着地，击退/受击抛物线通常持续 15~20 ticks (750~1000ms)，额外延长
+        // 500ms
         long effectiveThreshold = (!onGround || airTicks > 0) ? thresholdMs + 500L : thresholdMs;
         boolean recentVel = (lastVelocityReceivedTime > 0L) && (now - lastVelocityReceivedTime < effectiveThreshold);
         boolean recentDmg = (lastDamageTime > 0L) && (now - lastDamageTime < effectiveThreshold);
@@ -768,6 +966,7 @@ public class PlayerData {
 
     /**
      * 递增水面持续停留滴答数 (限速：至少间隔 50ms / 1 tick)
+     * 
      * @return 是否成功递增 (若调用过于频繁则返回 false)
      */
     public boolean incrementWaterSurfaceTicks() {
@@ -824,7 +1023,6 @@ public class PlayerData {
         resetWaterSurfaceTicks();
         resetWaterSpeedTicks();
     }
-
 
     public boolean isClientOnGround() {
         return clientOnGround;
@@ -888,6 +1086,8 @@ public class PlayerData {
     // 自瞄突变连续命中追踪 (KillAuraCheck)
     private int snapCount = 0;
     private long lastSnapTime = 0L;
+    private int angleAnomalyCount = 0;
+    private long lastAngleAnomalyTime = 0L;
 
     public int recordSnap(long now) {
         if (now - lastSnapTime < 800L) {
@@ -902,6 +1102,24 @@ public class PlayerData {
     public void resetSnap() {
         snapCount = 0;
         lastSnapTime = 0L;
+    }
+
+    /**
+     * 记录连续视角偏角异常次数（用于吸收客户端 INTERACT_ENTITY 早于 PLAYER_ROTATION 到达引起的单次甩鼠反击/受击硬直视角差）
+     */
+    public int recordAngleAnomaly(long now) {
+        if (now - lastAngleAnomalyTime < 1200L) {
+            angleAnomalyCount++;
+        } else {
+            angleAnomalyCount = 1;
+        }
+        lastAngleAnomalyTime = now;
+        return angleAnomalyCount;
+    }
+
+    public void resetAngleAnomaly() {
+        angleAnomalyCount = 0;
+        lastAngleAnomalyTime = 0L;
     }
 
     // 潜行疾跑状态突变追踪 (BadPacketsCheck)
@@ -1104,13 +1322,13 @@ public class PlayerData {
     }
 
     public void updatePacketLocation(double x, double y, double z, float yaw, float pitch) {
+        this.lastLookYaw = this.packetYaw;
+        this.lastLookPitch = this.packetPitch;
         this.packetX = x;
         this.packetY = y;
         this.packetZ = z;
         this.packetYaw = yaw;
         this.packetPitch = pitch;
-        this.lastLookYaw = yaw;
-        this.lastLookPitch = pitch;
         this.hasPacketLocation = true;
         this.lastPacketLocationTime = System.currentTimeMillis();
     }
@@ -1124,10 +1342,10 @@ public class PlayerData {
     }
 
     public void updatePacketRotation(float yaw, float pitch) {
+        this.lastLookYaw = this.packetYaw;
+        this.lastLookPitch = this.packetPitch;
         this.packetYaw = yaw;
         this.packetPitch = pitch;
-        this.lastLookYaw = yaw;
-        this.lastLookPitch = pitch;
         this.lastPacketLocationTime = System.currentTimeMillis();
     }
 
@@ -1156,7 +1374,8 @@ public class PlayerData {
     }
 
     public Location getLatestPacketEyeLocation(org.bukkit.World world, double fallbackEyeHeight) {
-        if (world == null) return null;
+        if (world == null)
+            return null;
         if (hasPacketLocation && (System.currentTimeMillis() - lastPacketLocationTime < 5000L)) {
             return new Location(world, packetX, packetY + fallbackEyeHeight, packetZ, packetYaw, packetPitch);
         }
@@ -1165,6 +1384,37 @@ public class PlayerData {
                     lastLookYaw, lastLookPitch);
         }
         return null;
+    }
+
+    /**
+     * 获取攻击者在当前与相邻帧的候选眼睛位置集合（搭载最新实时视角），
+     * 消除受击击退/高速移动或客户端 INTERACT_ENTITY 先于移动包到达时的单帧自身坐标偏移误报
+     */
+    public List<Location> getCandidateEyeLocations(org.bukkit.World world, double eyeHeight, Location entityBaseLoc) {
+        List<Location> list = new ArrayList<>(4);
+        if (world == null) {
+            return list;
+        }
+        float yaw = hasPacketLocation ? packetYaw : (entityBaseLoc != null ? entityBaseLoc.getYaw() : lastLookYaw);
+        float pitch = hasPacketLocation ? packetPitch
+                : (entityBaseLoc != null ? entityBaseLoc.getPitch() : lastLookPitch);
+
+        if (hasPacketLocation && (System.currentTimeMillis() - lastPacketLocationTime < 5000L)) {
+            list.add(new Location(world, packetX, packetY + eyeHeight, packetZ, yaw, pitch));
+        }
+        if (toLocation != null && toLocation.getWorld() == world) {
+            list.add(new Location(world, toLocation.getX(), toLocation.getY() + eyeHeight, toLocation.getZ(), yaw,
+                    pitch));
+        }
+        if (fromLocation != null && fromLocation.getWorld() == world) {
+            list.add(new Location(world, fromLocation.getX(), fromLocation.getY() + eyeHeight, fromLocation.getZ(), yaw,
+                    pitch));
+        }
+        if (entityBaseLoc != null && entityBaseLoc.getWorld() == world) {
+            list.add(new Location(world, entityBaseLoc.getX(), entityBaseLoc.getY() + eyeHeight, entityBaseLoc.getZ(),
+                    entityBaseLoc.getYaw(), entityBaseLoc.getPitch()));
+        }
+        return list;
     }
 
     public void recordVerifiedAttack(UUID targetUuid) {

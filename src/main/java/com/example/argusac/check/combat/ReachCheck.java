@@ -14,6 +14,7 @@ import org.bukkit.entity.Entity;
 import org.bukkit.entity.LivingEntity;
 import org.bukkit.entity.Player;
 import org.bukkit.event.entity.EntityDamageByEntityEvent;
+import org.bukkit.event.entity.EntityDamageEvent;
 
 /**
  * 攻击距离检测 (ReachCheck)
@@ -48,7 +49,7 @@ public class ReachCheck extends AbstractCheck {
             return CombatVerdict.pass();
         }
 
-        // 创造模式合法攻击距离可达 5.0，豁免
+        // 创造/旁观模式合法攻击距离放宽或豁免
         if (attacker.getGameMode() == GameMode.CREATIVE || attacker.getGameMode() == GameMode.SPECTATOR) {
             return CombatVerdict.pass();
         }
@@ -64,33 +65,77 @@ public class ReachCheck extends AbstractCheck {
         }
 
         int ping = Math.max(0, adapter.getPing(attacker));
+        double eyeHeight = 1.62;
+        try {
+            eyeHeight = attacker.getEyeHeight();
+        } catch (Throwable ignored) {
+        }
 
-        // 1. 基于实体历史碰撞盒回溯的延迟补偿物理距离计算 (GrimAC-Grade Lag Compensated Reach)
-        double distanceToBox;
-        if (plugin.getHistoryTracker() != null) {
-            distanceToBox = plugin.getHistoryTracker().getCompensatedMinDistance(eyeLocation, victim, ping);
-        } else {
-            CompatBoundingBox box = adapter.getEntityBoundingBox(victim);
-            distanceToBox = box.distanceTo(eyeLocation);
+        // 核心缺陷修复：检查玩家自身刚受到外部伤害/击退的时序窗口
+        // 当玩家受到箭矢、爆炸或近战击退时，服务端位移领先于客户端发包确认，容易产生 0.5~1.2+ 格的瞬间脱节
+        long now = System.currentTimeMillis();
+        long timeSinceLastDamage = now - data.getLastDamageTime();
+
+        // 处于受击强击退且网络尚未确认完成的短周期窗口（Ping + 250ms）内直接放行，避免误判
+        if (timeSinceLastDamage < Math.max(200L, ping + 250L) && data.hasRecentVelocity(600L)) {
+            return CombatVerdict.pass();
+        }
+
+        // 1. 基于实体历史碰撞盒回溯与攻击者多候选眼部位置的延迟补偿物理距离计算
+        java.util.List<Location> candidateEyes = data.getCandidateEyeLocations(attacker.getWorld(), eyeHeight,
+                attacker.getLocation());
+        if (candidateEyes.isEmpty()) {
+            candidateEyes.add(eyeLocation);
+        }
+
+        double distanceToBox = Double.MAX_VALUE;
+        for (Location candEye : candidateEyes) {
+            if (candEye == null || candEye.getWorld() != victim.getWorld())
+                continue;
+            double dist;
+            if (plugin.getHistoryTracker() != null) {
+                dist = plugin.getHistoryTracker().getCompensatedMinDistance(candEye, victim, ping);
+            } else {
+                CompatBoundingBox box = adapter.getEntityBoundingBox(victim);
+                dist = box.distanceTo(candEye);
+            }
+            if (dist < distanceToBox) {
+                distanceToBox = dist;
+            }
         }
 
         if (distanceToBox == Double.MAX_VALUE) {
             return CombatVerdict.pass();
         }
 
-        // 若受害者存在历史快照，使用回溯物理极限加上网络延迟与服务端 Tick 插值容差；若为怪物或无快照，应用网络延迟 Ping 补偿
-        boolean hasTrackedHistory = (plugin.getHistoryTracker() != null && plugin.getHistoryTracker().hasHistory(victim.getUniqueId()));
+        // 动态基础上限计算
+        boolean hasTrackedHistory = (plugin.getHistoryTracker() != null
+                && plugin.getHistoryTracker().hasSufficientHistory(victim.getUniqueId(), ping));
         double dynamicLimit = hasTrackedHistory
-                ? (maxReach + 0.10 + Math.min(0.20, (ping / 500.0) * 0.15))
-                : Math.min(maxReach + Math.min(0.40, (ping / 100.0) * 0.08), maxPingReach);
+                ? (maxReach + 0.15 + Math.min(0.25, (ping / 400.0) * 0.20))
+                : Math.min(maxReach + 0.20 + Math.min(0.45, (ping / 100.0) * 0.10), maxPingReach + 0.15);
+
+        // 击退与切槽动态补偿放宽
+        boolean underKnockback = data.hasRecentVelocity(1000L)
+                || (timeSinceLastDamage < Math.max(900L, ping + 400L))
+                || data.hasAnyLegalVelocity();
+        boolean recentSlotSwitch = data.hasRecentSlotSwitch(Math.max(300L, ping + 150L));
+
+        if (underKnockback) {
+            // 将击退容差扩大到更符合物理位移的幅度 (0.65格)
+            dynamicLimit += 0.65;
+        } else if (recentSlotSwitch) {
+            dynamicLimit += 0.15;
+        }
 
         if (distanceToBox > dynamicLimit) {
             double excess = distanceToBox - dynamicLimit;
             String detail = String.format("dist=%.3f, limit=%.2f, excess=%.3f, ping=%d (Backtracked)",
                     distanceToBox, dynamicLimit, excess, ping);
 
-            // 分级处置策略：微量超出 (excess <= 0.25) 仅在底层静默丢弃攻击包，不累加 VL
-            if (excess <= LOW_CONFIDENCE_BUFFER) {
+            // 分级处置策略：如果刚受过击退，增加低确信保护缓冲裕度
+            double effectiveLowBuffer = underKnockback ? 0.45 : (recentSlotSwitch ? 0.30 : LOW_CONFIDENCE_BUFFER);
+            if (excess <= effectiveLowBuffer) {
                 return CombatVerdict.lowConfidenceDrop(this, detail);
             }
 
@@ -109,6 +154,19 @@ public class ReachCheck extends AbstractCheck {
         if (!enabled || attacker == null) {
             return;
         }
+
+        // 缺陷修复 1：严格过滤非近战直接伤害（如弓箭、三叉戟、雪球、投掷药水等远程抛射物）
+        if (event.getCause() == EntityDamageEvent.DamageCause.PROJECTILE
+                || event.getCause() == EntityDamageEvent.DamageCause.MAGIC
+                || event.getCause() == EntityDamageEvent.DamageCause.THORNS) {
+            return;
+        }
+
+        // 缺陷修复 2：如果伤害来源实体与攻击者不是同一个对象（例如直系箭矢事件中 damager 为 Arrow 实体）
+        if (event.getDamager() != attacker) {
+            return;
+        }
+
         PlayerData data = plugin.getPlayerManager().getPlayerData(attacker);
         CombatVerdict verdict = evaluateAttack(attacker, data, victim);
         if (verdict.isBlocked() && plugin.getCombatMitigationHandler() != null) {
@@ -136,7 +194,8 @@ public class ReachCheck extends AbstractCheck {
         }
         Location loc = attacker.getLocation();
         if (loc != null && loc.getWorld() != null) {
-            return new Location(loc.getWorld(), loc.getX(), loc.getY() + eyeHeight, loc.getZ(), loc.getYaw(), loc.getPitch());
+            return new Location(loc.getWorld(), loc.getX(), loc.getY() + eyeHeight, loc.getZ(), loc.getYaw(),
+                    loc.getPitch());
         }
         return attacker.getEyeLocation();
     }

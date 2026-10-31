@@ -4,7 +4,6 @@ import com.example.argusac.ArgusACPlugin;
 import com.example.argusac.check.AbstractCheck;
 import com.example.argusac.data.PlayerData;
 import com.example.argusac.manager.CheckManager;
-import com.example.argusac.prediction.PlayerPhysicsState;
 import com.github.retrooper.packetevents.event.PacketReceiveEvent;
 import com.github.retrooper.packetevents.event.PacketSendEvent;
 import com.github.retrooper.packetevents.protocol.packettype.PacketType;
@@ -27,17 +26,21 @@ import java.util.concurrent.ConcurrentHashMap;
  * <p>
  * 三阶段落地方案核心实现：
  * 1. 第一阶段（Netty/Packet 层进包拦截）：
- *    在接收到 PacketPlayInUseEntity / ServerboundInteractPacket (ATTACK) 的瞬间，
- *    同步调用核心检测（KillAura Angle/Raytrace、Reach 回溯、MaceDMG、AutoClicker），
- *    违规时直接 event.setCancelled(true) 丢弃该包，阻止其流向服务端主线程与 NMS 管线。
+ * 在接收到 PacketPlayInUseEntity / ServerboundInteractPacket (ATTACK) 的瞬间，
+ * 同步调用核心检测（KillAura Angle/Raytrace、Reach 回溯、MaceDMG、AutoClicker），
+ * 违规时直接 event.setCancelled(true) 丢弃该包，阻止其流向服务端主线程与 NMS 管线。
  * 2. 第二阶段（下游出包抑制与视觉状态清理）：
- *    - 拦截发往下游的 PacketPlayOutEntityStatus / ClientboundEntityEventPacket，抑制受害实体的受伤发红/抖动 (Status=2, 33, 36, 37) 与虚假死亡动画 (Status=3)；
- *    - 拦截攻击者派生的挥手动画广播包 (PacketPlayOutAnimation / ClientboundAnimatePacket)；
- *    - 拦截服务端因受击生成的命名音效包 (PacketPlayOutNamedSoundEffect / ClientboundSoundPacket)，消除虚假受击/暴击/横扫音效。
+ * - 拦截发往下游的 PacketPlayOutEntityStatus /
+ * ClientboundEntityEventPacket，抑制受害实体的受伤发红/抖动 (Status=2, 33, 36, 37) 与虚假死亡动画
+ * (Status=3)；
+ * - 拦截攻击者派生的挥手动画广播包 (PacketPlayOutAnimation / ClientboundAnimatePacket)；
+ * - 拦截服务端因受击生成的命名音效包 (PacketPlayOutNamedSoundEffect /
+ * ClientboundSoundPacket)，消除虚假受击/暴击/横扫音效。
  * 3. 第三阶段（分级处置策略与 Bukkit 兜底防御）：
- *    - 低确信/微量超出：仅在底层静默 Drop 攻击包，不增加严重 VL，防止网络抖动误伤；
- *    - 高确信/明显作弊：累加 VL (VL += step)，若伴随移动预测异常则联动 SetbackManager 触发标准位置矫正，达到阈值自动踢出或封禁；
- *    - 保留 EntityDamageByEntityEvent 作为未命中缓存或外部插件兼容的最终兜底防线 (Fallback)。
+ * - 低确信/微量超出：仅在底层静默 Drop 攻击包，不增加严重 VL，防止网络抖动误伤；
+ * - 高确信/明显作弊：累加 VL (VL += step)，若伴随移动预测异常则联动 SetbackManager
+ * 触发标准位置矫正，达到阈值自动踢出或封禁；
+ * - 保留 EntityDamageByEntityEvent 作为未命中缓存或外部插件兼容的最终兜底防线 (Fallback)。
  */
 public class CombatMitigationHandler {
 
@@ -46,10 +49,12 @@ public class CombatMitigationHandler {
     // 记录攻击者最近一次被拦截攻击的时间戳 (Key: Attacker UUID, Value: Timestamp ms)
     private final Map<UUID, Long> recentCancelledAttacks = new ConcurrentHashMap<>();
 
-    // 记录攻击者实体 ID 最近一次被阻断的时间戳，用于快速抑制挥手广播包 (Key: Attacker EntityId, Value: Timestamp ms)
+    // 记录攻击者实体 ID 最近一次被阻断的时间戳，用于快速抑制挥手广播包 (Key: Attacker EntityId, Value: Timestamp
+    // ms)
     private final Map<Integer, Long> suppressedAttackerEntityIds = new ConcurrentHashMap<>();
 
-    // 记录受害者实体最近一次被违规攻击锁定的时间戳，用于抑制下游受伤状态包与音效 (Key: Victim EntityId, Value: Timestamp ms)
+    // 记录受害者实体最近一次被违规攻击锁定的时间戳，用于抑制下游受伤状态包与音效 (Key: Victim EntityId, Value: Timestamp
+    // ms)
     private final Map<Integer, Long> suppressedVictimEntityIds = new ConcurrentHashMap<>();
 
     // 记录受害者受抑制时的位置快照，用于精准过滤周围的受击音效包 (Key: Victim EntityId, Value: Location)
@@ -69,10 +74,10 @@ public class CombatMitigationHandler {
     /**
      * 底层网络数据包级攻击包拦截处理 (PacketEvents Play.Client.INTERACT_ENTITY - Action: ATTACK)
      *
-     * @param attacker 发包攻击玩家
-     * @param data 玩家运行时状态
+     * @param attacker       发包攻击玩家
+     * @param data           玩家运行时状态
      * @param targetEntityId 目标实体 ID
-     * @param event 网络包接收事件
+     * @param event          网络包接收事件
      * @return 是否已拦截并丢弃该攻击包
      */
     public boolean handlePacketAttack(Player attacker, PlayerData data, int targetEntityId, PacketReceiveEvent event) {
@@ -95,7 +100,8 @@ public class CombatMitigationHandler {
             dropPacketAndMarkSuppression(attacker, targetEntityId, attacker.getLocation(), event);
             if (plugin.getCheckManager() != null && plugin.getCheckManager().getKillAuraCheck() != null) {
                 escalateHighConfidence(attacker, data,
-                        CombatVerdict.highConfidence(plugin.getCheckManager().getKillAuraCheck(), 3, "Self damage packet exploit"));
+                        CombatVerdict.highConfidence(plugin.getCheckManager().getKillAuraCheck(), 3,
+                                "Self damage packet exploit"));
             }
             return true;
         }
@@ -128,7 +134,8 @@ public class CombatMitigationHandler {
         if (victim != null) {
             Location victimLoc = victim.getLocation();
 
-            // 5.1 KillAura 多维矩阵检测 (Angle, Blindspot, Raytrace, Aimbot Snap, Multi-Target Switch)
+            // 5.1 KillAura 多维矩阵检测 (Angle, Blindspot, Raytrace, Aimbot Snap, Multi-Target
+            // Switch)
             if (checkManager.getKillAuraCheck() != null) {
                 CombatVerdict kaVerdict = checkManager.getKillAuraCheck().evaluateAttack(attacker, data, victim);
                 if (kaVerdict.isBlocked()) {
@@ -166,7 +173,7 @@ public class CombatMitigationHandler {
      * 执行数据包层分级处置 (Phase 1 Drop + Phase 2 Suppression Marking + Phase 3 Escalation)
      */
     private void executePacketMitigation(Player attacker, PlayerData data, int targetEntityId,
-                                         Location victimLoc, PacketReceiveEvent event, CombatVerdict verdict) {
+            Location victimLoc, PacketReceiveEvent event, CombatVerdict verdict) {
         // 1. 直接在 Netty 管线丢弃该攻击包，阻止流向主线程与 NMS 伤害管线
         dropPacketAndMarkSuppression(attacker, targetEntityId, victimLoc, event);
 
@@ -178,13 +185,13 @@ public class CombatMitigationHandler {
                         "[SILENT_DROP] " + verdict.getReason());
             }
         } else if (verdict.isHighConfidence()) {
-            // 高确信/明显作弊：记录 VL 累加、若伴随移动异常则联动位置矫正 (Setback)、达到阈值执行惩罚
+            // 高确信/明显作弊：记录 VL 累加、下发战斗拦截提示、达到阈值执行惩罚（严格职责隔离：战斗违规仅拦截攻击，绝不借用 Speed 强制传送回退）
             escalateHighConfidence(attacker, data, verdict);
         }
     }
 
     /**
-     * 高确信违规升级处置：主线程安全地累加 VL、检查移动异常触发 Setback、达到阈值自动 Kick/Ban
+     * 高确信违规升级处置：主线程安全地累加 VL、下发攻击取消提示、达到阈值自动 Kick/Ban
      */
     private void escalateHighConfidence(Player attacker, PlayerData data, CombatVerdict verdict) {
         if (attacker == null || verdict == null || verdict.getCheck() == null) {
@@ -200,23 +207,7 @@ public class CombatMitigationHandler {
                         verdict.getCheck(),
                         verdict.getVlStep(),
                         verdict.getReason(),
-                        null
-                );
-            }
-
-            // 若同时伴随移动异常（移动缓冲区累积异常、物理预测器残差偏高或处于空中违规状态），按移动预测引擎触发标准位置矫正 (Setback)
-            if (data != null && plugin.getSetbackManager() != null && isAccompaniedByMovementAnomaly(data)) {
-                AbstractCheck moveCheck = (plugin.getCheckManager() != null && plugin.getCheckManager().getSpeedCheck() != null)
-                        ? plugin.getCheckManager().getSpeedCheck()
-                        : verdict.getCheck();
-                int currentVl = data.getVl(verdict.getCheck().getName());
-                plugin.getSetbackManager().mitigate(
-                        attacker,
-                        moveCheck,
-                        Math.max(1, currentVl),
-                        "Combat violation accompanied by movement anomaly: " + verdict.getReason(),
-                        null
-                );
+                        null);
             }
         };
 
@@ -228,28 +219,10 @@ public class CombatMitigationHandler {
     }
 
     /**
-     * 判断攻击者当前是否同时伴随移动异常（结合移动预测引擎残差缓冲与速度缓冲）
-     */
-    private boolean isAccompaniedByMovementAnomaly(PlayerData data) {
-        if (data == null) {
-            return false;
-        }
-        if (data.getSpeedBuffer() > 0.05) {
-            return true;
-        }
-        PlayerPhysicsState ps = data.getPhysicsState();
-        if (ps != null) {
-            if (ps.getHorizontalBuffer() > 0.35 || ps.getVerticalBuffer() > 0.35) {
-                return true;
-            }
-        }
-        return data.getFlatHoverTicks() >= 2 || data.getAntiGravityTicks() >= 2;
-    }
-
-    /**
      * 丢弃进包并登记攻击者与受害实体的下游抑制窗口
      */
-    private void dropPacketAndMarkSuppression(Player attacker, int targetEntityId, Location victimLoc, PacketReceiveEvent event) {
+    private void dropPacketAndMarkSuppression(Player attacker, int targetEntityId, Location victimLoc,
+            PacketReceiveEvent event) {
         event.setCancelled(true);
         long now = System.currentTimeMillis();
         recentCancelledAttacks.put(attacker.getUniqueId(), now);
@@ -410,7 +383,8 @@ public class CombatMitigationHandler {
     /**
      * 应用 Bukkit 实体伤害事件兜底裁决结果（支持分级处置策略）
      */
-    public void applyFallbackVerdict(EntityDamageByEntityEvent event, Player attacker, Entity victim, CombatVerdict verdict) {
+    public void applyFallbackVerdict(EntityDamageByEntityEvent event, Player attacker, Entity victim,
+            CombatVerdict verdict) {
         if (event == null || attacker == null || verdict == null || !verdict.isBlocked()) {
             return;
         }
@@ -445,7 +419,7 @@ public class CombatMitigationHandler {
      * 兼容旧版直接取消伤害事件的调用入口（默认按高确信违规处理）
      */
     public void mitigateDamage(EntityDamageByEntityEvent event, Player attacker, Entity victim,
-                               AbstractCheck check, int vl, String reason) {
+            AbstractCheck check, int vl, String reason) {
         applyFallbackVerdict(event, attacker, victim, CombatVerdict.highConfidence(check, vl, reason));
     }
 
@@ -473,7 +447,8 @@ public class CombatMitigationHandler {
      */
     public void suppressAttack(Player attacker, long durationMs) {
         if (attacker != null) {
-            long effectiveTimestamp = System.currentTimeMillis() - PACKET_SUPPRESSION_WINDOW_MS + Math.max(0L, durationMs);
+            long effectiveTimestamp = System.currentTimeMillis() - PACKET_SUPPRESSION_WINDOW_MS
+                    + Math.max(0L, durationMs);
             recentCancelledAttacks.put(attacker.getUniqueId(), effectiveTimestamp);
             suppressedAttackerEntityIds.put(attacker.getEntityId(), effectiveTimestamp);
         }

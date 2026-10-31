@@ -26,6 +26,11 @@ public class SetbackNotifier {
     }
 
     public void sendPlayerNotification(Player player, PlayerSetbackContext context, String notifyPlayerChannel, long notifyPlayerCooldownMs) {
+        sendPlayerNotification(player, context, "Move", "HARD", notifyPlayerChannel, notifyPlayerCooldownMs);
+    }
+
+    public void sendPlayerNotification(Player player, PlayerSetbackContext context, String checkName, String mode,
+                                       String notifyPlayerChannel, long notifyPlayerCooldownMs) {
         if ("NONE".equalsIgnoreCase(notifyPlayerChannel)) {
             return;
         }
@@ -36,11 +41,55 @@ public class SetbackNotifier {
         }
         context.setLastNotifyTimestamp(now);
 
-        // 全面接入 i18n 国际化多语言系统
+        // 区分“直接取消本次移动”与“位置强制回退”的玩家提示
+        String langKey = "DIRECT_CANCEL".equalsIgnoreCase(mode)
+                ? "punishment.move-cancel-notify"
+                : "punishment.setback-notify";
+
         if ("CHAT".equalsIgnoreCase(notifyPlayerChannel)) {
-            I18n.sendPrefixed(player, "punishment.setback-notify");
+            I18n.sendPrefixed(player, langKey, "check", checkName, "mode", mode);
         } else {
-            I18n.sendActionBar(player, "punishment.setback-notify");
+            I18n.sendActionBar(player, langKey, "check", checkName, "mode", mode);
+        }
+    }
+
+    /**
+     * 发送战斗攻击取消或方块交互取消的分类提示（与移动取消/位置回退严格区分）
+     */
+    public void notifyInteractionCancel(Player player, PlayerSetbackContext context,
+                                        com.example.argusac.api.Check check, int currentVl,
+                                        String notifyPlayerChannel, long notifyPlayerCooldownMs,
+                                        boolean notifyAdminEnabled) {
+        if (player == null || check == null || context == null) {
+            return;
+        }
+
+        boolean isCombat = (check.getType() == com.example.argusac.api.CheckType.COMBAT);
+        boolean isWorld = (check.getType() == com.example.argusac.api.CheckType.WORLD);
+        if (!isCombat && !isWorld) {
+            return;
+        }
+
+        long now = System.currentTimeMillis();
+        if (!"NONE".equalsIgnoreCase(notifyPlayerChannel)
+                && (now - context.getLastNotifyTimestamp() >= notifyPlayerCooldownMs)) {
+            context.setLastNotifyTimestamp(now);
+            String playerKey = isCombat ? "punishment.combat-cancel-notify" : "punishment.world-cancel-notify";
+            if ("CHAT".equalsIgnoreCase(notifyPlayerChannel)) {
+                I18n.sendPrefixed(player, playerKey, "check", check.getName(), "vl", currentVl);
+            } else {
+                I18n.sendActionBar(player, playerKey, "check", check.getName(), "vl", currentVl);
+            }
+        }
+
+        if (notifyAdminEnabled) {
+            String adminKey = isCombat ? "punishment.combat-cancel-admin" : "punishment.world-cancel-admin";
+            I18n.broadcastStaff(
+                    adminKey,
+                    "player", player.getName(),
+                    "check", check.getName(),
+                    "vl", currentVl
+            );
         }
     }
 
@@ -54,13 +103,16 @@ public class SetbackNotifier {
         context.setImmunityUntil(0L);
         context.setLastSetbackTimestamp(now);
 
-        // 2. 玩家端提示 (带独立冷却，走 i18n 多语言)
-        sendPlayerNotification(player, context, notifyPlayerChannel, notifyPlayerCooldownMs);
+        // 2. 玩家端提示 (按 DIRECT_CANCEL 与 HARD/SOFT 区分取消移动与位置回退，带独立冷却)
+        sendPlayerNotification(player, context, checkName, mode, notifyPlayerChannel, notifyPlayerCooldownMs);
 
-        // 3. 管理员端广播 (全面接入 i18n 多语言)
+        // 3. 管理员端广播 (区分 [移动取消] 与 [位置回退])
         if (notifyAdminEnabled) {
+            String adminKey = "DIRECT_CANCEL".equalsIgnoreCase(mode)
+                    ? "punishment.move-cancel-admin"
+                    : "punishment.setback-admin";
             I18n.broadcastStaff(
-                    "punishment.setback-admin",
+                    adminKey,
                     "player", player.getName(),
                     "check", checkName,
                     "mode", mode,

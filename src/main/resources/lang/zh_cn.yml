@@ -34,9 +34,15 @@ alert:
 
 # Mitigation and punishment messages
 punishment:
-  setback-notify: "<red>检测到异常移动行为，位置已平滑重置！</red>"
+  move-cancel-notify: "<red>检测到异常移动 ({check})，本次移动已被取消！</red>"
+  setback-notify: "<red>检测到异常移动行为 ({check})，您的位置已被强制回退！</red>"
+  combat-cancel-notify: "<red>检测到异常战斗行为 ({check})，本次攻击已被取消！</red>"
   combat-throttle-notify: "<red>[ArgusAC] 检测到异常战斗行为，近战攻击能力已被暂时抑制！</red>"
-  setback-admin: "<gold>[Setback]</gold> <yellow>{player}</yellow> <gray>因</gray> <red>{check}</red> <gray>已被回退</gray> <dark_gray>(</dark_gray><white>{old_loc}</white> <dark_gray>-></dark_gray> <green>{new_loc}</green><dark_gray>)</dark_gray> <dark_gray>[</dark_gray><aqua>{mode}</aqua><dark_gray>]</dark_gray>"
+  world-cancel-notify: "<red>检测到异常方块交互 ({check})，本次操作已被取消！</red>"
+  move-cancel-admin: "<gold>[移动取消]</gold> <yellow>{player}</yellow> <gray>因</gray> <red>{check}</red> <gray>移动已被取消</gray> <dark_gray>(</dark_gray><white>{old_loc}</white> <dark_gray>-></dark_gray> <green>{new_loc}</green><dark_gray>)</dark_gray> <dark_gray>[</dark_gray><aqua>{mode}</aqua><dark_gray>]</dark_gray>"
+  setback-admin: "<gold>[位置回退]</gold> <yellow>{player}</yellow> <gray>因</gray> <red>{check}</red> <gray>已被回退</gray> <dark_gray>(</dark_gray><white>{old_loc}</white> <dark_gray>-></dark_gray> <green>{new_loc}</green><dark_gray>)</dark_gray> <dark_gray>[</dark_gray><aqua>{mode}</aqua><dark_gray>]</dark_gray>"
+  combat-cancel-admin: "<gold>[攻击取消]</gold> <yellow>{player}</yellow> <gray>因</gray> <red>{check}</red> <gray>本次攻击/战斗交互已被取消</gray> <dark_gray>[VL: <red>{vl}</red>]</dark_gray>"
+  world-cancel-admin: "<gold>[交互取消]</gold> <yellow>{player}</yellow> <gray>因</gray> <red>{check}</red> <gray>本次方块交互已被取消</gray> <dark_gray>[VL: <red>{vl}</red>]</dark_gray>"
   kick-reason: "<red>[ArgusAC] 您的客户端行为异常，已被移出服务器。\n<gray>触发检测: <yellow>{check}</yellow> <gray>(代码: <white>{code}</white>)</gray>"
   ban-reason: "<red>[ArgusAC] 您的账户因违规行为已被封禁。\n<gray>原因: <yellow>{reason}</yellow>\n<gray>如有异议请联系管理员申诉。</gray>"
 

@@ -119,16 +119,36 @@ public class KillAuraCheck extends AbstractCheck {
             return CombatVerdict.pass();
         }
 
-        // 计算玩家视线与目标碰撞箱的多维最小夹角 (Min Angle to Box)：
-        // 若准星直接正对生物的胸膛、肚子、脚部或外缘，minAngle 恒等于 0.0°
-        double minAngle = MathUtil.getMinAngleToBox(eyeLoc, targetBox, victimEyeHeight);
+        double attackerEyeHeight = 1.62;
+        try {
+            attackerEyeHeight = attacker.getEyeHeight();
+        } catch (Throwable ignored) {
+        }
+        List<Location> candidateEyes = data.getCandidateEyeLocations(attacker.getWorld(), attackerEyeHeight, attacker.getLocation());
+        if (candidateEyes.isEmpty()) {
+            candidateEyes.add(eyeLoc);
+        }
 
-        // 如果存在延迟历史快照候选盒，在时间窗口内所有候选盒中取视线偏角极小值
-        if (plugin.getHistoryTracker() != null && minAngle > 0.0) {
-            List<HistoricalBox> candidates = plugin.getHistoryTracker().getCompensatedCandidateBoxes(livingVictim, ping);
+        // 计算玩家视线与目标碰撞箱的多维最小夹角 (Min Angle to Box)：
+        // 综合攻击者各候选眼部坐标（数据包坐标、上一帧/当前帧移动坐标）与目标延迟回溯候选盒集合，
+        // 彻底消除受击击退瞬间敌我相对位移或客户端先发攻击包后发移动包引起的视角夹角畸变
+        double minAngle = Double.MAX_VALUE;
+        List<HistoricalBox> candidates = (plugin.getHistoryTracker() != null)
+                ? plugin.getHistoryTracker().getCompensatedCandidateBoxes(livingVictim, ping)
+                : java.util.Collections.emptyList();
+
+        for (Location candEye : candidateEyes) {
+            if (candEye == null || candEye.getWorld() != victimLoc.getWorld()) continue;
+            double angleToTarget = MathUtil.getMinAngleToBox(candEye, targetBox, victimEyeHeight);
+            if (angleToTarget < minAngle) {
+                minAngle = angleToTarget;
+            }
+            if (minAngle == 0.0) {
+                break;
+            }
             for (HistoricalBox hb : candidates) {
                 if (hb.getBox() != null) {
-                    double candAngle = MathUtil.getMinAngleToBox(eyeLoc, hb.getBox(), hb.getEyeHeight());
+                    double candAngle = MathUtil.getMinAngleToBox(candEye, hb.getBox(), hb.getEyeHeight());
                     if (candAngle < minAngle) {
                         minAngle = candAngle;
                         if (minAngle == 0.0) {
@@ -137,38 +157,65 @@ public class KillAuraCheck extends AbstractCheck {
                     }
                 }
             }
+            if (minAngle == 0.0) {
+                break;
+            }
         }
 
         double distance = eyeLoc.distance(victimEye);
+        double distanceToCompensatedBox = (plugin.getHistoryTracker() != null)
+                ? plugin.getHistoryTracker().getCompensatedMinDistance(eyeLoc, livingVictim, ping)
+                : targetBox.distanceTo(eyeLoc);
 
-        // 1. 盲区与背身反向攻击拦截 (Blindspot Check: 完全背对或偏离目标盒超过 90 度发包攻击 -> 高确信明显作弊)
-        if (blindspotCheck && distance > 0.8 && minAngle > 90.0) {
-            return CombatVerdict.highConfidence(this, 3,
-                    String.format("Blindspot Attack minAngle=%.1f deg (>90.0) (Backtracked)", minAngle));
-        }
+        long now = System.currentTimeMillis();
+        boolean underKnockback = data.hasRecentVelocity(1000L)
+                || (now - data.getLastDamageTime() < Math.max(900L, ping + 400L))
+                || data.hasAnyLegalVelocity();
+        double effectiveMaxAngle = underKnockback ? (maxAngle + 20.0) : maxAngle;
 
-        // 2. 视角夹角检测 (Angle Check，基于回溯盒边缘对齐，支持分级处置)
-        if (distance > 1.0 && minAngle > maxAngle) {
-            double angleExcess = minAngle - maxAngle;
-            String detail = String.format("Impossible Angle minAngle=%.1f deg, max=%.1f (Backtracked)", minAngle, maxAngle);
-            if (angleExcess <= ANGLE_LOW_CONFIDENCE_MARGIN) {
-                return CombatVerdict.lowConfidenceDrop(this, detail);
+        // 贴身肉搏重叠豁免：当回溯碰撞箱距离 <= 1.25 格或眼距 <= 1.45 格时，敌我碰撞箱几乎贴合交错，微小击退位移即可使夹角翻转
+        boolean closeQuartersOverlap = (distance <= 1.45 || distanceToCompensatedBox <= 1.25);
+
+        if (!closeQuartersOverlap) {
+            // 1. 盲区与背身反向攻击拦截 (Blindspot Check: 完全背对或偏离目标盒超过 90 度发包攻击)
+            // 注意：原版客户端在同一 tick 内先发 INTERACT_ENTITY 后发 PLAYER_ROTATION，
+            // 当玩家遇袭快速甩鼠转身反击时，首包可能携带上一 tick 的旧视角，因此需通过 angleAnomaly 连续性确认
+            double blindspotLimit = underKnockback ? 110.0 : 90.0;
+            if (blindspotCheck && distance > 1.50 && minAngle > blindspotLimit) {
+                int anomalies = data.recordAngleAnomaly(now);
+                String detail = String.format("Blindspot Attack minAngle=%.1f deg (>%.1f) (Backtracked)", minAngle, blindspotLimit);
+                if (anomalies >= 2) {
+                    return CombatVerdict.highConfidence(this, 3, detail);
+                }
+                return underKnockback ? CombatVerdict.pass() : CombatVerdict.lowConfidenceDrop(this, detail);
             }
-            return CombatVerdict.highConfidence(this, 2, detail);
-        }
 
-        // 3. 准星光线脱靶命中检测 (Silent Aim / Aimbot RayTrace Miss)
-        // 严格限定在最小视线夹角超出 75 度且距离超出目标碰撞盒外缘 1.8 格以上，防止常规追击转身近战误判
-        if (distance > 1.5 && minAngle > 75.0) {
-            double distanceToCompensatedBox = (plugin.getHistoryTracker() != null)
-                    ? plugin.getHistoryTracker().getCompensatedMinDistance(eyeLoc, livingVictim, ping)
-                    : targetBox.distanceTo(eyeLoc);
+            // 2. 视角夹角检测 (Angle Check，基于回溯盒边缘对齐，支持受击宽限与连续性确认)
+            if (distance > 1.35 && minAngle > effectiveMaxAngle) {
+                int anomalies = data.recordAngleAnomaly(now);
+                double angleExcess = minAngle - effectiveMaxAngle;
+                String detail = String.format("Impossible Angle minAngle=%.1f deg, max=%.1f (Backtracked)", minAngle, effectiveMaxAngle);
+                if (angleExcess <= ANGLE_LOW_CONFIDENCE_MARGIN || anomalies < 2) {
+                    return underKnockback ? CombatVerdict.pass() : CombatVerdict.lowConfidenceDrop(this, detail);
+                }
+                return CombatVerdict.highConfidence(this, 2, detail);
+            }
 
-            if (distanceToCompensatedBox > distance + 1.8) {
-                return CombatVerdict.highConfidence(this, 2,
-                        String.format("Aimbot Ray Miss minAngle=%.1f, ping=%d (Backtracked)", minAngle, ping));
+            // 3. 准星光线脱靶命中检测 (Silent Aim / Aimbot RayTrace Miss)
+            if (distance > 1.65 && minAngle > 75.0 && !underKnockback) {
+                if (distanceToCompensatedBox > distance + 1.8) {
+                    int anomalies = data.recordAngleAnomaly(now);
+                    String detail = String.format("Aimbot Ray Miss minAngle=%.1f, ping=%d (Backtracked)", minAngle, ping);
+                    if (anomalies >= 2) {
+                        return CombatVerdict.highConfidence(this, 2, detail);
+                    }
+                    return CombatVerdict.lowConfidenceDrop(this, detail);
+                }
             }
         }
+
+        // 视角正常命中，重置连续偏角异常计数
+        data.resetAngleAnomaly();
 
         // 4. 隔墙穿透攻击检测 (RayTrace Blocks，三点防半砖/楼梯缺口露出脚部或头部时误判)
         if (raytraceBlocks && distance > 1.2) {
@@ -185,7 +232,7 @@ public class KillAuraCheck extends AbstractCheck {
         }
 
         // 5. 准星瞬间锁头突变检测 (Sudden Angle Snap)
-        if (snapCheck && distance > 1.0) {
+        if (snapCheck && distance > 1.0 && !underKnockback) {
             float lastYaw = data.getLastLookYaw();
             float currentYaw = eyeLoc.getYaw();
             float yawDelta = Math.abs(currentYaw - lastYaw);
@@ -193,8 +240,7 @@ public class KillAuraCheck extends AbstractCheck {
 
             // 突变锁头：必须连续 3 次突变且直指目标，绝不在单次正常甩枪拉枪时误伤
             if (yawDelta > snapAngleThreshold && minAngle < 15.0) {
-                long snapNow = System.currentTimeMillis();
-                int snaps = data.recordSnap(snapNow);
+                int snaps = data.recordSnap(now);
                 if (snaps >= 3) {
                     return CombatVerdict.highConfidence(this, 2,
                             String.format("Aimbot Snap deltaYaw=%.1f, minAngle=%.1f, count=%d", yawDelta, minAngle, snaps));
@@ -205,7 +251,6 @@ public class KillAuraCheck extends AbstractCheck {
         }
 
         // 6. 极速切换不同目标检测 (Multi-Target Switch)
-        long now = System.currentTimeMillis();
         UUID lastTarget = data.getLastAttackedTarget();
         long lastAttack = data.getLastAttackTime();
 

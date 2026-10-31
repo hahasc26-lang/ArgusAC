@@ -10,6 +10,7 @@ import com.github.retrooper.packetevents.event.PacketReceiveEvent;
 import com.github.retrooper.packetevents.event.PacketSendEvent;
 import com.github.retrooper.packetevents.protocol.packettype.PacketType;
 import com.github.retrooper.packetevents.protocol.player.User;
+import com.github.retrooper.packetevents.wrapper.play.client.WrapperPlayClientHeldItemChange;
 import com.github.retrooper.packetevents.wrapper.play.client.WrapperPlayClientPlayerFlying;
 import org.bukkit.entity.Player;
 
@@ -97,6 +98,24 @@ public class PacketPipelineManager extends PacketListenerAbstract {
         // 6. 拦截客户端使用物品数据包 (Use Item - 弓箭/弩蓄力协议级打点)
         if (event.getPacketType() == PacketType.Play.Client.USE_ITEM) {
             handleIncomingUseItemPacket(player, data);
+        }
+
+        // 7. 拦截客户端快捷栏槽位切换包 (Held Item Change - 支持切刀手持物历史回溯)
+        if (event.getPacketType() == PacketType.Play.Client.HELD_ITEM_CHANGE) {
+            handleIncomingHeldItemChange(data, event);
+        }
+
+        // 8. 拦截客户端界面/容器关闭包 (Close Window - 激活切屏与失焦防按键粘滞宽限)
+        if (event.getPacketType() == PacketType.Play.Client.CLOSE_WINDOW) {
+            data.markContainerClosed(System.currentTimeMillis());
+        }
+    }
+
+    private void handleIncomingHeldItemChange(PlayerData data, PacketReceiveEvent event) {
+        try {
+            WrapperPlayClientHeldItemChange heldWrapper = new WrapperPlayClientHeldItemChange(event);
+            data.recordSlotSwitch(heldWrapper.getSlot());
+        } catch (Throwable ignored) {
         }
     }
 
@@ -212,6 +231,9 @@ public class PacketPipelineManager extends PacketListenerAbstract {
      */
     private void handleIncomingFlyingPacket(Player player, PlayerData data, User user,
             WrapperPlayClientPlayerFlying flying, PacketReceiveEvent event) {
+        // 递进客户端移动虚拟时钟，维护每个 Client Tick 的发包与失焦挂起恢复判定
+        data.incrementClientFlyingTicks(System.nanoTime());
+
         // 0. 对标 GrimAC 协议级 In-Flight 硬阻断与装聋作哑 (Ignore Teleport) 逃避补刀反制：
         // 服务端发出了位置重置包，在客户端回传 TELEPORT_CONFIRM 前，客户端发来的所有位移数据包属于在途作废位移。
         // 必须在协议管线最底层直接取消拦截，同时将数据包内部坐标硬重写为锚点坐标，从源头扼死作弊客户端的蹭步蠕动！
@@ -233,11 +255,14 @@ public class PacketPipelineManager extends PacketListenerAbstract {
                         // 1. 数据包直接在底层取消
                         event.setCancelled(true);
 
-                        // 2. 坐标硬重写覆盖 (Coordinate Hard-Clamp Invariant)：防止任何穿透逻辑读取到违规微位移
+                        // 2. 坐标硬重写覆盖 (Coordinate Hard-Clamp Invariant)：防止任何穿透逻辑读取到违规微位移，但保留客户端最新旋转视角
                         try {
                             com.github.retrooper.packetevents.protocol.world.Location cur = flying.getLocation();
-                            float yaw = (cur != null) ? cur.getYaw() : target.getYaw();
-                            float pitch = (cur != null) ? cur.getPitch() : target.getPitch();
+                            float yaw = (cur != null && flying.hasRotationChanged()) ? cur.getYaw() : target.getYaw();
+                            float pitch = (cur != null && flying.hasRotationChanged()) ? cur.getPitch() : target.getPitch();
+                            if (flying.hasRotationChanged() && data != null) {
+                                data.updatePacketRotation(yaw, pitch);
+                            }
                             flying.setLocation(new com.github.retrooper.packetevents.protocol.world.Location(
                                     target.getX(), target.getY(), target.getZ(), yaw, pitch
                             ));
@@ -366,9 +391,11 @@ public class PacketPipelineManager extends PacketListenerAbstract {
     /**
      * 客户端手臂挥舞包 (Animation) 捕获：
      * 1. 若该玩家正处于违规攻击抑制期，当场拦截挥手包，防止服务端向周围玩家广播异常挥臂动作；
-     * 2. 纳秒级打点统计 CPS，若超过阈值同样拦截该包。
+     * 2. 推进 Swing 客户端虚拟时钟，供 Attack & Swing 乱序配对使用；
+     * 3. 统计 CPS 与统计学离散度，若超过阈值同样拦截该包。
      */
     private void handleIncomingAnimationPacket(Player player, PlayerData data, PacketReceiveEvent event) {
+        data.recordSwing();
         if (plugin.getCombatMitigationHandler() != null && plugin.getCombatMitigationHandler().isAttackSuppressed(player)) {
             event.setCancelled(true);
             return;
@@ -380,13 +407,23 @@ public class PacketPipelineManager extends PacketListenerAbstract {
                 if (plugin.getCombatMitigationHandler() != null) {
                     plugin.getCombatMitigationHandler().suppressAttack(player, 75L);
                 }
+                if (verdict.isHighConfidence() && verdict.getCheck() != null) {
+                    org.bukkit.Bukkit.getScheduler().runTask(plugin, () -> {
+                        if (player.isOnline()) {
+                            plugin.getViolationManager().flag(player, verdict.getCheck(), verdict.getVlStep(), verdict.getReason());
+                        }
+                    });
+                }
             }
         }
     }
 
     /**
      * 客户端实体交互包 (Interact Entity / PacketPlayInUseEntity / ServerboundInteractPacket) 捕获
-     * 过滤条件：只拦截交互类型为 ATTACK 的动作，并在 Netty 进包瞬间完成合规初筛与丢弃
+     * 过滤条件：
+     * 1. 对 INTERACT_AT 与 INTERACT 原版孪生交互包执行同 Tick 实体去重；
+     * 2. 对 ATTACK 记录客户端动作时钟，支持 Attack 先于 Swing 到达的乱序宽容；
+     * 3. 在 Netty 进包瞬间完成合规初筛与违规丢弃。
      */
     private void handleIncomingInteractEntityPacket(Player player, PlayerData data, PacketReceiveEvent event) {
         if (plugin.getSetbackManager() != null) {
@@ -401,12 +438,19 @@ public class PacketPipelineManager extends PacketListenerAbstract {
         try {
             com.github.retrooper.packetevents.wrapper.play.client.WrapperPlayClientInteractEntity interactWrapper = new com.github.retrooper.packetevents.wrapper.play.client.WrapperPlayClientInteractEntity(
                     event);
-            if (interactWrapper
-                    .getAction() == com.github.retrooper.packetevents.wrapper.play.client.WrapperPlayClientInteractEntity.InteractAction.ATTACK) {
+            com.github.retrooper.packetevents.wrapper.play.client.WrapperPlayClientInteractEntity.InteractAction action = interactWrapper.getAction();
+            int targetEntityId = interactWrapper.getEntityId();
+
+            if (action == com.github.retrooper.packetevents.wrapper.play.client.WrapperPlayClientInteractEntity.InteractAction.ATTACK) {
+                data.recordAttack();
                 if (plugin.getCombatMitigationHandler() != null) {
-                    plugin.getCombatMitigationHandler().handlePacketAttack(player, data, interactWrapper.getEntityId(),
-                            event);
+                    plugin.getCombatMitigationHandler().handlePacketAttack(player, data, targetEntityId, event);
                 }
+            } else if (action == com.github.retrooper.packetevents.wrapper.play.client.WrapperPlayClientInteractEntity.InteractAction.INTERACT_AT) {
+                data.recordInteractEntity(targetEntityId, true);
+            } else if (action == com.github.retrooper.packetevents.wrapper.play.client.WrapperPlayClientInteractEntity.InteractAction.INTERACT) {
+                // 原版右键实体的孪生交互去重
+                data.recordInteractEntity(targetEntityId, false);
             }
         } catch (Throwable ignored) {
         }
@@ -430,16 +474,12 @@ public class PacketPipelineManager extends PacketListenerAbstract {
             Object action = digWrapper.getAction();
             if (action != null) {
                 String actionName = action.toString();
+                long now = System.currentTimeMillis();
                 if (actionName.contains("START")) {
-                    long now = System.currentTimeMillis();
-                    data.setDigging(true);
-                    data.setLastDiggingTime(now);
-                    data.setDiggingStartTime(now);
-                    data.getClickTimestamps().clear();
+                    data.startDigging(now);
                 } else if (actionName.contains("CANCEL") || actionName.contains("FINISH")
                         || actionName.contains("ABORT") || actionName.contains("STOP")) {
-                    data.setDigging(false);
-                    data.setLastDiggingTime(System.currentTimeMillis());
+                    data.stopDigging(now);
                 }
             }
         } catch (Throwable ignored) {

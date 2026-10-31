@@ -66,9 +66,9 @@ public class EntityHistoryTracker {
 
         for (Player player : Bukkit.getOnlinePlayers()) {
             recordEntity(player, adapter, now);
-            // 同步索引玩家周围 8 格内的战斗目标生物，确保 PVE 与 PVP 均可在 Netty 层精准拦截
+            // 同步索引玩家周围 12 格内的战斗目标生物，确保高速扑击的生物在进入交战距离前已积累足够的历史轨迹
             try {
-                for (Entity nearby : player.getNearbyEntities(8.0, 6.0, 8.0)) {
+                for (Entity nearby : player.getNearbyEntities(12.0, 8.0, 12.0)) {
                     if (nearby instanceof LivingEntity && !(nearby instanceof Player)) {
                         recordEntity(nearby, adapter, now);
                     }
@@ -177,18 +177,18 @@ public class EntityHistoryTracker {
             }
         }
 
-        // 如果没有延迟或无历史记录，直接返回当前盒距离
-        if (pingMs <= 10 || deque == null || deque.isEmpty()) {
+        // 如果无历史记录，直接返回当前盒距离
+        if (deque == null || deque.isEmpty()) {
             return minDistance;
         }
 
         long now = System.currentTimeMillis();
-        // 攻击者看到受害者画面的理论历史时间点 (考虑网络单向延迟并给予 60ms 采样时间窗)
-        long targetTimestamp = now - pingMs;
-        long windowStart = targetTimestamp - 60L;
-        long windowEnd = targetTimestamp + 60L;
+        // 攻击者看到受害者画面的理论历史时间区间：
+        // 涵盖网络单向/往返延迟 (pingMs) 以及原版客户端对其它实体的 3-tick (150ms) 平滑插值缓冲 (LivingEntity#lerpTo)
+        long windowStart = now - Math.max(pingMs, 50) - 200L;
+        long windowEnd = now;
 
-        // 2. 遍历延迟回溯时间窗口内的所有历史快照
+        // 2. 遍历延迟与客户端插值时间窗口内的所有历史快照
         for (HistoricalBox historical : deque) {
             long ts = historical.getTimestamp();
             if (ts >= windowStart && ts <= windowEnd && historical.getBox() != null) {
@@ -271,7 +271,7 @@ public class EntityHistoryTracker {
     }
 
     /**
-     * 获取延迟窗口内所有候选历史盒快照列表，支持多候选盒无误报匹配
+     * 获取延迟与客户端 3-tick 插值窗口内所有候选历史盒快照列表，支持多候选盒无误报匹配
      */
     public List<HistoricalBox> getCompensatedCandidateBoxes(Entity target, int pingMs) {
         List<HistoricalBox> candidates = new ArrayList<>();
@@ -283,15 +283,12 @@ public class EntityHistoryTracker {
             if (latest != null) {
                 candidates.add(latest);
             }
-            if (pingMs > 15) {
-                long now = System.currentTimeMillis();
-                long targetTimestamp = now - pingMs;
-                long windowStart = targetTimestamp - 60L;
-                long windowEnd = targetTimestamp + 60L;
-                for (HistoricalBox hb : deque) {
-                    if (hb != latest && hb.getTimestamp() >= windowStart && hb.getTimestamp() <= windowEnd) {
-                        candidates.add(hb);
-                    }
+            long now = System.currentTimeMillis();
+            long windowStart = now - Math.max(pingMs, 50) - 200L;
+            long windowEnd = now;
+            for (HistoricalBox hb : deque) {
+                if (hb != latest && hb.getTimestamp() >= windowStart && hb.getTimestamp() <= windowEnd) {
+                    candidates.add(hb);
                 }
             }
         }
@@ -305,6 +302,23 @@ public class EntityHistoryTracker {
         if (uuid == null) return false;
         Deque<HistoricalBox> deque = historyMap.get(uuid);
         return deque != null && !deque.isEmpty();
+    }
+
+    /**
+     * 检查目标实体是否已积累足以覆盖当前玩家 Ping 延迟的历史跨度（避免首次录入仅 1 帧时误用严格回溯上限）
+     */
+    public boolean hasSufficientHistory(UUID uuid, int pingMs) {
+        if (uuid == null) return false;
+        Deque<HistoricalBox> deque = historyMap.get(uuid);
+        if (deque == null || deque.size() < 2) {
+            return false;
+        }
+        HistoricalBox oldest = deque.peekFirst();
+        if (oldest == null) {
+            return false;
+        }
+        long spanMs = System.currentTimeMillis() - oldest.getTimestamp();
+        return spanMs >= Math.min(Math.max(50L, pingMs), 150L);
     }
 
     /**

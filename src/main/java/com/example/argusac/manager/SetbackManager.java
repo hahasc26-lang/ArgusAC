@@ -494,6 +494,7 @@ public class SetbackManager implements Listener {
             data.clearExpectedVelocity();
             data.setSpeedBuffer(0.0);
             data.getTimerTracker().reset();
+            data.updatePacketPosition(cancelTarget.getX(), cancelTarget.getY(), cancelTarget.getZ());
             if (data.getPhysicsState() != null) {
                 data.getPhysicsState().reset(cancelTarget);
                 data.getPhysicsState().clearPendingVelocities();
@@ -700,6 +701,7 @@ public class SetbackManager implements Listener {
                     data.clearExpectedVelocity();
                     data.setSpeedBuffer(0.0);
                     data.getTimerTracker().reset();
+                    data.updatePacketPosition(targetLocation.getX(), targetLocation.getY(), targetLocation.getZ());
                     if (data.getPhysicsState() != null) {
                         data.getPhysicsState().reset(targetLocation);
                         data.getPhysicsState().clearPendingVelocities();
@@ -920,5 +922,19 @@ public class SetbackManager implements Listener {
 
     public void dispatchKick(Player player, String rawMessage) {
         setbackNotifier.dispatchKick(player, rawMessage);
+    }
+
+    /**
+     * 发送战斗攻击取消或方块交互取消的独立提示（与移动取消/位置回退严格区分）
+     */
+    public void notifyInteractionCancel(Player player, Check check, int currentVl) {
+        if (player == null || check == null) {
+            return;
+        }
+        PlayerSetbackContext context = getContext(player.getUniqueId());
+        setbackNotifier.notifyInteractionCancel(
+                player, context, check, currentVl,
+                notifyPlayerChannel, notifyPlayerCooldownMs, notifyAdminEnabled
+        );
     }
 }

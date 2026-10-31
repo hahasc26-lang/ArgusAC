@@ -349,8 +349,10 @@ public class PlayerEventListener implements Listener {
 
         data.setFromLocation(from);
         data.setToLocation(to);
-        data.setLastLookYaw(to.getYaw());
-        data.setLastLookPitch(to.getPitch());
+        if (!data.hasPacketLocation()) {
+            data.setLastLookYaw(from.getYaw());
+            data.setLastLookPitch(from.getPitch());
+        }
 
         // 鲁棒多点与方块材质物理碰撞接地判定 (消除地毯、雪片、台阶、方块边缘悬空误判)
         boolean onGround = isGrounded(player, to);
@@ -553,8 +555,8 @@ public class PlayerEventListener implements Listener {
             PlayerData data = plugin.getPlayerManager().getPlayerData(player);
             if (data != null) {
                 data.setLastDamageTime(System.currentTimeMillis());
-                // 受伤击退赋予合法速度豁免
-                data.grantLegalVelocity(VelocitySourceType.EXPLOSION, 800L);
+                // 受伤击退赋予合法速度豁免（覆盖高 Ping 玩家的 RTT + 击退抛物线周期）
+                data.grantLegalVelocity(VelocitySourceType.EXPLOSION, 1200L);
                 checkManager.getElytraFlyCheck().handleDamage(player, data, event);
             }
         }
@@ -563,6 +565,20 @@ public class PlayerEventListener implements Listener {
     @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = true)
     public void onEntityDamageByEntity(EntityDamageByEntityEvent event) {
         Entity damager = event.getDamager();
+        long now = System.currentTimeMillis();
+
+        // 若受击方为玩家，立即将攻击源生物录入历史追踪器并赋予受击击退豁免，消除玩家受击反击时的延迟偏差误报
+        if (event.getEntity() instanceof Player victimPlayer) {
+            PlayerData victimData = plugin.getPlayerManager().getPlayerData(victimPlayer);
+            if (victimData != null) {
+                victimData.setLastDamageTime(now);
+                victimData.grantLegalVelocity(VelocitySourceType.ATTACK_KNOCKBACK, 1200L);
+            }
+            if (plugin.getHistoryTracker() != null && damager != null) {
+                plugin.getHistoryTracker().recordEntity(damager, VersionAdapterFactory.getAdapter(), now);
+            }
+        }
+
         if (!(damager instanceof Player attacker)) {
             return;
         }
@@ -587,21 +603,21 @@ public class PlayerEventListener implements Listener {
             return;
         }
 
+        // 无论是否已在 Netty 初筛放行，主线程均将目标实体补录进 EntityHistoryTracker 索引缓存
+        if (plugin.getHistoryTracker() != null && event.getEntity() != null) {
+            plugin.getHistoryTracker().recordEntity(
+                    event.getEntity(),
+                    VersionAdapterFactory.getAdapter(),
+                    now
+            );
+        }
+
         PlayerData data = plugin.getPlayerManager().getPlayerData(attacker);
         if (data != null && event.getEntity() != null) {
             // 若该次攻击已在 Netty 进包管道初筛放行，Bukkit 层无需二次重复核验，直接放行伤害
             if (data.isAttackRecentlyVerified(event.getEntity().getUniqueId(), 200L)) {
                 return;
             }
-        }
-
-        // 若目标实体为首次交互的非玩家生物（尚未进入 EntityHistoryTracker 索引），当场补录进索引缓存
-        if (plugin.getHistoryTracker() != null && event.getEntity() != null) {
-            plugin.getHistoryTracker().recordEntity(
-                    event.getEntity(),
-                    VersionAdapterFactory.getAdapter(),
-                    System.currentTimeMillis()
-            );
         }
 
         // 仅在数据包协议管线未就绪时由 Bukkit 事件作为降级统计，杜绝网络层与主线程双重打点导致的 CPS 翻倍误报
@@ -676,11 +692,7 @@ public class PlayerEventListener implements Listener {
     public void onBlockDamage(BlockDamageEvent event) {
         PlayerData data = plugin.getPlayerManager().getPlayerData(event.getPlayer());
         if (data != null) {
-            long now = System.currentTimeMillis();
-            data.setDigging(true);
-            data.setLastDiggingTime(now);
-            data.setDiggingStartTime(now);
-            data.getClickTimestamps().clear();
+            data.startDigging(System.currentTimeMillis());
         }
     }
 
@@ -692,8 +704,7 @@ public class PlayerEventListener implements Listener {
         }
         PlayerData data = plugin.getPlayerManager().getPlayerData(player);
         if (data != null) {
-            data.setLastDiggingTime(System.currentTimeMillis());
-            data.setDigging(false);
+            data.stopDigging(System.currentTimeMillis());
         }
         checkManager.getFastBreakCheck().handleBreak(player, event);
         if (event.isCancelled()) {
@@ -731,7 +742,16 @@ public class PlayerEventListener implements Listener {
             PlayerData data = plugin.getPlayerManager().getPlayerData(player);
             if (data != null) {
                 data.setInventoryOpen(false, null);
+                data.markContainerClosed(System.currentTimeMillis());
             }
+        }
+    }
+
+    @EventHandler(priority = EventPriority.MONITOR, ignoreCancelled = true)
+    public void onItemHeld(PlayerItemHeldEvent event) {
+        PlayerData data = plugin.getPlayerManager().getPlayerData(event.getPlayer());
+        if (data != null) {
+            data.recordSlotSwitch(event.getNewSlot());
         }
     }
 
