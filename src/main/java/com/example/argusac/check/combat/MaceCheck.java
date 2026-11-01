@@ -15,6 +15,7 @@ import org.bukkit.entity.Entity;
 import org.bukkit.entity.LivingEntity;
 import org.bukkit.entity.Player;
 import org.bukkit.event.entity.EntityDamageByEntityEvent;
+import org.bukkit.event.entity.EntityDamageEvent;
 import org.bukkit.inventory.ItemStack;
 
 import java.util.Locale;
@@ -164,6 +165,11 @@ public class MaceCheck extends AbstractCheck {
      */
     public void handleAttack(Player attacker, Entity victim, EntityDamageByEntityEvent event) {
         if (!enabled || attacker == null || !(victim instanceof LivingEntity)) {
+            return;
+        }
+
+        // 严格过滤非直接近战物理打击（如弓箭、投掷物、魔法、荆棘反伤等）
+        if (event.getCause() != EntityDamageEvent.DamageCause.ENTITY_ATTACK || event.getDamager() != attacker) {
             return;
         }
 

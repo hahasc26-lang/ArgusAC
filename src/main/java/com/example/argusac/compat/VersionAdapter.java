@@ -48,6 +48,51 @@ public interface VersionAdapter {
 
     boolean isClimbable(Block block);
 
+    /**
+     * 判定指定玩家与坐标周围是否存在可攀爬方块（梯子、藤蔓、脚手架等）。
+     * 覆盖 AABB 碰撞箱（0.6 宽）及潜行边缘探出（最大 0.45 格）的多方位探针与垂直高度（脚下至头部），
+     * 同时检测当前方块及脚下方块四周相邻附着的梯子，彻底消除在带梯子方块边缘潜行时的 Fly 与 NoFall 误报。
+     */
+    default boolean isClimbableAround(Player player, Location loc) {
+        if (loc == null || loc.getWorld() == null) {
+            return false;
+        }
+        double reach = (player != null && player.isSneaking()) ? 0.45 : 0.35;
+        double diag = reach * 0.72;
+        double[][] points = {
+                {0, 0},
+                {reach, 0}, {-reach, 0}, {0, reach}, {0, -reach},
+                {diag, diag}, {-diag, diag}, {diag, -diag}, {-diag, -diag}
+        };
+        // 覆盖脚下 (-0.60格，梯子顶面/下梯)、脚底 (0.0格)、身体躯干 (0.8格)、头部 (1.5格)
+        double[] yOffsets = {-0.60, 0.0, 0.8, 1.5};
+        for (double[] p : points) {
+            Location checkLoc = loc.clone().add(p[0], 0, p[1]);
+            for (double yOff : yOffsets) {
+                Block b = checkLoc.clone().add(0, yOff, 0).getBlock();
+                if (isClimbable(b)) {
+                    return true;
+                }
+            }
+        }
+
+        // 检查当前方块与下方一格方块水平相邻四周附着的梯子（针对站在挂有梯子的方块顶面潜行挪动）
+        Block current = loc.getBlock();
+        Block below = loc.clone().subtract(0, 1.0, 0).getBlock();
+        org.bukkit.block.BlockFace[] faces = {
+                org.bukkit.block.BlockFace.NORTH,
+                org.bukkit.block.BlockFace.SOUTH,
+                org.bukkit.block.BlockFace.EAST,
+                org.bukkit.block.BlockFace.WEST
+        };
+        for (org.bukkit.block.BlockFace face : faces) {
+            if (isClimbable(current.getRelative(face)) || isClimbable(below.getRelative(face))) {
+                return true;
+            }
+        }
+        return false;
+    }
+
     boolean isLiquid(Block block);
 
     // 世界与环境

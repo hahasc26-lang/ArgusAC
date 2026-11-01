@@ -9,6 +9,22 @@
 
 ---
 
+## [1.2.2] - 2026-10-31
+
+### 修复
+- **受箭矢远程射击击退时的 Reach 与 KillAura 误报彻底根除**：
+  - **动态受击击退免检窗口优化**：重构 `ReachCheck` 中受击短周期保护时序，将放行窗口扩展为 `Math.max(450ms, ping + 350ms)`，全面联动 `hasRecentVelocity(1500ms)` 与 `hasAnyLegalVelocity()`，完整覆盖弓箭强击退的物理抛物线加速周期与网络 RTT 确认延迟。
+  - **攻击者受击历史位置回溯**：在 `PlayerData` 中受击瞬间记录受击前原始坐标（`preDamageLocation`），并在 1500ms 窗口内动态注入 `getCandidateEyeLocations` 候选眼部位置集合，消除服务端权威击退位移导致自身坐标单向拉伸脱节造成的超距假象。
+  - **平滑击退动态容差与分级缓冲**：在受击击退活跃期引入随时间平滑衰减的自适应击退距离补偿（`+0.85 ~ 2.05` 格），并将低确信缓冲提升至 `0.85` 格，严格限制击退期的违规升级步进，杜绝玩家受击正常还击被无故取消。
+  - **KillAura 击退视角扭转与镜头抖动容差**：在处于合法击退时将最大攻击夹角容限提升 `45.0` 度、盲区阈值放宽至 `135.0` 度，并将连续异常确认阈值提高至 4 次，彻底消除受击镜头震颤（Screen Shake）与急转还击导致的虚假 KillAura 拦截。
+  - **严格近战 DamageCause 白名单过滤**：在 `PlayerEventListener`、`ReachCheck`、`KillAuraCheck` 与 `MaceCheck` 入口处严格限定 `DamageCause.ENTITY_ATTACK` 及直接攻击者校验，彻底隔离荆棘反伤（`THORNS`）、远程投掷物（`PROJECTILE`）与药水伤害穿透进入近战检测。
+  - **远程射手实体历史追踪补录**：在箭矢命中玩家时通过 `Projectile#getShooter` 将真正的射手生物自动补录进 `EntityHistoryTracker` 延迟回溯快照，确保受击玩家远距离反击射手时能够正常匹配历史碰撞箱。
+- **带梯子方块边缘潜行移动误报（`Fly`、`NoFall`、`Setback`）**：
+  - **AABB 与水平相邻攀爬物全向扫描**：引入 `VersionAdapter#isClimbableAround`，覆盖潜行探出（`0.45` 格）8 探针与四向水平相邻方块（东、南、西、北）的挂载梯子与藤蔓采样，纵向涵盖脚下至头部（`-1.0 ~ 1.5` 格）。
+  - **梯子潜行边缘免检判定**：在 `PlayerEventListener` 与 `FlyCheck` 中全面联动攀爬物环境，在玩家沿带梯子方块边缘挪动时及时重置 `airTicks` 与悬停计时器，彻底根除边缘潜行时的 `Fly (Hover)` 误判。
+  - **NoFall 特殊环境联防机制**：将攀爬物临近状态纳入 `specialEnv` 与接地状态机，杜绝客户端在梯子上悬停发包 `onGround=true` 时被误判为 `Packet GroundSpoof`。
+  - **回退重力下坠压制隔离**：在 `SetbackManager#directCancel` 中将攀爬环境从真空重力加速度模拟中完全排除，彻底解决梯子边缘被强制向下传送拉扯陷入死循环回退的问题。
+
 ## [1.2.1] - 2026-10-30
 
 ### 新增

@@ -84,6 +84,8 @@ public class PlayerData {
     // 加入游戏后的豁免期时长（毫秒）
     private static final long GRACE_PERIOD_MS = 5000L;
     private long lastDamageTime = 0L;
+    private Location lastDamageLocation = null;
+    private long lastDamageLocationTime = 0L;
 
     // 背包状态追踪 (InventoryMove)
     private boolean inventoryOpen = false;
@@ -795,6 +797,21 @@ public class PlayerData {
         this.lastDamageTime = lastDamageTime;
     }
 
+    public void recordDamageLocation(Location loc) {
+        if (loc != null) {
+            this.lastDamageLocation = loc.clone();
+            this.lastDamageLocationTime = System.currentTimeMillis();
+        }
+    }
+
+    public Location getLastDamageLocation() {
+        return lastDamageLocation;
+    }
+
+    public long getLastDamageLocationTime() {
+        return lastDamageLocationTime;
+    }
+
     public boolean isAirborneFromIce() {
         return airborneFromIce;
     }
@@ -1413,6 +1430,11 @@ public class PlayerData {
         if (entityBaseLoc != null && entityBaseLoc.getWorld() == world) {
             list.add(new Location(world, entityBaseLoc.getX(), entityBaseLoc.getY() + eyeHeight, entityBaseLoc.getZ(),
                     entityBaseLoc.getYaw(), entityBaseLoc.getPitch()));
+        }
+        if (lastDamageLocation != null && lastDamageLocation.getWorld() == world
+                && (System.currentTimeMillis() - lastDamageLocationTime < 1500L)) {
+            list.add(new Location(world, lastDamageLocation.getX(), lastDamageLocation.getY() + eyeHeight,
+                    lastDamageLocation.getZ(), yaw, pitch));
         }
         return list;
     }

@@ -17,6 +17,7 @@ import org.bukkit.entity.Entity;
 import org.bukkit.entity.LivingEntity;
 import org.bukkit.entity.Player;
 import org.bukkit.event.entity.EntityDamageByEntityEvent;
+import org.bukkit.event.entity.EntityDamageEvent;
 
 import java.util.List;
 import java.util.UUID;
@@ -124,7 +125,8 @@ public class KillAuraCheck extends AbstractCheck {
             attackerEyeHeight = attacker.getEyeHeight();
         } catch (Throwable ignored) {
         }
-        List<Location> candidateEyes = data.getCandidateEyeLocations(attacker.getWorld(), attackerEyeHeight, attacker.getLocation());
+        List<Location> candidateEyes = data.getCandidateEyeLocations(attacker.getWorld(), attackerEyeHeight,
+                attacker.getLocation());
         if (candidateEyes.isEmpty()) {
             candidateEyes.add(eyeLoc);
         }
@@ -138,7 +140,8 @@ public class KillAuraCheck extends AbstractCheck {
                 : java.util.Collections.emptyList();
 
         for (Location candEye : candidateEyes) {
-            if (candEye == null || candEye.getWorld() != victimLoc.getWorld()) continue;
+            if (candEye == null || candEye.getWorld() != victimLoc.getWorld())
+                continue;
             double angleToTarget = MathUtil.getMinAngleToBox(candEye, targetBox, victimEyeHeight);
             if (angleToTarget < minAngle) {
                 minAngle = angleToTarget;
@@ -168,10 +171,17 @@ public class KillAuraCheck extends AbstractCheck {
                 : targetBox.distanceTo(eyeLoc);
 
         long now = System.currentTimeMillis();
-        boolean underKnockback = data.hasRecentVelocity(1000L)
-                || (now - data.getLastDamageTime() < Math.max(900L, ping + 400L))
+        long timeSinceLastDamage = now - data.getLastDamageTime();
+        boolean underKnockback = data.hasRecentVelocity(1500L)
+                || (timeSinceLastDamage < Math.max(1200L, ping + 600L))
                 || data.hasAnyLegalVelocity();
-        double effectiveMaxAngle = underKnockback ? (maxAngle + 20.0) : maxAngle;
+
+        // 处于受击强击退初期（前 350ms）或镜头晃动极值期，直接放行，避免受击瞬间转身反击的误判
+        if (timeSinceLastDamage < Math.max(350L, ping + 300L) && underKnockback) {
+            return CombatVerdict.pass();
+        }
+
+        double effectiveMaxAngle = underKnockback ? (maxAngle + 45.0) : maxAngle;
 
         // 贴身肉搏重叠豁免：当回溯碰撞箱距离 <= 1.25 格或眼距 <= 1.45 格时，敌我碰撞箱几乎贴合交错，微小击退位移即可使夹角翻转
         boolean closeQuartersOverlap = (distance <= 1.45 || distanceToCompensatedBox <= 1.25);
@@ -180,11 +190,13 @@ public class KillAuraCheck extends AbstractCheck {
             // 1. 盲区与背身反向攻击拦截 (Blindspot Check: 完全背对或偏离目标盒超过 90 度发包攻击)
             // 注意：原版客户端在同一 tick 内先发 INTERACT_ENTITY 后发 PLAYER_ROTATION，
             // 当玩家遇袭快速甩鼠转身反击时，首包可能携带上一 tick 的旧视角，因此需通过 angleAnomaly 连续性确认
-            double blindspotLimit = underKnockback ? 110.0 : 90.0;
+            double blindspotLimit = underKnockback ? 135.0 : 90.0;
             if (blindspotCheck && distance > 1.50 && minAngle > blindspotLimit) {
                 int anomalies = data.recordAngleAnomaly(now);
-                String detail = String.format("Blindspot Attack minAngle=%.1f deg (>%.1f) (Backtracked)", minAngle, blindspotLimit);
-                if (anomalies >= 2) {
+                String detail = String.format("Blindspot Attack minAngle=%.1f deg (>%.1f) (Backtracked)", minAngle,
+                        blindspotLimit);
+                int requiredAnomalies = underKnockback ? 4 : 2;
+                if (anomalies >= requiredAnomalies) {
                     return CombatVerdict.highConfidence(this, 3, detail);
                 }
                 return underKnockback ? CombatVerdict.pass() : CombatVerdict.lowConfidenceDrop(this, detail);
@@ -194,18 +206,21 @@ public class KillAuraCheck extends AbstractCheck {
             if (distance > 1.35 && minAngle > effectiveMaxAngle) {
                 int anomalies = data.recordAngleAnomaly(now);
                 double angleExcess = minAngle - effectiveMaxAngle;
-                String detail = String.format("Impossible Angle minAngle=%.1f deg, max=%.1f (Backtracked)", minAngle, effectiveMaxAngle);
-                if (angleExcess <= ANGLE_LOW_CONFIDENCE_MARGIN || anomalies < 2) {
+                String detail = String.format("Impossible Angle minAngle=%.1f deg, max=%.1f (Backtracked)", minAngle,
+                        effectiveMaxAngle);
+                int requiredAnomalies = underKnockback ? 4 : 2;
+                if (angleExcess <= ANGLE_LOW_CONFIDENCE_MARGIN || anomalies < requiredAnomalies) {
                     return underKnockback ? CombatVerdict.pass() : CombatVerdict.lowConfidenceDrop(this, detail);
                 }
-                return CombatVerdict.highConfidence(this, 2, detail);
+                return CombatVerdict.highConfidence(this, underKnockback ? 1 : 2, detail);
             }
 
             // 3. 准星光线脱靶命中检测 (Silent Aim / Aimbot RayTrace Miss)
             if (distance > 1.65 && minAngle > 75.0 && !underKnockback) {
                 if (distanceToCompensatedBox > distance + 1.8) {
                     int anomalies = data.recordAngleAnomaly(now);
-                    String detail = String.format("Aimbot Ray Miss minAngle=%.1f, ping=%d (Backtracked)", minAngle, ping);
+                    String detail = String.format("Aimbot Ray Miss minAngle=%.1f, ping=%d (Backtracked)", minAngle,
+                            ping);
                     if (anomalies >= 2) {
                         return CombatVerdict.highConfidence(this, 2, detail);
                     }
@@ -236,14 +251,16 @@ public class KillAuraCheck extends AbstractCheck {
             float lastYaw = data.getLastLookYaw();
             float currentYaw = eyeLoc.getYaw();
             float yawDelta = Math.abs(currentYaw - lastYaw);
-            if (yawDelta > 180.0f) yawDelta = 360.0f - yawDelta;
+            if (yawDelta > 180.0f)
+                yawDelta = 360.0f - yawDelta;
 
             // 突变锁头：必须连续 3 次突变且直指目标，绝不在单次正常甩枪拉枪时误伤
             if (yawDelta > snapAngleThreshold && minAngle < 15.0) {
                 int snaps = data.recordSnap(now);
                 if (snaps >= 3) {
                     return CombatVerdict.highConfidence(this, 2,
-                            String.format("Aimbot Snap deltaYaw=%.1f, minAngle=%.1f, count=%d", yawDelta, minAngle, snaps));
+                            String.format("Aimbot Snap deltaYaw=%.1f, minAngle=%.1f, count=%d", yawDelta, minAngle,
+                                    snaps));
                 }
             } else {
                 data.resetSnap();
@@ -278,6 +295,17 @@ public class KillAuraCheck extends AbstractCheck {
         if (!enabled || attacker == null) {
             return;
         }
+
+        // 严格过滤非直接近战物理打击（如弓箭、三叉戟、雪球、投掷药水等远程抛射物，以及荆棘反伤）
+        if (event.getCause() != EntityDamageEvent.DamageCause.ENTITY_ATTACK) {
+            return;
+        }
+
+        // 如果伤害来源实体与攻击者不是同一个对象（例如直系箭矢事件中 damager 为 Arrow 实体）
+        if (event.getDamager() != attacker) {
+            return;
+        }
+
         PlayerData data = plugin.getPlayerManager().getPlayerData(attacker);
         CombatVerdict verdict = evaluateAttack(attacker, data, victim);
         if (verdict.isBlocked() && plugin.getCombatMitigationHandler() != null) {
@@ -302,7 +330,8 @@ public class KillAuraCheck extends AbstractCheck {
         }
         Location loc = attacker.getLocation();
         if (loc != null && loc.getWorld() != null) {
-            return new Location(loc.getWorld(), loc.getX(), loc.getY() + eyeHeight, loc.getZ(), loc.getYaw(), loc.getPitch());
+            return new Location(loc.getWorld(), loc.getX(), loc.getY() + eyeHeight, loc.getZ(), loc.getYaw(),
+                    loc.getPitch());
         }
         return attacker.getEyeLocation();
     }

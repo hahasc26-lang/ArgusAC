@@ -372,14 +372,15 @@ public class PlayerEventListener implements Listener {
         data.setLastOnGround(data.isOnGround());
         data.setOnGround(onGround);
 
-        // 接地与流体/滞空状态维护 (水、岩浆等流体拥有原版浮力与阻力，不计为真空空气滞空)
+        // 接地与流体/滞空状态维护 (水、岩浆等流体拥有原版浮力与阻力，攀爬物具备攀爬滞留能力，不计为真空空气滞空)
         boolean inLiquid = adapter.isInWater(player)
                 || adapter.isSwimming(player)
                 || adapter.isLiquid(to.getBlock())
                 || adapter.isLiquid(from.getBlock())
                 || adapter.isLiquid(to.clone().subtract(0, 0.4, 0).getBlock());
+        boolean inClimbable = adapter.isClimbableAround(player, to) || adapter.isClimbableAround(player, from);
         Block under = to.clone().subtract(0, 0.5, 0).getBlock();
-        if (onGround || inLiquid) {
+        if (onGround || inLiquid || inClimbable) {
             data.setAirTicks(0);
             data.incrementGroundTicks();
             data.resetMaceFallState(to.getY());
@@ -416,7 +417,7 @@ public class PlayerEventListener implements Listener {
         }
 
         // 更新特殊环境标记供 Netty 线程无锁读取，并在主线程完成位移帧的 NoFall GroundSpoof 核验
-        boolean specialEnv = inLiquid || onGround
+        boolean specialEnv = inLiquid || onGround || inClimbable
                 || adapter.isClimbable(to.getBlock()) || adapter.isClimbable(from.getBlock())
                 || adapter.isStandable(to.getBlock()) || adapter.isStandable(under);
         data.setInSpecialEnvironment(specialEnv);
@@ -555,8 +556,9 @@ public class PlayerEventListener implements Listener {
             PlayerData data = plugin.getPlayerManager().getPlayerData(player);
             if (data != null) {
                 data.setLastDamageTime(System.currentTimeMillis());
+                data.recordDamageLocation(player.getLocation());
                 // 受伤击退赋予合法速度豁免（覆盖高 Ping 玩家的 RTT + 击退抛物线周期）
-                data.grantLegalVelocity(VelocitySourceType.EXPLOSION, 1200L);
+                data.grantLegalVelocity(VelocitySourceType.EXPLOSION, 1500L);
                 checkManager.getElytraFlyCheck().handleDamage(player, data, event);
             }
         }
@@ -572,10 +574,19 @@ public class PlayerEventListener implements Listener {
             PlayerData victimData = plugin.getPlayerManager().getPlayerData(victimPlayer);
             if (victimData != null) {
                 victimData.setLastDamageTime(now);
-                victimData.grantLegalVelocity(VelocitySourceType.ATTACK_KNOCKBACK, 1200L);
+                victimData.recordDamageLocation(victimPlayer.getLocation());
+                victimData.grantLegalVelocity(VelocitySourceType.ATTACK_KNOCKBACK, 1500L);
             }
             if (plugin.getHistoryTracker() != null && damager != null) {
-                plugin.getHistoryTracker().recordEntity(damager, VersionAdapterFactory.getAdapter(), now);
+                Entity trueDamager = damager;
+                if (damager instanceof org.bukkit.entity.Projectile projectile) {
+                    if (projectile.getShooter() instanceof Entity shooter) {
+                        trueDamager = shooter;
+                    }
+                }
+                if (trueDamager != null) {
+                    plugin.getHistoryTracker().recordEntity(trueDamager, VersionAdapterFactory.getAdapter(), now);
+                }
             }
         }
 
@@ -587,8 +598,14 @@ public class PlayerEventListener implements Listener {
             return;
         }
 
-        // 豁免横扫溅射伤害 (Sweeping Edge / ENTITY_SWEEP_ATTACK)：横扫属于服务端自动广播的群体伤害，准星非主动瞄准
-        if (event.getCause() == EntityDamageEvent.DamageCause.ENTITY_SWEEP_ATTACK) {
+        // 严格过滤所有非近战直接物理打击（如荆棘反伤 THORNS、远程抛射物 PROJECTILE、横扫 ENTITY_SWEEP_ATTACK、魔法 MAGIC 等）
+        EntityDamageEvent.DamageCause cause = event.getCause();
+        if (cause != EntityDamageEvent.DamageCause.ENTITY_ATTACK) {
+            return;
+        }
+
+        // 伤害来源实体必须是攻击者自身
+        if (event.getDamager() != attacker) {
             return;
         }
 
@@ -850,7 +867,7 @@ public class PlayerEventListener implements Listener {
         for (double[] p : points) {
             Location checkLoc = new Location(world, x + p[0], y - 0.05, z + p[1]);
             Block b = checkLoc.getBlock();
-            if (adapter.isStandable(b)) {
+            if (adapter.isStandable(b) || adapter.isClimbable(b)) {
                 return true;
             }
             // 针对栅栏 (Fence) 与石墙 (Wall)：碰撞箱高 1.5 格，脚下方块在 y - 0.6 处

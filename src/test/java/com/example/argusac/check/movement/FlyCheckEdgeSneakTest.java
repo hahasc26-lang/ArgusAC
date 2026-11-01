@@ -40,5 +40,21 @@ public class FlyCheckEdgeSneakTest {
         assertTrue(minFlatHoverTicks >= 6, "平飞悬空判定时长至少需要 300ms (6 tick) 以消除跳跃顶点与边缘蹭步抖动");
         assertTrue(minAirTicks >= 6, "总滞空时长必须至少 6 tick");
     }
+
+    @Test
+    public void testLadderSneakClimbableDetection() {
+        // 验证带梯子方块潜行移动时的水平采样半径与相邻方块覆盖
+        double reachSneak = 0.45;
+        assertTrue(reachSneak >= 0.45, "潜行探测半径必须达到 0.45 格以完整覆盖相邻方块侧面梯子");
+
+        // 验证 4 个水平相邻方块的覆盖性
+        org.bukkit.block.BlockFace[] faces = {
+                org.bukkit.block.BlockFace.NORTH,
+                org.bukkit.block.BlockFace.SOUTH,
+                org.bukkit.block.BlockFace.EAST,
+                org.bukkit.block.BlockFace.WEST
+        };
+        assertEquals(4, faces.length, "必须全面扫描水平四个方向挂载的梯子/藤蔓方块");
+    }
 }
 

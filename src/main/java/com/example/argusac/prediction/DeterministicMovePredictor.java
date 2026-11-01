@@ -452,7 +452,7 @@ public class DeterministicMovePredictor {
         // 爬梯或藤蔓 (脚底或上半身接触均具备攀爬能力)
         Block currentBlock = currentLoc.getBlock();
         Block upperBlock = currentLoc.clone().add(0, 1.0, 0).getBlock();
-        if (adapter.isClimbable(currentBlock) || adapter.isClimbable(upperBlock)) {
+        if (adapter.isClimbableAround(player, currentLoc) || adapter.isClimbable(currentBlock) || adapter.isClimbable(upperBlock)) {
             candidateVy.add(0.20);  // 向上攀爬
             candidateVy.add(-0.15); // 向下滑动
             candidateVy.add(0.0);   // 滞留

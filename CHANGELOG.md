@@ -10,6 +10,22 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 ---
 
 <a id="english-changelog"></a>
+## [1.2.2] - 2026-10-31
+
+### Fixed
+- **Under-Attack Reach & KillAura False Positives Under Projectile Knockback**:
+  - **Dynamic Combat Knockback Exemption Window**: Expanded the short-cycle under-attack exemption window in `ReachCheck` to `Math.max(450ms, ping + 350ms)` and integrated `hasRecentVelocity(1500ms)` along with `hasAnyLegalVelocity()`, fully absorbing the physics impulse delay and client RTT of remote arrow hits.
+  - **Attacker Knockback Backtracking**: Recorded pre-damage world coordinates in `PlayerData` upon taking external damage/knockback and injected them into `getCandidateEyeLocations` within a 1500ms window, resolving eye-to-target distance inflation caused by server authoritative knockback pushes.
+  - **Adaptive Distance Decay & Low-Confidence Buffering**: Implemented smooth time-based knockback distance compensation (`+0.85 ~ 2.05` blocks) and widened the low-confidence buffer to `0.85` blocks during combat knockback, preventing legitimate counter-attacks from being misflagged or cancelled.
+  - **KillAura Knockback Angle Tolerance**: Relaxed the under-knockback angle tolerance by `45.0` degrees and widened blindspot limits to `135.0` degrees; elevated the anomaly streak confirmation threshold to 4 consecutive hits under active knockback to eradicate false `KillAura` flags during damage screen tilts.
+  - **Strict Melee DamageCause Filtering**: Enforced strict `DamageCause.ENTITY_ATTACK` and direct damager equality checks in `PlayerEventListener`, `ReachCheck`, `KillAuraCheck`, and `MaceCheck`, completely isolating `THORNS` enchantment recoil, projectiles, and magic damage from melee combat pipelines.
+  - **Remote Shooter Entity Tracking**: Ensured true shooter entities (`Projectile#getShooter`) are registered into `EntityHistoryTracker` upon arrow impacts to maintain valid lag-compensation snapshots when victims retaliate against archers.
+- **Ladder & Climbable Sneak Movement False Positives (`Fly`, `NoFall`, `Setback`)**:
+  - **Expanded Climbable AABB & Adjacent Scan**: Introduced `VersionAdapter#isClimbableAround` covering an 8-direction probe (`0.45` blocks) and 4-way horizontal neighbor scanning for mounted ladders and vines across foot to head vertical levels (`-1.0 ~ 1.5` blocks).
+  - **Sneak Edge Climbable Exemption**: Integrated climbable surroundings into `PlayerEventListener` and `FlyCheck`, actively resetting `airTicks` and hover timers when players sneak along block edges with attached ladders.
+  - **NoFall Special Environment Protection**: Included climbable proximity in `specialEnv` and ground-state maintenance, preventing false `Packet GroundSpoof` flags when clients report `onGround=true` while suspended on ladders.
+  - **Setback Downward Gravity Isolation**: Exempted climbable environments from vacuum gravity simulation in `SetbackManager#directCancel`, eliminating the downward force-pull that previously dragged sneaking players off ladder edges into a setback loop.
+
 ## [1.2.1] - 2026-10-30
 
 ### Added

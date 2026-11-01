@@ -72,12 +72,15 @@ public class ReachCheck extends AbstractCheck {
         }
 
         // 核心缺陷修复：检查玩家自身刚受到外部伤害/击退的时序窗口
-        // 当玩家受到箭矢、爆炸或近战击退时，服务端位移领先于客户端发包确认，容易产生 0.5~1.2+ 格的瞬间脱节
+        // 当玩家受到箭矢、爆炸或近战击退时，服务端位移领先于客户端发包确认，容易产生 0.5~2.0+ 格的位移脱节
         long now = System.currentTimeMillis();
         long timeSinceLastDamage = now - data.getLastDamageTime();
+        boolean hasCombatKnockback = data.hasRecentVelocity(1500L)
+                || (timeSinceLastDamage < Math.max(1200L, ping + 600L))
+                || data.hasAnyLegalVelocity();
 
-        // 处于受击强击退且网络尚未确认完成的短周期窗口（Ping + 250ms）内直接放行，避免误判
-        if (timeSinceLastDamage < Math.max(200L, ping + 250L) && data.hasRecentVelocity(600L)) {
+        // 处于受击强击退且网络尚未确认完成的短周期窗口（Ping + 350ms）内直接放行，避免误判
+        if (timeSinceLastDamage < Math.max(450L, ping + 350L) && hasCombatKnockback) {
             return CombatVerdict.pass();
         }
 
@@ -116,14 +119,13 @@ public class ReachCheck extends AbstractCheck {
                 : Math.min(maxReach + 0.20 + Math.min(0.45, (ping / 100.0) * 0.10), maxPingReach + 0.15);
 
         // 击退与切槽动态补偿放宽
-        boolean underKnockback = data.hasRecentVelocity(1000L)
-                || (timeSinceLastDamage < Math.max(900L, ping + 400L))
-                || data.hasAnyLegalVelocity();
+        boolean underKnockback = hasCombatKnockback;
         boolean recentSlotSwitch = data.hasRecentSlotSwitch(Math.max(300L, ping + 150L));
 
         if (underKnockback) {
-            // 将击退容差扩大到更符合物理位移的幅度 (0.65格)
-            dynamicLimit += 0.65;
+            // 远程箭矢与近战击退位移补偿：根据受击后经过的时间平滑衰减，充分吸收 1.5~2.5 格的强击退脱节
+            double decay = Math.max(0.0, 1.0 - (timeSinceLastDamage / 1500.0));
+            dynamicLimit += 0.85 + (1.20 * decay) + Math.min(0.35, (ping / 200.0) * 0.20);
         } else if (recentSlotSwitch) {
             dynamicLimit += 0.15;
         }
@@ -133,14 +135,14 @@ public class ReachCheck extends AbstractCheck {
             String detail = String.format("dist=%.3f, limit=%.2f, excess=%.3f, ping=%d (Backtracked)",
                     distanceToBox, dynamicLimit, excess, ping);
 
-            // 分级处置策略：如果刚受过击退，增加低确信保护缓冲裕度
-            double effectiveLowBuffer = underKnockback ? 0.45 : (recentSlotSwitch ? 0.30 : LOW_CONFIDENCE_BUFFER);
+            // 分级处置策略：如果刚受过击退，增加低确信保护缓冲裕度 (扩大至 0.85格)
+            double effectiveLowBuffer = underKnockback ? 0.85 : (recentSlotSwitch ? 0.30 : LOW_CONFIDENCE_BUFFER);
             if (excess <= effectiveLowBuffer) {
-                return CombatVerdict.lowConfidenceDrop(this, detail);
+                return underKnockback ? CombatVerdict.pass() : CombatVerdict.lowConfidenceDrop(this, detail);
             }
 
-            // 高确信/明显超距：按超出幅度计算 VL 步进 (1 ~ 3)
-            int vlStep = excess > 0.80 ? 3 : (excess > 0.45 ? 2 : 1);
+            // 高确信/明显超距：按超出幅度计算 VL 步进 (在击退期步进限制为 1，杜绝瞬间爆表)
+            int vlStep = underKnockback ? 1 : (excess > 0.80 ? 3 : (excess > 0.45 ? 2 : 1));
             return CombatVerdict.highConfidence(this, vlStep, detail);
         }
 
@@ -155,14 +157,12 @@ public class ReachCheck extends AbstractCheck {
             return;
         }
 
-        // 缺陷修复 1：严格过滤非近战直接伤害（如弓箭、三叉戟、雪球、投掷药水等远程抛射物）
-        if (event.getCause() == EntityDamageEvent.DamageCause.PROJECTILE
-                || event.getCause() == EntityDamageEvent.DamageCause.MAGIC
-                || event.getCause() == EntityDamageEvent.DamageCause.THORNS) {
+        // 严格过滤非直接近战物理打击（如弓箭、三叉戟、雪球、投掷药水等远程抛射物，以及荆棘反伤）
+        if (event.getCause() != EntityDamageEvent.DamageCause.ENTITY_ATTACK) {
             return;
         }
 
-        // 缺陷修复 2：如果伤害来源实体与攻击者不是同一个对象（例如直系箭矢事件中 damager 为 Arrow 实体）
+        // 如果伤害来源实体与攻击者不是同一个对象（例如直系箭矢事件中 damager 为 Arrow 实体）
         if (event.getDamager() != attacker) {
             return;
         }

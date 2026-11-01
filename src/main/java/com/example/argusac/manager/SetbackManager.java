@@ -381,7 +381,9 @@ public class SetbackManager implements Listener {
         context.incrementConsecutiveCancellationViolations();
         context.setLastSetbackTimestamp(check.getName(), now);
 
-        boolean physicallyGrounded = isGrounded(player, from) || (data != null && data.isOnGround());
+        VersionAdapter adapter = VersionAdapterFactory.getAdapter();
+        boolean inClimbable = adapter.isClimbableAround(player, from) || (to != null && adapter.isClimbableAround(player, to));
+        boolean physicallyGrounded = isGrounded(player, from) || (data != null && data.isOnGround()) || inClimbable;
         boolean isAirborne = !physicallyGrounded;
         String checkLower = check.getName().toLowerCase();
 
@@ -422,14 +424,13 @@ public class SetbackManager implements Listener {
             cancelTarget.setPitch(to.getPitch());
         }
 
-        VersionAdapter adapter = VersionAdapterFactory.getAdapter();
         boolean inLiquid = adapter.isInWater(player)
                 || adapter.isLiquid(cancelTarget.getBlock())
                 || adapter.isLiquid(from.getBlock())
                 || adapter.isLiquid(cancelTarget.clone().subtract(0, 0.4, 0).getBlock());
 
-        // 仅在纯真空空中滞空且非流体环境下才模拟原版重力加速度下坠下压；
-        // 流体环境 (水、岩浆) 自带浮力，绝不执行真空自由落体下坠，杜绝水面跳跃/回退时被连环下压沉底
+        // 仅在纯真空空中滞空且非流体非攀爬环境下才模拟原版重力加速度下坠下压；
+        // 流体环境 (水、岩浆) 自带浮力，攀爬环境 (梯子、藤蔓) 支持滞留，绝不执行真空自由落体下坠
         if (inLiquid && to != null && to.getY() < cancelTarget.getY() && (cancelTarget.getY() - to.getY()) <= 0.5) {
             // 在水中发生回退锚定时，允许玩家自然下沉入水，防止将玩家死锁在水面表层 (如 Y=62.94) 引发连环 Jesus 误报
             cancelTarget.setY(to.getY());
@@ -437,7 +438,7 @@ public class SetbackManager implements Listener {
                 context.getLockedAnchorLocation().setY(to.getY());
             }
         }
-        if (isAirborne && !inLiquid) {
+        if (isAirborne && !inLiquid && !inClimbable) {
             // 获取脚下最近的稳固地面支撑高度作为物理硬底线 (Ground Floor)
             Location groundBelow = findSafeGroundNear(from, 1.5);
             if (groundBelow == null) {
@@ -789,7 +790,8 @@ public class SetbackManager implements Listener {
             boolean grounded = isGrounded(player, curLoc) || (data != null && data.isOnGround());
             var feet = curLoc.getBlock();
             var head = curLoc.clone().add(0, 1.0, 0).getBlock();
-            boolean climbOrSubmerged = adapter.isClimbable(feet) || adapter.isClimbable(head)
+            boolean climbOrSubmerged = adapter.isClimbableAround(player, curLoc)
+                    || adapter.isClimbable(feet) || adapter.isClimbable(head)
                     || adapter.isSwimming(player)
                     || (adapter.isLiquid(feet) && adapter.isLiquid(head));
 

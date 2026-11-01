@@ -208,6 +208,10 @@ public class FlyCheck extends AbstractCheck {
         if (adapter.isInWater(player) || adapter.isSwimming(player)) {
             return true;
         }
+        if (adapter.isClimbableAround(player, from) || adapter.isClimbableAround(player, to)
+                || adapter.isClimbableAround(player, player.getLocation())) {
+            return true;
+        }
         Location[] locs = {player.getLocation(), from, to};
         for (Location l : locs) {
             if (l != null && l.getWorld() != null) {
@@ -245,7 +249,7 @@ public class FlyCheck extends AbstractCheck {
             Location checkLoc = loc.clone().add(p[0], 0, p[1]);
             for (double yOffset = 0.0; yOffset >= -maxDepth; yOffset -= 0.15) {
                 Block b = checkLoc.clone().add(0, yOffset, 0).getBlock();
-                if (adapter.isStandable(b)) {
+                if (adapter.isStandable(b) || adapter.isClimbable(b)) {
                     return true;
                 }
             }

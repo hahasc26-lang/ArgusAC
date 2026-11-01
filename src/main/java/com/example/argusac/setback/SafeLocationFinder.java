@@ -36,7 +36,7 @@ public class SafeLocationFinder {
             Location checkLoc = loc.clone().add(p[0], 0, p[1]);
             for (double yOffset = 0.0; yOffset >= -0.60; yOffset -= 0.15) {
                 Block b = checkLoc.clone().add(0, yOffset, 0).getBlock();
-                if (b.getType().isSolid() || adapter.isStandable(b)) {
+                if (b.getType().isSolid() || adapter.isStandable(b) || adapter.isClimbable(b)) {
                     return true;
                 }
             }

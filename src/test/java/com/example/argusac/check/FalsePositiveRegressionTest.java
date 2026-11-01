@@ -112,5 +112,40 @@ public class FalsePositiveRegressionTest {
         data.recordAttack();
         assertEquals(0, data.getConsecutiveNoSwingAttacks(), "相邻 client tick 缓冲内的 Attack 与 Swing 同样允许配对");
     }
+
+    @Test
+    public void testArrowDamageKnockbackReachAndCandidateEyes() {
+        com.example.argusac.data.PlayerData data = new com.example.argusac.data.PlayerData(java.util.UUID.randomUUID(), "haha___1");
+        long now = System.currentTimeMillis();
+
+        // 模拟玩家受到远程箭矢攻击，记录受击时间与受击前世界坐标
+        data.setLastDamageTime(now);
+        data.grantLegalVelocity(com.example.argusac.model.VelocitySourceType.ATTACK_KNOCKBACK, 1500L);
+        assertTrue(data.hasRecentVelocity(1500L), "刚受到箭矢伤害应处于合法击退/受击期");
+        assertTrue(data.hasAnyLegalVelocity(), "应拥有生效中的 ATTACK_KNOCKBACK 合法速度来源");
+    }
+
+    @Test
+    public void testArrowDamageKnockbackKillAuraRequiresHigherAnomalyThreshold() {
+        com.example.argusac.data.PlayerData data = new com.example.argusac.data.PlayerData(java.util.UUID.randomUUID(), "haha___1");
+        long now = System.currentTimeMillis();
+        data.setLastDamageTime(now);
+        data.grantLegalVelocity(com.example.argusac.model.VelocitySourceType.ATTACK_KNOCKBACK, 1500L);
+
+        // 受击击退期疯狂点左键试图还击，连续 2 次和 3 次异常在 underKnockback 下必须仍处于容差缓冲内 (< 4)
+        int anomalies = data.recordAngleAnomaly(now + 100L);
+        assertEquals(1, anomalies);
+        anomalies = data.recordAngleAnomaly(now + 250L);
+        assertEquals(2, anomalies);
+        assertTrue(anomalies < 4, "在击退状态下，连续 2 次偏角不应达到高确信阈值 4");
+
+        anomalies = data.recordAngleAnomaly(now + 400L);
+        assertEquals(3, anomalies);
+        assertTrue(anomalies < 4, "在击退状态下，连续 3 次偏角仍处于宽限期");
+
+        // 直到第 4 次才达标
+        anomalies = data.recordAngleAnomaly(now + 550L);
+        assertEquals(4, anomalies);
+    }
 }
 
