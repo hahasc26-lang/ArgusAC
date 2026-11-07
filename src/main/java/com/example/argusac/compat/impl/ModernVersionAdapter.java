@@ -40,15 +40,15 @@ public class ModernVersionAdapter implements VersionAdapter {
 
     static {
         POTION_TYPE_CACHE = new EnumMap<>(CompatPotionType.class);
-        register(CompatPotionType.SPEED,          "SPEED");
-        register(CompatPotionType.SLOWNESS,        "SLOWNESS",       "SLOW");
-        register(CompatPotionType.JUMP_BOOST,      "JUMP_BOOST",     "JUMP");
-        register(CompatPotionType.LEVITATION,      "LEVITATION");
-        register(CompatPotionType.SLOW_FALLING,    "SLOW_FALLING");
-        register(CompatPotionType.DOLPHINS_GRACE,  "DOLPHINS_GRACE");
-        register(CompatPotionType.HASTE,           "HASTE",          "FAST_DIGGING");
-        register(CompatPotionType.MINING_FATIGUE,  "MINING_FATIGUE", "SLOW_DIGGING");
-        register(CompatPotionType.STRENGTH,        "STRENGTH",        "INCREASE_DAMAGE");
+        register(CompatPotionType.SPEED, "SPEED");
+        register(CompatPotionType.SLOWNESS, "SLOWNESS", "SLOW");
+        register(CompatPotionType.JUMP_BOOST, "JUMP_BOOST", "JUMP");
+        register(CompatPotionType.LEVITATION, "LEVITATION");
+        register(CompatPotionType.SLOW_FALLING, "SLOW_FALLING");
+        register(CompatPotionType.DOLPHINS_GRACE, "DOLPHINS_GRACE");
+        register(CompatPotionType.HASTE, "HASTE", "FAST_DIGGING");
+        register(CompatPotionType.MINING_FATIGUE, "MINING_FATIGUE", "SLOW_DIGGING");
+        register(CompatPotionType.STRENGTH, "STRENGTH", "INCREASE_DAMAGE");
     }
 
     /**
@@ -71,7 +71,8 @@ public class ModernVersionAdapter implements VersionAdapter {
                     POTION_TYPE_CACHE.put(key, pet);
                     return;
                 }
-            } catch (Throwable ignored) {}
+            } catch (Throwable ignored) {
+            }
         }
     }
 
@@ -165,8 +166,7 @@ public class ModernVersionAdapter implements VersionAdapter {
                     org.bukkit.util.BoundingBox blockBox = block.getBoundingBox();
                     CompatBoundingBox compatBlockBox = new CompatBoundingBox(
                             blockBox.getMinX(), blockBox.getMinY(), blockBox.getMinZ(),
-                            blockBox.getMaxX(), blockBox.getMaxY(), blockBox.getMaxZ()
-                    );
+                            blockBox.getMaxX(), blockBox.getMaxY(), blockBox.getMaxZ());
                     if (box.intersectsWithMargin(compatBlockBox, 1.0e-4)) {
                         return false;
                     }
@@ -240,7 +240,8 @@ public class ModernVersionAdapter implements VersionAdapter {
     @Override
     public int getPotionAmplifier(LivingEntity entity, CompatPotionType potionType) {
         PotionEffectType pet = resolvePotionType(potionType);
-        if (pet == null) return -1;
+        if (pet == null)
+            return -1;
         PotionEffect effect = entity.getPotionEffect(pet);
         return effect != null ? effect.getAmplifier() : -1;
     }
@@ -248,7 +249,8 @@ public class ModernVersionAdapter implements VersionAdapter {
     @Override
     public double getAttributeValue(LivingEntity entity, CompatAttribute attribute, double defaultValue) {
         Attribute bukkitAttr = resolveAttribute(attribute);
-        if (bukkitAttr == null) return defaultValue;
+        if (bukkitAttr == null)
+            return defaultValue;
         AttributeInstance inst = entity.getAttribute(bukkitAttr);
         return inst != null ? inst.getValue() : defaultValue;
     }
@@ -268,14 +270,17 @@ public class ModernVersionAdapter implements VersionAdapter {
         try {
             Sound sound = Sound.valueOf(soundName.toUpperCase());
             player.playSound(loc, sound, volume, pitch);
-        } catch (IllegalArgumentException ignored) {}
+        } catch (IllegalArgumentException ignored) {
+        }
     }
 
     @Override
     public boolean isRayOccluded(Location from, Location to) {
-        if (from == null || to == null || from.getWorld() != to.getWorld()) return false;
+        if (from == null || to == null || from.getWorld() != to.getWorld())
+            return false;
         double dist = from.distance(to);
-        if (dist <= 0.6) return false;
+        if (dist <= 0.6)
+            return false;
         org.bukkit.util.Vector dir = to.toVector().subtract(from.toVector()).normalize();
         org.bukkit.util.RayTraceResult result = from.getWorld().rayTraceBlocks(
                 from, dir, dist - 0.2, org.bukkit.FluidCollisionMode.NEVER, true);
@@ -294,8 +299,10 @@ public class ModernVersionAdapter implements VersionAdapter {
 
     @Override
     public boolean isStandable(Block block) {
-        if (block == null) return false;
-        if (isSolidBlock(block)) return true;
+        if (block == null)
+            return false;
+        if (isSolidBlock(block))
+            return true;
         String name = block.getType().name();
         return name.endsWith("_CARPET") || name.equals("CARPET")
                 || name.contains("SNOW")
@@ -310,7 +317,8 @@ public class ModernVersionAdapter implements VersionAdapter {
 
     @Override
     public float getBlockHardness(Block block) {
-        if (block == null) return 0.0f;
+        if (block == null)
+            return 0.0f;
         try {
             return block.getType().getHardness();
         } catch (Throwable e) {
@@ -320,26 +328,31 @@ public class ModernVersionAdapter implements VersionAdapter {
 
     @Override
     public int getSoulSpeedLevel(Player player) {
-        if (player == null) return 0;
+        if (player == null)
+            return 0;
         try {
             org.bukkit.inventory.ItemStack boots = player.getInventory().getBoots();
             if (boots != null && boots.hasItemMeta()) {
-                org.bukkit.enchantments.Enchantment soulSpeed = org.bukkit.enchantments.Enchantment.getByName("SOUL_SPEED");
+                org.bukkit.enchantments.Enchantment soulSpeed = org.bukkit.enchantments.Enchantment
+                        .getByName("SOUL_SPEED");
                 if (soulSpeed != null) {
                     return boots.getEnchantmentLevel(soulSpeed);
                 }
             }
-        } catch (Throwable ignored) {}
+        } catch (Throwable ignored) {
+        }
         return 0;
     }
 
     @Override
     public int getDepthStriderLevel(Player player) {
-        if (player == null) return 0;
+        if (player == null)
+            return 0;
         try {
             org.bukkit.inventory.ItemStack boots = player.getInventory().getBoots();
             if (boots != null && boots.hasItemMeta()) {
-                org.bukkit.enchantments.Enchantment depthStrider = org.bukkit.enchantments.Enchantment.getByName("DEPTH_STRIDER");
+                org.bukkit.enchantments.Enchantment depthStrider = org.bukkit.enchantments.Enchantment
+                        .getByName("DEPTH_STRIDER");
                 if (depthStrider == null) {
                     depthStrider = org.bukkit.enchantments.Enchantment.getByName("WATER_WORKER");
                 }
@@ -347,34 +360,90 @@ public class ModernVersionAdapter implements VersionAdapter {
                     return boots.getEnchantmentLevel(depthStrider);
                 }
             }
-        } catch (Throwable ignored) {}
+        } catch (Throwable ignored) {
+        }
         return 0;
     }
 
     @Override
     public int getEfficiencyLevel(Player player) {
-        if (player == null) return 0;
+        if (player == null)
+            return 0;
         try {
             org.bukkit.inventory.ItemStack mainHand = player.getInventory().getItemInMainHand();
             if (mainHand != null && mainHand.hasItemMeta()) {
-                org.bukkit.enchantments.Enchantment eff = org.bukkit.enchantments.Enchantment.DIG_SPEED;
+                org.bukkit.enchantments.Enchantment eff = org.bukkit.enchantments.Enchantment.getByName("DIG_SPEED");
+                if (eff == null) {
+                    eff = org.bukkit.enchantments.Enchantment.getByName("EFFICIENCY");
+                }
                 if (eff != null) {
                     return mainHand.getEnchantmentLevel(eff);
                 }
             }
-        } catch (Throwable ignored) {}
+        } catch (Throwable ignored) {
+        }
         return 0;
+    }
+
+    @Override
+    public boolean isItemBroken(org.bukkit.inventory.ItemStack item) {
+        if (item == null)
+            return false;
+        try {
+            if (item.hasItemMeta() && item.getItemMeta() instanceof org.bukkit.inventory.meta.Damageable damageable) {
+                short maxDurability = item.getType().getMaxDurability();
+                if (maxDurability <= 0)
+                    return false;
+                return damageable.getDamage() >= (maxDurability - 1);
+            }
+        } catch (Throwable ignored) {
+        }
+        return false;
     }
 
     private PotionEffectType resolvePotionType(CompatPotionType type) {
         return POTION_TYPE_CACHE.get(type);
     }
 
+    private static final java.util.Map<CompatAttribute, Attribute> ATTRIBUTE_CACHE = new java.util.EnumMap<>(
+            CompatAttribute.class);
+    static {
+        for (CompatAttribute compat : CompatAttribute.values()) {
+            Attribute resolved = null;
+            String name = compat.name();
+            try {
+                resolved = Attribute.valueOf(name);
+            } catch (Throwable ignored) {
+            }
+            if (resolved == null && name.startsWith("GENERIC_")) {
+                try {
+                    resolved = Attribute.valueOf(name.substring(8));
+                } catch (Throwable ignored) {
+                }
+            }
+            if (resolved != null) {
+                ATTRIBUTE_CACHE.put(compat, resolved);
+            }
+        }
+    }
+
     private Attribute resolveAttribute(CompatAttribute attr) {
-        return switch (attr) {
-            case GENERIC_MOVEMENT_SPEED -> Attribute.GENERIC_MOVEMENT_SPEED;
-            case GENERIC_ATTACK_SPEED -> Attribute.GENERIC_ATTACK_SPEED;
-            case GENERIC_MAX_HEALTH -> Attribute.GENERIC_MAX_HEALTH;
-        };
+        if (attr == null)
+            return null;
+        Attribute cached = ATTRIBUTE_CACHE.get(attr);
+        if (cached != null)
+            return cached;
+        String name = attr.name();
+        try {
+            return Attribute.valueOf(name);
+        } catch (Throwable ignored) {
+        }
+        if (name.startsWith("GENERIC_")) {
+            try {
+                return Attribute.valueOf(name.substring(8));
+            } catch (Throwable ignored) {
+            }
+        }
+        return null;
     }
 }

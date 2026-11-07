@@ -314,5 +314,16 @@ public class AuditLogManager {
     public String getLatestHash() { return hashChainEngine.getLastHash(); }
     public File getBaseLogDir() { return baseLogDir; }
     public String getServerId() { return serverId; }
+
+    /**
+     * 统计已压缩归档的 .jsonl.gz 日志文件数量
+     */
+    public int getArchiveFileCount() {
+        if (baseLogDir == null || !baseLogDir.exists()) {
+            return 0;
+        }
+        File[] files = baseLogDir.listFiles((dir, name) -> name.endsWith(".jsonl.gz"));
+        return files != null ? files.length : 0;
+    }
 }
 

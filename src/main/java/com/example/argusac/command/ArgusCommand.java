@@ -94,6 +94,7 @@ public class ArgusCommand implements CommandExecutor {
             case "compat" -> handleCompat(sender);
             case "toggle" -> handleToggle(sender, label, args);
             case "setback" -> handleSetbackCommand(sender, label, args);
+            case "update" -> handleUpdate(sender, label, args);
             default -> I18n.sendPrefixed(sender, "system.unknown-command", "subcommand", sub);
         }
 
@@ -245,9 +246,9 @@ public class ArgusCommand implements CommandExecutor {
         UUID uuid = target != null ? target.getUniqueId() : Bukkit.getOfflinePlayer(targetName).getUniqueId();
 
         I18n.sendPrefixed(sender, "command.export.exporting", "player", targetName);
-        plugin.getLogQueryService().exportPlayerData(targetName, uuid, file -> {
-            if (file != null && file.exists()) {
-                I18n.sendPrefixed(sender, "command.export.success", "path", file.getAbsolutePath(), "count", file.length());
+        plugin.getLogQueryService().exportPlayerData(targetName, uuid, res -> {
+            if (res != null && res.file() != null && res.file().exists()) {
+                I18n.sendPrefixed(sender, "command.export.success", "path", res.file().getAbsolutePath(), "count", res.count());
                 recordAdminAction(sender, "EXPORT", targetName, "SUCCESS");
             } else {
                 I18n.sendPrefixed(sender, "command.export.failed");
@@ -307,7 +308,7 @@ public class ArgusCommand implements CommandExecutor {
                 : I18n.get(sender, "command.status.memory-healthy");
         I18n.send(sender, "command.status.queue", "queue_size", backlog, "capacity", cap, "memory_count", memStatus);
         I18n.send(sender, "command.status.chain", "chain_index", chainIndex, "hash", (hash != null ? hash.substring(0, Math.min(hash.length(), 16)) + "..." : "None"));
-        I18n.send(sender, "command.status.archive", "archive_count", 0, "size", (size / 1024) + " KB");
+        I18n.send(sender, "command.status.archive", "archive_count", logMgr.getArchiveFileCount(), "size", (size / 1024) + " KB");
         String droppedHint = dropped > 0 ? " " + I18n.get(sender, "command.status.dropped-hint", "dropped", dropped) : "";
         I18n.send(sender, "command.status.flush-time", "time", flushTime, "dropped", droppedHint);
     }
@@ -442,6 +443,11 @@ public class ArgusCommand implements CommandExecutor {
                 I18n.sendPrefixed(sender, "command.setback.override-set", "player", target.getName(), "override", "DISABLED");
                 recordAdminAction(sender, "SETBACK_OVERRIDE", target.getName(), "DISABLED");
             }
+            case "cancel" -> {
+                data.setSetbackOverride(com.example.argusac.model.SetbackOverride.CANCEL_ONLY);
+                I18n.sendPrefixed(sender, "command.setback.override-set", "player", target.getName(), "override", "CANCEL_ONLY");
+                recordAdminAction(sender, "SETBACK_OVERRIDE", target.getName(), "CANCEL_ONLY");
+            }
             case "soft" -> {
                 data.setSetbackOverride(com.example.argusac.model.SetbackOverride.SOFT_ONLY);
                 I18n.sendPrefixed(sender, "command.setback.override-set", "player", target.getName(), "override", "SOFT_ONLY");
@@ -478,6 +484,23 @@ public class ArgusCommand implements CommandExecutor {
             }
             default -> I18n.send(sender, "command.setback.usage", "label", label);
         }
+    }
+
+    private void handleUpdate(CommandSender sender, String label, String[] args) {
+        var updater = plugin.getAutoUpdater();
+        if (updater == null) {
+            I18n.sendPrefixed(sender, "system.unknown-command", "subcommand", "update");
+            return;
+        }
+
+        if (args.length > 1 && !"check".equalsIgnoreCase(args[1]) && !"download".equalsIgnoreCase(args[1])) {
+            I18n.sendPrefixed(sender, "command.update.usage", "label", label);
+            return;
+        }
+
+        boolean download = args.length > 1 && "download".equalsIgnoreCase(args[1]);
+        updater.checkAsync(download, com.example.argusac.util.ModrinthAutoUpdater.senderReporter(sender));
+        recordAdminAction(sender, "UPDATE", download ? "download" : "check", "TRIGGERED");
     }
 
     private void recordAdminAction(CommandSender sender, String action, String target, String result) {

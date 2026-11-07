@@ -192,7 +192,7 @@ public class LogQueryService {
         });
     }
 
-    public void exportPlayerData(String targetName, UUID targetUuid, Consumer<File> callback) {
+    public void exportPlayerData(String targetName, UUID targetUuid, Consumer<ExportResult> callback) {
         Bukkit.getScheduler().runTaskAsynchronously(plugin, () -> {
             File exportDir = new File(plugin.getDataFolder(), "exports");
             if (!exportDir.exists())
@@ -200,6 +200,7 @@ public class LogQueryService {
 
             String timeStamp = DateTimeFormatter.ofPattern("yyyyMMdd_HHmmss").format(java.time.LocalDateTime.now());
             File zipFile = new File(exportDir, "export_" + targetName + "_" + timeStamp + ".zip");
+            int exportedLines = 0;
 
             try (ZipOutputStream zos = new ZipOutputStream(new FileOutputStream(zipFile))) {
                 zos.putNextEntry(new ZipEntry("player_audit_" + targetName + ".jsonl"));
@@ -218,13 +219,14 @@ public class LogQueryService {
                                         || line.contains("\"player\":\"" + targetName + "\"")) {
                                     zos.write(line.getBytes(StandardCharsets.UTF_8));
                                     zos.write("\n".getBytes(StandardCharsets.UTF_8));
+                                    exportedLines++;
                                 }
                             }
                         }
                     }
                 }
                 zos.closeEntry();
-                callback.accept(zipFile);
+                callback.accept(new ExportResult(zipFile, exportedLines));
             } catch (IOException e) {
                 plugin.getLogger().log(java.util.logging.Level.SEVERE, "Failed to export player data: " + e.getMessage(), e);
                 callback.accept(null);
@@ -249,9 +251,9 @@ public class LogQueryService {
             }
         }
 
-        // 3. 清理回退管理器中的上下文
+        // 3. 清理回退管理器中的上下文 (使用 getExistingContext 避免为离线玩家无意义创建新实例)
         if (plugin.getSetbackManager() != null && targetUuid != null) {
-            com.example.argusac.setback.PlayerSetbackContext ctx = plugin.getSetbackManager().getContext(targetUuid);
+            com.example.argusac.setback.PlayerSetbackContext ctx = plugin.getSetbackManager().getExistingContext(targetUuid);
             if (ctx != null) {
                 ctx.clear();
             }
@@ -278,6 +280,9 @@ public class LogQueryService {
     }
 
     public record VerificationResult(boolean valid, long line, String filename, String detail) {
+    }
+
+    public record ExportResult(File file, int count) {
     }
 
     public record TopRecord(String player, String mainCheck, int totalVl, int setbackCount) {

@@ -147,5 +147,64 @@ public class FalsePositiveRegressionTest {
         anomalies = data.recordAngleAnomaly(now + 550L);
         assertEquals(4, anomalies);
     }
+
+    @Test
+    public void testFastEatCombinedTickAndMsToleranceUnderTpsFluctuation() {
+        // 场景 1：服务器轻微高 TPS 抖动，经过了完整的 32 ticks，但物理耗时为 1180ms (略低于 1200ms，但远高于 75%=900ms) -> 不应误报
+        assertFalse(com.example.argusac.check.combat.FastEatCheck.isFastEatViolation(32L, 1180L, 28, 1200L),
+                "满 32 ticks 且物理耗时接近 1200ms 时不应因单边轻微抖动触发 FastEat 误报");
+
+        // 场景 2：服务器低 TPS (约 16 TPS)，耗时已达 1650ms，但服务端仅走过 26 ticks (略低于 28 ticks，高于 75%=21 ticks) -> 不应误报
+        assertFalse(com.example.argusac.check.combat.FastEatCheck.isFastEatViolation(26L, 1650L, 28, 1200L),
+                "低 TPS 下物理耗时已超过 1.6 秒且 tick 数接近阈值时不应触发 FastEat 误报");
+
+        // 场景 3：真实 FastEat 作弊 (20 ticks / 950ms，双指标均低于 28t / 1200ms) -> 必须拦截
+        assertTrue(com.example.argusac.check.combat.FastEatCheck.isFastEatViolation(20L, 950L, 28, 1200L),
+                "Tick 与毫秒同时低于阈值时必须拦截 FastEat");
+
+        // 场景 4：极端瞬间进食 InstantEat (5 ticks / 250ms) -> 必须拦截
+        assertTrue(com.example.argusac.check.combat.FastEatCheck.isFastEatViolation(5L, 250L, 28, 1200L),
+                "极端短耗时 InstantEat 必须被拦截");
+    }
+
+    @Test
+    public void testFastBreakMiningFatigueDynamicThresholdWithEfficiency() {
+        // 挖掘疲劳 I (amp=0) + 效率 V (eff=5) + 无急迫 + 20% 宽容度：最小阈值应 <= 250ms，正常 420ms 挖矿绝不误报
+        long eff5Threshold = com.example.argusac.check.world.FastBreakCheck.calculateMiningFatigueThresholdMs(0, 5, false, 0.20);
+        assertTrue(eff5Threshold <= 250L, "效率 V 在挖掘疲劳 I 下阈值应适配高效率工具, 实际=" + eff5Threshold);
+        assertTrue(420L >= eff5Threshold, "效率 V 在挖掘疲劳 I 下耗时 420ms 挖石头不应误判");
+
+        // 挖掘疲劳 III (amp=2，远古守卫者) + 无效率：阈值应保持高强度拦截 (>= 1500ms)
+        long fatigue3Threshold = com.example.argusac.check.world.FastBreakCheck.calculateMiningFatigueThresholdMs(2, 0, false, 0.20);
+        assertTrue(fatigue3Threshold >= 1500L, "挖掘疲劳 III 下必须保持高阈值拦截秒破作弊, 实际=" + fatigue3Threshold);
+    }
+
+    @Test
+    public void testElytraPostDiveGlideMomentumExemption() {
+        // 高空俯冲达到峰值速度 1.85 后拉平滑翔，当前速度 1.52 (低于上一帧 1.54，正在自然衰减)
+        assertTrue(com.example.argusac.check.movement.ElytraFlyCheck.isDecayingPostDiveGlide(1.52, 1.54, 1.85, -0.04),
+                "高空俯冲后的自然减速滑翔应被识别为合法余速滑翔");
+
+        // 从未俯冲 (peakDiveSpeed=0.90)，却在平飞中维持 1.50 高速 -> 不属于俯冲余速，必须被拦截
+        assertFalse(com.example.argusac.check.movement.ElytraFlyCheck.isDecayingPostDiveGlide(1.50, 1.50, 0.90, -0.02),
+                "无俯冲历史的高速平飞不应获得俯冲余速豁免");
+    }
+
+    @Test
+    public void testContinuousDiggingPreservesInitialStartTime() {
+        com.example.argusac.data.PlayerData data = new com.example.argusac.data.PlayerData(java.util.UUID.randomUUID(), "haha___1");
+        long t0 = 10_000L;
+        data.startDigging(t0);
+        assertEquals(t0, data.getDiggingStartTime());
+
+        // 挖掘中途 (t0 + 400ms) 再次触发左键方块事件，不应覆盖首次 diggingStartTime
+        data.startDigging(t0 + 400L);
+        assertEquals(t0, data.getDiggingStartTime(), "连续挖掘过程中重复触发 startDigging 不应重置初始挖掘时间戳");
+
+        // 停止挖掘后再次开始新挖掘，才更新为新时间戳
+        data.stopDigging(t0 + 600L);
+        data.startDigging(t0 + 800L);
+        assertEquals(t0 + 800L, data.getDiggingStartTime());
+    }
 }
 

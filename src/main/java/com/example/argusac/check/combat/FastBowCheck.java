@@ -16,14 +16,14 @@ import org.bukkit.util.Vector;
  * <p>
  * 深度针对 FastBow 外挂的三大核心机制进行确定性拦截：
  * 1. 服务端 Tick 级蓄力计时器 (Server-side Charge Tick Counter)：
- *    原版弓箭拉满蓄力需要严格的 20 ticks (1000ms)，系统在客户端举弓交互时记录起始 Tick 与时间戳，
- *    在箭矢发射时校验蓄力时长，放宽 1~2 ticks 网络抖动容差 (默认 >= 18 ticks / 850ms)，
- *    对瞬发箭或蓄力严重不足的满速箭予以即时阻断。
+ * 原版弓箭拉满蓄力需要严格的 20 ticks (1000ms)，系统在客户端举弓交互时记录起始 Tick 与时间戳，
+ * 在箭矢发射时校验蓄力时长，放宽 1~2 ticks 网络抖动容差 (默认 >= 18 ticks / 850ms)，
+ * 对瞬发箭或蓄力严重不足的满速箭予以即时阻断。
  * 2. 结合事务机制与滑动窗口防御延迟堆包 (Transaction / Ping-based Validation & Anti-Burst)：
- *    防御作弊端通过 FakeLag / Blink 制造断网假象后瞬间释放海量箭矢的包轰炸 (Packet Spoil)，
- *    对 1000ms 滑动窗口内的满速箭释放频次设置物理上限 (默认 <= 3 支/秒)。
+ * 防御作弊端通过 FakeLag / Blink 制造断网假象后瞬间释放海量箭矢的包轰炸 (Packet Spoil)，
+ * 对 1000ms 滑动窗口内的满速箭释放频次设置物理上限 (默认 <= 3 支/秒)。
  * 3. 箭矢射击冷却与频率限制 (Shot Rate Limiting)：
- *    维护全局射箭冷却窗，强制两箭之间的绝对物理间歇 (默认 >= 250ms)。
+ * 维护全局射箭冷却窗，强制两箭之间的绝对物理间歇 (默认 >= 250ms)。
  */
 public class FastBowCheck extends AbstractCheck {
 
@@ -98,7 +98,8 @@ public class FastBowCheck extends AbstractCheck {
 
         // 0. 多重射击 (Multishot) 附魔弩同帧三连发箭矢豁免：
         // 附魔多重射击的弩在单次射击时会在同一服务端 Tick 内连续触发 3 次 EntityShootBowEvent（左、中、右三支箭），
-        // 若主箭已在当前 Tick 通过核验，后续同 Tick 派生副箭直接放行，彻底根除 Multishot 100% 误报 Gatling Rapid Fire 的问题
+        // 若主箭已在当前 Tick 通过核验，后续同 Tick 派生副箭直接放行，彻底根除 Multishot 100% 误报 Gatling Rapid Fire
+        // 的问题
         if (isCrossbow && data.getLastBowShotTime() > 0
                 && (currentTick == data.getLastBowShotTick() || (now - data.getLastBowShotTime()) <= 10L)) {
             return;
@@ -119,7 +120,8 @@ public class FastBowCheck extends AbstractCheck {
         int shotsInWindow = data.recordBowShot(currentTick, now);
         if (shotsInWindow > maxShotsPerSecond) {
             flagViolation(player, data, event, 4,
-                    String.format("Packet Spoil Burst: %d shots in 1000ms window (max=%d)", shotsInWindow, maxShotsPerSecond));
+                    String.format("Packet Spoil Burst: %d shots in 1000ms window (max=%d)", shotsInWindow,
+                            maxShotsPerSecond));
             return;
         }
 
@@ -208,7 +210,8 @@ public class FastBowCheck extends AbstractCheck {
         if (item == null || !item.hasItemMeta()) {
             return 0;
         }
-        for (java.util.Map.Entry<org.bukkit.enchantments.Enchantment, Integer> entry : item.getEnchantments().entrySet()) {
+        for (java.util.Map.Entry<org.bukkit.enchantments.Enchantment, Integer> entry : item.getEnchantments()
+                .entrySet()) {
             if (entry.getKey() != null) {
                 String enchName = entry.getKey().getName();
                 if (enchName != null && enchName.toUpperCase().contains("QUICK_CHARGE")) {

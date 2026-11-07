@@ -235,28 +235,42 @@ public class PlayerData {
     // ==================== 回退代理方法 (全部路由至 SetbackManager) ====================
 
     public LegitimateLocation getLastLegitimateLocation() {
-        return com.example.argusac.ArgusACPlugin.getInstance().getSetbackManager().getLastLocation(uuid);
+        com.example.argusac.ArgusACPlugin plugin = com.example.argusac.ArgusACPlugin.getInstance();
+        return (plugin != null && plugin.getSetbackManager() != null)
+                ? plugin.getSetbackManager().getLastLocation(uuid) : null;
     }
 
     public LegitimateLocation getPreviousLegitimateLocation() {
-        return com.example.argusac.ArgusACPlugin.getInstance().getSetbackManager().getPreviousLocation(uuid);
+        com.example.argusac.ArgusACPlugin plugin = com.example.argusac.ArgusACPlugin.getInstance();
+        return (plugin != null && plugin.getSetbackManager() != null)
+                ? plugin.getSetbackManager().getPreviousLocation(uuid) : null;
     }
 
     public SetbackOverride getSetbackOverride() {
-        return com.example.argusac.ArgusACPlugin.getInstance().getSetbackManager().getOverride(uuid);
+        com.example.argusac.ArgusACPlugin plugin = com.example.argusac.ArgusACPlugin.getInstance();
+        return (plugin != null && plugin.getSetbackManager() != null)
+                ? plugin.getSetbackManager().getOverride(uuid) : SetbackOverride.DEFAULT;
     }
 
     public void setSetbackOverride(SetbackOverride setbackOverride) {
-        com.example.argusac.ArgusACPlugin.getInstance().getSetbackManager().setOverride(uuid, setbackOverride);
+        com.example.argusac.ArgusACPlugin plugin = com.example.argusac.ArgusACPlugin.getInstance();
+        if (plugin != null && plugin.getSetbackManager() != null) {
+            plugin.getSetbackManager().setOverride(uuid, setbackOverride);
+        }
     }
 
     public boolean isSetbackImmune() {
-        return com.example.argusac.ArgusACPlugin.getInstance().getSetbackManager().isImmune(uuid);
+        com.example.argusac.ArgusACPlugin plugin = com.example.argusac.ArgusACPlugin.getInstance();
+        return plugin != null && plugin.getSetbackManager() != null
+                && plugin.getSetbackManager().isImmune(uuid);
     }
 
     public long getSetbackImmunityUntil() {
-        com.example.argusac.setback.PlayerSetbackContext ctx = com.example.argusac.ArgusACPlugin.getInstance()
-                .getSetbackManager().getContext(uuid);
+        com.example.argusac.ArgusACPlugin plugin = com.example.argusac.ArgusACPlugin.getInstance();
+        if (plugin == null || plugin.getSetbackManager() == null) {
+            return 0L;
+        }
+        com.example.argusac.setback.PlayerSetbackContext ctx = plugin.getSetbackManager().getExistingContext(uuid);
         return ctx != null ? ctx.getImmunityUntil() : 0L;
     }
 
@@ -561,8 +575,10 @@ public class PlayerData {
     }
 
     public void startDigging(long now) {
+        if (!this.digging || this.diggingStartTime <= 0L) {
+            this.diggingStartTime = now;
+        }
         this.digging = true;
-        this.diggingStartTime = now;
         this.lastDiggingTime = now;
         this.clickTimestamps.clear();
         this.flyingIntervalSamples.clear();
@@ -1169,9 +1185,9 @@ public class PlayerData {
     private volatile String eatingItemType = null;
 
     public void startEating(long currentTick, long nowMs, String itemType) {
-        // 若已经在进食同一种物品且未超时 (2000ms 内)，避免重复右键交互重置起始时间导致 FastEat 误报
+        // 若已经在进食同一种物品且未超时 (3500ms 内，兼容低 TPS 服务端慢速 tick)，避免重复右键交互重置起始时间导致 FastEat 误报
         if (this.eating && itemType != null && itemType.equals(this.eatingItemType)
-                && this.eatStartTimeMs > 0L && (nowMs - this.eatStartTimeMs) < 2000L) {
+                && this.eatStartTimeMs > 0L && (nowMs - this.eatStartTimeMs) < 3500L) {
             return;
         }
         this.eating = true;

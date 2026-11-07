@@ -157,7 +157,8 @@ public class FastEatCheck extends AbstractCheck {
         }
 
         // 3. 时间差与 Tick 校验 (FastEat Flag)
-        if (elapsedTicks < adjustedMinTicks || elapsedMs < adjustedMinMs) {
+        // 采用 Tick 与毫秒联合校验，消除服务端轻微 TPS 波动 (如 16~18 TPS 下 28 ticks 耗时 >1600ms，或高 TPS 抖动) 引起的单边误报
+        if (isFastEatViolation(elapsedTicks, elapsedMs, adjustedMinTicks, adjustedMinMs)) {
             flagViolation(player, data, event, 2,
                     String.format("FastEat: elapsed=%dt/%dms (req=%dt/%dms), item=%s, ping=%dms",
                             elapsedTicks, elapsedMs, adjustedMinTicks, adjustedMinMs, mat.name(), ping));
@@ -165,6 +166,20 @@ public class FastEatCheck extends AbstractCheck {
 
         // 校验完毕，清除本次进食打点状态
         data.stopEating();
+    }
+
+    /**
+     * 综合判定进食耗时是否构成 FastEat 违规：
+     * 1. 当服务端 Tick 数与实际毫秒耗时同时低于各自补偿阈值时，确认为加速进食；
+     * 2. 当任意一项极端偏低 (< 75% 最小要求，例如 InstantEat 瞬间进食或重度 Timer) 时，直接拦截。
+     */
+    public static boolean isFastEatViolation(long elapsedTicks, long elapsedMs, int adjustedMinTicks, long adjustedMinMs) {
+        if (elapsedTicks < adjustedMinTicks && elapsedMs < adjustedMinMs) {
+            return true;
+        }
+        int severeMinTicks = Math.max(3, (int) Math.floor(adjustedMinTicks * 0.75));
+        long severeMinMs = Math.max(150L, Math.round(adjustedMinMs * 0.75));
+        return elapsedTicks < severeMinTicks || elapsedMs < severeMinMs;
     }
 
     private void flagViolation(Player player, PlayerData data, PlayerItemConsumeEvent event, int vl, String details) {

@@ -94,6 +94,29 @@ settings:
     max-per-player: 50       # Maximum log entries retained per player
 
 # ==============================================================================
+# Modrinth Auto-Updater Configuration
+# Automatically checks Modrinth API v2 for new updates and handles downloads
+# ==============================================================================
+updater:
+  # Whether to enable the automatic update checker
+  enabled: true
+  # Check for updates asynchronously when the server starts
+  check-on-startup: true
+  # Automatically download new versions to plugins/update folder when detected
+  # (Applied automatically on the next server restart)
+  auto-download: false
+  # Periodic update check interval in hours (0 to disable periodic checks)
+  check-interval-hours: 6
+  # Target Modrinth project slug or project ID
+  project-id: "argusac"
+  # Target release channels to accept (release, beta, alpha)
+  channels:
+    - "release"
+    - "beta"
+  # Verify downloaded jar integrity using official SHA-512 hash
+  verify-sha512: true
+
+# ==============================================================================
 # Alert Notification System
 # ==============================================================================
 alerts:

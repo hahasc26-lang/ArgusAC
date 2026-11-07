@@ -82,14 +82,19 @@ public class FastBreakCheck extends AbstractCheck {
 
         VersionAdapter adapter = VersionAdapterFactory.getAdapter();
 
-        // 挖掘疲劳检测：如果带有挖掘疲劳效果，几乎不可能以正常速度破坏方块
-        boolean hasFatigue = adapter.hasPotionEffect(player, CompatPotionType.MINING_FATIGUE);
-        // 应用宽容系数：阈值 * (1 + timeLeniency)
-        long fatigueThreshold = (long) (1000L * (1.0 + timeLeniency));
-        if (hasFatigue && hardness > 2.0f && elapsed < fatigueThreshold) {
-            flag(player, 2, String.format("FastBreak under Mining Fatigue block=%s, elapsed=%dms", mat, elapsed));
-            event.setCancelled(true);
-            return;
+        // 挖掘疲劳检测：结合挖掘疲劳等级、工具效率附魔 (Efficiency) 与急迫效果 (Haste) 动态计算合理耗时底线，
+        // 避免持有效率 V 镐在轻度挖掘疲劳 I 下挖掘普通矿石 (原版仅需 ~450ms) 被一刀切误判
+        if (adapter.hasPotionEffect(player, CompatPotionType.MINING_FATIGUE) && hardness > 2.0f) {
+            int fatigueAmp = adapter.getPotionAmplifier(player, CompatPotionType.MINING_FATIGUE);
+            int efficiency = adapter.getEfficiencyLevel(player);
+            boolean hasHaste = adapter.hasPotionEffect(player, CompatPotionType.HASTE);
+            long fatigueThreshold = calculateMiningFatigueThresholdMs(fatigueAmp, efficiency, hasHaste, timeLeniency);
+            if (elapsed < fatigueThreshold) {
+                flag(player, 2, String.format("FastBreak under Mining Fatigue block=%s, elapsed=%dms, min=%dms",
+                        mat, elapsed, fatigueThreshold));
+                event.setCancelled(true);
+                return;
+            }
         }
 
         // 黑曜石 (硬度 50.0)，即便是最佳工具+效率V也需要约 1.5 秒以上
@@ -101,5 +106,32 @@ public class FastBreakCheck extends AbstractCheck {
                 event.setCancelled(true);
             }
         }
+    }
+
+    /**
+     * 计算挖掘疲劳 (Mining Fatigue) 下的最小允许挖掘毫秒阈值
+     * 综合考虑挖掘疲劳等级、效率附魔等级、急迫效果及配置的宽容度比例 (timeLeniency)
+     */
+    public static long calculateMiningFatigueThresholdMs(int fatigueAmplifier, int efficiencyLevel,
+                                                         boolean hasHaste, double timeLeniency) {
+        if (fatigueAmplifier < 0) {
+            return 0L;
+        }
+        long baseMs;
+        if (fatigueAmplifier == 0) {
+            // 挖掘疲劳 I (速度倍率 0.3x)：效率 V 钻石/下界合金镐挖石头/矿石原版约需 350~500ms
+            baseMs = (efficiencyLevel >= 4) ? 250L : (efficiencyLevel >= 1 ? 450L : 850L);
+        } else if (fatigueAmplifier == 1) {
+            // 挖掘疲劳 II (速度倍率 0.09x)
+            baseMs = (efficiencyLevel >= 4) ? 750L : 1400L;
+        } else {
+            // 挖掘疲劳 III+ (远古守卫者，速度倍率 <= 0.0027x)
+            baseMs = 2500L;
+        }
+        if (hasHaste) {
+            baseMs = Math.round(baseMs * 0.70);
+        }
+        double clampedLeniency = Math.max(0.0, Math.min(0.60, timeLeniency));
+        return Math.max(150L, Math.round(baseMs * (1.0 - clampedLeniency)));
     }
 }

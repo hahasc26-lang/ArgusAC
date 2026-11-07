@@ -48,29 +48,50 @@ public class LegacyVersionAdapter implements VersionAdapter {
     private boolean tpsReflectionFailed = false;
 
     // 材质名称集合缓存 (避免使用高版本 Material 枚举静态常量导致 NoSuchFieldError)
-    private static final Set<String> ICE_MATERIALS = new HashSet<>(Arrays.asList("ICE", "PACKED_ICE", "FROSTED_ICE", "BLUE_ICE"));
+    private static final Set<String> ICE_MATERIALS = new HashSet<>(
+            Arrays.asList("ICE", "PACKED_ICE", "FROSTED_ICE", "BLUE_ICE"));
     private static final Set<String> CLIMBABLE_MATERIALS = new HashSet<>(Arrays.asList(
-            "LADDER", "VINE", "SCAFFOLDING", "COBWEB", "POWDER_SNOW", "WEEPING_VINES", "TWISTING_VINES"
-    ));
+            "LADDER", "VINE", "SCAFFOLDING", "COBWEB", "POWDER_SNOW", "WEEPING_VINES", "TWISTING_VINES"));
+
+    private static final boolean HAS_ADVENTURE;
+    static {
+        boolean adv = false;
+        try {
+            Class.forName("net.kyori.adventure.text.Component");
+            adv = true;
+        } catch (Throwable ignored) {
+        }
+        HAS_ADVENTURE = adv;
+    }
 
     public LegacyVersionAdapter() {
-        initPlayerReflection();
+        initEntityReflection();
         initAabbReflection();
         initTpsReflection();
     }
 
-    private void initPlayerReflection() {
+    private void initEntityReflection() {
         try {
-            Class<?> craftPlayerClass = Class.forName(Bukkit.getServer().getClass().getPackage().getName() + ".entity.CraftPlayer");
-            this.getHandleMethod = craftPlayerClass.getMethod("getHandle");
-        } catch (Exception ignored) {}
+            Class<?> craftEntityClass = Class
+                    .forName(Bukkit.getServer().getClass().getPackage().getName() + ".entity.CraftEntity");
+            this.getHandleMethod = craftEntityClass.getMethod("getHandle");
+        } catch (Exception e) {
+            try {
+                Class<?> craftPlayerClass = Class
+                        .forName(Bukkit.getServer().getClass().getPackage().getName() + ".entity.CraftPlayer");
+                this.getHandleMethod = craftPlayerClass.getMethod("getHandle");
+            } catch (Exception ignored) {
+            }
+        }
     }
 
     private void initAabbReflection() {
         try {
-            Class<?> nmsEntityClass = Class.forName(Bukkit.getServer().getClass().getPackage().getName().replace("org.bukkit.craftbukkit", "net.minecraft.server") + ".Entity");
+            Class<?> nmsEntityClass = Class.forName(Bukkit.getServer().getClass().getPackage().getName()
+                    .replace("org.bukkit.craftbukkit", "net.minecraft.server") + ".Entity");
             this.getBoundingBoxMethod = nmsEntityClass.getMethod("getBoundingBox");
-            Class<?> aabbClass = Class.forName(Bukkit.getServer().getClass().getPackage().getName().replace("org.bukkit.craftbukkit", "net.minecraft.server") + ".AxisAlignedBB");
+            Class<?> aabbClass = Class.forName(Bukkit.getServer().getClass().getPackage().getName()
+                    .replace("org.bukkit.craftbukkit", "net.minecraft.server") + ".AxisAlignedBB");
             this.minXField = aabbClass.getField("a");
             this.minYField = aabbClass.getField("b");
             this.minZField = aabbClass.getField("c");
@@ -84,7 +105,8 @@ public class LegacyVersionAdapter implements VersionAdapter {
 
     private void initTpsReflection() {
         try {
-            Class<?> craftServerClass = Class.forName(Bukkit.getServer().getClass().getPackage().getName() + ".CraftServer");
+            Class<?> craftServerClass = Class
+                    .forName(Bukkit.getServer().getClass().getPackage().getName() + ".CraftServer");
             Method getServerMethod = craftServerClass.getMethod("getServer");
             this.minecraftServerInstance = getServerMethod.invoke(Bukkit.getServer());
             Class<?> mcServerClass = this.minecraftServerInstance.getClass();
@@ -99,10 +121,12 @@ public class LegacyVersionAdapter implements VersionAdapter {
         if (ServerVersion.isAtLeast(ServerVersion.V1_16_5)) {
             try {
                 return player.getPing();
-            } catch (Throwable ignored) {}
+            } catch (Throwable ignored) {
+            }
         }
 
-        if (pingReflectionFailed || getHandleMethod == null) return -1;
+        if (pingReflectionFailed || getHandleMethod == null)
+            return -1;
 
         try {
             Object nmsPlayer = getHandleMethod.invoke(player);
@@ -117,7 +141,9 @@ public class LegacyVersionAdapter implements VersionAdapter {
             return pingField.getInt(nmsPlayer);
         } catch (Exception e) {
             pingReflectionFailed = true;
-            Bukkit.getLogger().log(Level.FINE, "[ArgusAC-Compat] Failed to read NMS ping via reflection, falling back to default tolerance: " + e.getMessage());
+            Bukkit.getLogger().log(Level.FINE,
+                    "[ArgusAC-Compat] Failed to read NMS ping via reflection, falling back to default tolerance: "
+                            + e.getMessage());
             return -1;
         }
     }
@@ -127,7 +153,8 @@ public class LegacyVersionAdapter implements VersionAdapter {
         if (ServerVersion.isAtLeast(ServerVersion.V1_13)) {
             try {
                 return player.isSwimming();
-            } catch (Throwable ignored) {}
+            } catch (Throwable ignored) {
+            }
         }
         // 1.12.2 降级逻辑：玩家处于水中
         return isInWater(player);
@@ -147,7 +174,8 @@ public class LegacyVersionAdapter implements VersionAdapter {
         if (ServerVersion.isAtLeast(ServerVersion.V1_13)) {
             try {
                 return player.isRiptiding();
-            } catch (Throwable ignored) {}
+            } catch (Throwable ignored) {
+            }
         }
         return false;
     }
@@ -157,7 +185,8 @@ public class LegacyVersionAdapter implements VersionAdapter {
         if (ServerVersion.isAtLeast(ServerVersion.V1_15_2)) {
             try {
                 return player.isInWater();
-            } catch (Throwable ignored) {}
+            } catch (Throwable ignored) {
+            }
         }
         String matName = player.getLocation().getBlock().getType().name();
         return matName.contains("WATER");
@@ -177,8 +206,10 @@ public class LegacyVersionAdapter implements VersionAdapter {
         if (ServerVersion.isAtLeast(ServerVersion.V1_13)) {
             try {
                 String brand = player.getClientBrandName();
-                if (brand != null) return brand;
-            } catch (Throwable ignored) {}
+                if (brand != null)
+                    return brand;
+            } catch (Throwable ignored) {
+            }
         }
         if (ArgusACPlugin.getInstance() != null && ArgusACPlugin.getInstance().getPlayerManager() != null) {
             var data = ArgusACPlugin.getInstance().getPlayerManager().getPlayerData(player);
@@ -191,38 +222,58 @@ public class LegacyVersionAdapter implements VersionAdapter {
 
     @Override
     public CompatBoundingBox getEntityBoundingBox(Entity entity) {
+        if (entity == null) {
+            return new CompatBoundingBox(0, 0, 0, 0, 0, 0);
+        }
+
         if (ServerVersion.isAtLeast(ServerVersion.V1_13)) {
             try {
                 org.bukkit.util.BoundingBox b = entity.getBoundingBox();
-                return new CompatBoundingBox(b.getMinX(), b.getMinY(), b.getMinZ(), b.getMaxX(), b.getMaxY(), b.getMaxZ());
-            } catch (Throwable ignored) {}
-        }
-
-        // 1.12.2 尝试反射 NMS AxisAlignedBB
-        if (!aabbReflectionFailed && getHandleMethod != null && getBoundingBoxMethod != null) {
-            try {
-                Object nmsEntity = getHandleMethod.invoke(entity);
-                Object aabb = getBoundingBoxMethod.invoke(nmsEntity);
-                if (aabb != null) {
-                    return new CompatBoundingBox(
-                            minXField.getDouble(aabb),
-                            minYField.getDouble(aabb),
-                            minZField.getDouble(aabb),
-                            maxXField.getDouble(aabb),
-                            maxYField.getDouble(aabb),
-                            maxZField.getDouble(aabb)
-                    );
-                }
+                return new CompatBoundingBox(b.getMinX(), b.getMinY(), b.getMinZ(), b.getMaxX(), b.getMaxY(),
+                        b.getMaxZ());
             } catch (Throwable ignored) {
-                this.aabbReflectionFailed = true;
             }
         }
 
-        // 安全数学兜底：基于中心坐标与标准尺寸构建盒模型
+        // 1.12.2 尝试反射 NMS AxisAlignedBB
+        if (!aabbReflectionFailed && getBoundingBoxMethod != null) {
+            try {
+                Object nmsEntity = null;
+                if (getHandleMethod != null) {
+                    nmsEntity = getHandleMethod.invoke(entity);
+                } else {
+                    Method handleM = entity.getClass().getMethod("getHandle");
+                    nmsEntity = handleM.invoke(entity);
+                }
+                if (nmsEntity != null) {
+                    Object aabb = getBoundingBoxMethod.invoke(nmsEntity);
+                    if (aabb != null) {
+                        return new CompatBoundingBox(
+                                minXField.getDouble(aabb),
+                                minYField.getDouble(aabb),
+                                minZField.getDouble(aabb),
+                                maxXField.getDouble(aabb),
+                                maxYField.getDouble(aabb),
+                                maxZField.getDouble(aabb));
+                    }
+                }
+            } catch (Throwable ignored) {
+                // 单个实体反射失败仅降级到数学兜底，严禁设置 aabbReflectionFailed = true，以防殃及其他实体判定
+            }
+        }
+
+        // 精准数学兜底：优先调用 Bukkit 1.11+ 的 getWidth / getHeight，兼顾不同尺寸生物
         Location loc = entity.getLocation();
-        double w = 0.6 / 2.0;
+        double w = 0.6;
         double h = 1.8;
-        return new CompatBoundingBox(loc.getX() - w, loc.getY(), loc.getZ() - w, loc.getX() + w, loc.getY() + h, loc.getZ() + w);
+        try {
+            w = entity.getWidth();
+            h = entity.getHeight();
+        } catch (Throwable ignored) {
+        }
+        double halfW = w / 2.0;
+        return new CompatBoundingBox(loc.getX() - halfW, loc.getY(), loc.getZ() - halfW, loc.getX() + halfW,
+                loc.getY() + h, loc.getZ() + halfW);
     }
 
     @Override
@@ -230,8 +281,10 @@ public class LegacyVersionAdapter implements VersionAdapter {
         if (ServerVersion.isAtLeast(ServerVersion.V1_13)) {
             try {
                 org.bukkit.util.BoundingBox b = block.getBoundingBox();
-                return new CompatBoundingBox(b.getMinX(), b.getMinY(), b.getMinZ(), b.getMaxX(), b.getMaxY(), b.getMaxZ());
-            } catch (Throwable ignored) {}
+                return new CompatBoundingBox(b.getMinX(), b.getMinY(), b.getMinZ(), b.getMaxX(), b.getMaxY(),
+                        b.getMaxZ());
+            } catch (Throwable ignored) {
+            }
         }
         int x = block.getX();
         int y = block.getY();
@@ -284,13 +337,15 @@ public class LegacyVersionAdapter implements VersionAdapter {
                             if (block.isPassable()) {
                                 continue;
                             }
-                        } catch (Throwable ignored) {}
+                        } catch (Throwable ignored) {
+                        }
                     } else {
                         try {
                             if (!block.getType().isSolid()) {
                                 continue;
                             }
-                        } catch (Throwable ignored) {}
+                        } catch (Throwable ignored) {
+                        }
                     }
                     CompatBoundingBox blockBox = getBlockBoundingBox(block);
                     if (box.intersectsWithMargin(blockBox, 1.0e-4)) {
@@ -344,7 +399,8 @@ public class LegacyVersionAdapter implements VersionAdapter {
         if (ServerVersion.isAtLeast(ServerVersion.V1_17_1)) {
             try {
                 return world.getMinHeight();
-            } catch (Throwable ignored) {}
+            } catch (Throwable ignored) {
+            }
         }
         return 0;
     }
@@ -354,7 +410,8 @@ public class LegacyVersionAdapter implements VersionAdapter {
         if (ServerVersion.isAtLeast(ServerVersion.V1_17_1)) {
             try {
                 return world.getMaxHeight();
-            } catch (Throwable ignored) {}
+            } catch (Throwable ignored) {
+            }
         }
         return 256;
     }
@@ -364,7 +421,8 @@ public class LegacyVersionAdapter implements VersionAdapter {
         if (ServerVersion.isPaper()) {
             try {
                 return Bukkit.getTPS();
-            } catch (Throwable ignored) {}
+            } catch (Throwable ignored) {
+            }
         }
 
         // Spigot 环境反射读取 recentTps
@@ -389,7 +447,8 @@ public class LegacyVersionAdapter implements VersionAdapter {
     @Override
     public int getPotionAmplifier(LivingEntity entity, CompatPotionType potionType) {
         PotionEffectType type = matchLegacyPotionType(potionType);
-        if (type == null) return -1;
+        if (type == null)
+            return -1;
         for (PotionEffect effect : entity.getActivePotionEffects()) {
             if (effect.getType().equals(type)) {
                 return effect.getAmplifier();
@@ -400,30 +459,55 @@ public class LegacyVersionAdapter implements VersionAdapter {
 
     @Override
     public double getAttributeValue(LivingEntity entity, CompatAttribute attribute, double defaultValue) {
-        try {
-            org.bukkit.attribute.Attribute bukkitAttr = org.bukkit.attribute.Attribute.valueOf(attribute.name());
-            org.bukkit.attribute.AttributeInstance instance = entity.getAttribute(bukkitAttr);
-            return instance != null ? instance.getValue() : defaultValue;
-        } catch (Throwable ignored) {
+        if (entity == null || attribute == null)
             return defaultValue;
+        try {
+            String name = attribute.name();
+            org.bukkit.attribute.Attribute bukkitAttr = null;
+            try {
+                bukkitAttr = org.bukkit.attribute.Attribute.valueOf(name);
+            } catch (IllegalArgumentException e) {
+                if (name.startsWith("GENERIC_")) {
+                    try {
+                        bukkitAttr = org.bukkit.attribute.Attribute.valueOf(name.substring(8));
+                    } catch (IllegalArgumentException ignored) {
+                    }
+                }
+            }
+            if (bukkitAttr != null) {
+                org.bukkit.attribute.AttributeInstance instance = entity.getAttribute(bukkitAttr);
+                return instance != null ? instance.getValue() : defaultValue;
+            }
+        } catch (Throwable ignored) {
         }
+        return defaultValue;
     }
 
     @Override
     public void sendMessage(CommandSender sender, String colorFormattedText) {
-        try {
-            sender.sendMessage(ColorUtil.toComponent(colorFormattedText));
-        } catch (Throwable t) {
-            sender.sendMessage(ChatColor.translateAlternateColorCodes('&', colorFormattedText));
+        if (sender == null)
+            return;
+        if (HAS_ADVENTURE) {
+            try {
+                sender.sendMessage(ColorUtil.toComponent(colorFormattedText));
+                return;
+            } catch (Throwable ignored) {
+            }
         }
+        sender.sendMessage(ChatColor.translateAlternateColorCodes('&', colorFormattedText));
     }
 
     @Override
     public void sendActionBar(Player player, String colorFormattedText) {
-        try {
-            player.sendActionBar(ColorUtil.toComponent(colorFormattedText));
+        if (player == null)
             return;
-        } catch (Throwable ignored) {}
+        if (HAS_ADVENTURE) {
+            try {
+                player.sendActionBar(ColorUtil.toComponent(colorFormattedText));
+                return;
+            } catch (Throwable ignored) {
+            }
+        }
 
         String msg = ChatColor.translateAlternateColorCodes('&', colorFormattedText);
         try {
@@ -439,14 +523,17 @@ public class LegacyVersionAdapter implements VersionAdapter {
         try {
             Sound sound = Sound.valueOf(mapLegacySoundName(soundName));
             player.playSound(loc, sound, volume, pitch);
-        } catch (Throwable ignored) {}
+        } catch (Throwable ignored) {
+        }
     }
 
     @Override
     public boolean isRayOccluded(Location from, Location to) {
-        if (from == null || to == null || from.getWorld() != to.getWorld()) return false;
+        if (from == null || to == null || from.getWorld() != to.getWorld())
+            return false;
         double dist = from.distance(to);
-        if (dist <= 0.6) return false;
+        if (dist <= 0.6)
+            return false;
 
         if (ServerVersion.isAtLeast(ServerVersion.V1_13)) {
             try {
@@ -454,7 +541,8 @@ public class LegacyVersionAdapter implements VersionAdapter {
                 org.bukkit.util.RayTraceResult result = from.getWorld().rayTraceBlocks(
                         from, dir, dist - 0.2, org.bukkit.FluidCollisionMode.NEVER, true);
                 return result != null && result.getHitBlock() != null && result.getHitBlock().getType().isOccluding();
-            } catch (Throwable ignored) {}
+            } catch (Throwable ignored) {
+            }
         }
 
         // 1.12.2 跨版本安全步进射线检测 (规避低版本缺少 World#rayTraceBlocks 抛出 NoSuchMethodError)
@@ -477,8 +565,10 @@ public class LegacyVersionAdapter implements VersionAdapter {
 
     @Override
     public boolean isStandable(Block block) {
-        if (block == null) return false;
-        if (isSolidBlock(block)) return true;
+        if (block == null)
+            return false;
+        if (isSolidBlock(block))
+            return true;
         String name = block.getType().name();
         return name.contains("CARPET")
                 || name.contains("SNOW")
@@ -493,43 +583,54 @@ public class LegacyVersionAdapter implements VersionAdapter {
 
     @Override
     public float getBlockHardness(Block block) {
-        if (block == null) return 0.0f;
+        if (block == null)
+            return 0.0f;
         try {
             java.lang.reflect.Method m = block.getType().getClass().getMethod("getHardness");
             return ((Number) m.invoke(block.getType())).floatValue();
         } catch (Throwable e) {
             String name = block.getType().name();
-            if (name.contains("OBSIDIAN")) return 50.0f;
-            if (name.contains("STONE") || name.contains("ORE")) return 3.0f;
-            if (name.contains("WOOD") || name.contains("LOG") || name.contains("PLANK")) return 2.0f;
-            if (name.contains("DIRT") || name.contains("GRASS") || name.contains("SAND")) return 0.5f;
-            if (name.contains("LEAVES") || name.contains("FLOWER") || name.contains("TORCH")) return 0.0f;
+            if (name.contains("OBSIDIAN"))
+                return 50.0f;
+            if (name.contains("STONE") || name.contains("ORE"))
+                return 3.0f;
+            if (name.contains("WOOD") || name.contains("LOG") || name.contains("PLANK"))
+                return 2.0f;
+            if (name.contains("DIRT") || name.contains("GRASS") || name.contains("SAND"))
+                return 0.5f;
+            if (name.contains("LEAVES") || name.contains("FLOWER") || name.contains("TORCH"))
+                return 0.0f;
             return 1.5f;
         }
     }
 
     @Override
     public int getSoulSpeedLevel(Player player) {
-        if (player == null) return 0;
+        if (player == null)
+            return 0;
         try {
             org.bukkit.inventory.ItemStack boots = player.getInventory().getBoots();
             if (boots != null && boots.hasItemMeta()) {
-                org.bukkit.enchantments.Enchantment soulSpeed = org.bukkit.enchantments.Enchantment.getByName("SOUL_SPEED");
+                org.bukkit.enchantments.Enchantment soulSpeed = org.bukkit.enchantments.Enchantment
+                        .getByName("SOUL_SPEED");
                 if (soulSpeed != null) {
                     return boots.getEnchantmentLevel(soulSpeed);
                 }
             }
-        } catch (Throwable ignored) {}
+        } catch (Throwable ignored) {
+        }
         return 0;
     }
 
     @Override
     public int getDepthStriderLevel(Player player) {
-        if (player == null) return 0;
+        if (player == null)
+            return 0;
         try {
             org.bukkit.inventory.ItemStack boots = player.getInventory().getBoots();
             if (boots != null && boots.hasItemMeta()) {
-                org.bukkit.enchantments.Enchantment depthStrider = org.bukkit.enchantments.Enchantment.getByName("DEPTH_STRIDER");
+                org.bukkit.enchantments.Enchantment depthStrider = org.bukkit.enchantments.Enchantment
+                        .getByName("DEPTH_STRIDER");
                 if (depthStrider == null) {
                     depthStrider = org.bukkit.enchantments.Enchantment.getByName("WATER_WORKER");
                 }
@@ -537,13 +638,15 @@ public class LegacyVersionAdapter implements VersionAdapter {
                     return boots.getEnchantmentLevel(depthStrider);
                 }
             }
-        } catch (Throwable ignored) {}
+        } catch (Throwable ignored) {
+        }
         return 0;
     }
 
     @Override
     public int getEfficiencyLevel(Player player) {
-        if (player == null) return 0;
+        if (player == null)
+            return 0;
         try {
             org.bukkit.inventory.ItemStack mainHand;
             try {
@@ -552,13 +655,38 @@ public class LegacyVersionAdapter implements VersionAdapter {
                 mainHand = player.getItemInHand();
             }
             if (mainHand != null && mainHand.hasItemMeta()) {
-                org.bukkit.enchantments.Enchantment eff = org.bukkit.enchantments.Enchantment.DIG_SPEED;
+                org.bukkit.enchantments.Enchantment eff = org.bukkit.enchantments.Enchantment.getByName("DIG_SPEED");
+                if (eff == null) {
+                    eff = org.bukkit.enchantments.Enchantment.getByName("EFFICIENCY");
+                }
                 if (eff != null) {
                     return mainHand.getEnchantmentLevel(eff);
                 }
             }
-        } catch (Throwable ignored) {}
+        } catch (Throwable ignored) {
+        }
         return 0;
+    }
+
+    @Override
+    public boolean isItemBroken(org.bukkit.inventory.ItemStack item) {
+        if (item == null)
+            return false;
+        try {
+            short maxDurability = item.getType().getMaxDurability();
+            if (maxDurability <= 0)
+                return false;
+            // 兼容 1.13+ Damageable
+            if (ServerVersion.isAtLeast(ServerVersion.V1_13) && item.hasItemMeta()) {
+                if (item.getItemMeta() instanceof org.bukkit.inventory.meta.Damageable damageable) {
+                    return damageable.getDamage() >= (maxDurability - 1);
+                }
+            }
+            // 1.12.2 原生 getDurability
+            return item.getDurability() >= (maxDurability - 1);
+        } catch (Throwable ignored) {
+            return false;
+        }
     }
 
     private PotionEffectType matchLegacyPotionType(CompatPotionType type) {
@@ -571,16 +699,18 @@ public class LegacyVersionAdapter implements VersionAdapter {
             case DOLPHINS_GRACE -> PotionEffectType.getByName("DOLPHINS_GRACE");
             case HASTE -> PotionEffectType.FAST_DIGGING;
             case MINING_FATIGUE -> PotionEffectType.SLOW_DIGGING;
-            case STRENGTH -> (PotionEffectType.getByName("STRENGTH") != null ? PotionEffectType.getByName("STRENGTH") : PotionEffectType.INCREASE_DAMAGE);
+            case STRENGTH -> (PotionEffectType.getByName("STRENGTH") != null ? PotionEffectType.getByName("STRENGTH")
+                    : PotionEffectType.INCREASE_DAMAGE);
         };
     }
 
     private String mapLegacySoundName(String soundName) {
         if (ServerVersion.isOlderThan(ServerVersion.V1_13)) {
-            if ("BLOCK_NOTE_BLOCK_BASS".equalsIgnoreCase(soundName)) return "BLOCK_NOTE_BASS";
-            if ("ENTITY_EXPERIENCE_ORB_PICKUP".equalsIgnoreCase(soundName)) return "ENTITY_EXPERIENCE_ORB_TOUCH";
+            if ("BLOCK_NOTE_BLOCK_BASS".equalsIgnoreCase(soundName))
+                return "BLOCK_NOTE_BASS";
+            if ("ENTITY_EXPERIENCE_ORB_PICKUP".equalsIgnoreCase(soundName))
+                return "ENTITY_EXPERIENCE_ORB_TOUCH";
         }
         return soundName;
     }
 }
-

@@ -116,6 +116,8 @@ public class ViolationManager {
                 mode = "SOFT";
             } else if (override == com.example.argusac.model.SetbackOverride.HARD_ONLY) {
                 mode = "HARD";
+            } else if (override == com.example.argusac.model.SetbackOverride.CANCEL_ONLY) {
+                mode = "CANCEL";
             }
 
             if ("CANCEL".equalsIgnoreCase(mode) && moveEvent != null) {

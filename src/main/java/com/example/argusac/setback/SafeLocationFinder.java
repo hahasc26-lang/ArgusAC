@@ -40,6 +40,12 @@ public class SafeLocationFinder {
                     return true;
                 }
             }
+            // 针对栅栏 (Fence)、石墙 (Wall) 与竹子：碰撞箱高 1.5 格，脚下方块在 y - 0.60 处
+            Block fenceBlock = checkLoc.clone().subtract(0, 0.60, 0).getBlock();
+            String fenceName = fenceBlock.getType().name();
+            if (fenceName.contains("FENCE") || fenceName.contains("WALL") || fenceName.contains("BAMBOO")) {
+                return true;
+            }
         }
         return false;
     }

@@ -1,12 +1,10 @@
 package com.example.argusac.manager;
 
 import com.example.argusac.ArgusACPlugin;
-import com.example.argusac.api.Check;
 import com.example.argusac.data.PlayerData;
 import org.bukkit.Bukkit;
 import org.bukkit.configuration.file.FileConfiguration;
 import org.bukkit.entity.Player;
-import org.bukkit.event.player.PlayerMoveEvent;
 
 import java.util.*;
 import java.util.logging.Level;
@@ -56,30 +54,6 @@ public class PunishmentManager {
         }
         // 按 VL 从小到大排序
         rules.sort(Comparator.comparingInt(r -> r.getVlThreshold()));
-    }
-
-    /**
-     * 执行默认处罚手段 (Default Punishment: Setback 回退机制)
-     *
-     * @param player 违规玩家
-     * @param data 玩家运行时数据
-     * @param check 触发的检测项
-     * @param currentVl 当前违规等级
-     * @param details 违规详情
-     * @param moveEvent 移动事件 (可为 null)
-     * @return 是否成功触发并执行了默认回退处罚
-     */
-    public boolean executeDefaultPunishment(Player player, PlayerData data, Check check,
-                                           int currentVl, String details, PlayerMoveEvent moveEvent) {
-        if (!setbackAsDefault || player == null || check == null) {
-            return false;
-        }
-
-        SetbackManager setbackManager = plugin.getSetbackManager();
-        if (setbackManager.shouldSetback(player, check, currentVl)) {
-            return setbackManager.mitigate(player, check, currentVl, details, moveEvent);
-        }
-        return false;
     }
 
     /**

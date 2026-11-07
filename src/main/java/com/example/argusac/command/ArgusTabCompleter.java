@@ -23,9 +23,9 @@ public class ArgusTabCompleter implements TabCompleter {
     private final List<String> subCommands = Arrays.asList(
             "help", "reload", "vl", "logs", "history", "export",
             "top", "status", "verify", "debug", "replay", "my-data",
-            "purge", "compat", "toggle", "setback", "alerts"
+            "purge", "compat", "toggle", "setback", "alerts", "update"
     );
-    private final List<String> setbackActions = Arrays.asList("disable", "soft", "hard", "default", "now", "info");
+    private final List<String> setbackActions = Arrays.asList("disable", "cancel", "soft", "hard", "default", "now", "info");
     private final List<String> logFilterFlags = Arrays.asList("--check", "--since", "--setback", "--page");
 
     public ArgusTabCompleter(ArgusACPlugin plugin) {
@@ -65,6 +65,11 @@ public class ArgusTabCompleter implements TabCompleter {
         String sub = args[0].toLowerCase();
 
         if (args.length == 2) {
+            if ("update".equals(sub)) {
+                return Arrays.asList("check", "download").stream()
+                        .filter(action -> action.startsWith(args[1].toLowerCase()))
+                        .collect(Collectors.toList());
+            }
             if ("alerts".equals(sub)) {
                 return Arrays.asList("on", "off", "status").stream()
                         .filter(action -> action.startsWith(args[1].toLowerCase()))

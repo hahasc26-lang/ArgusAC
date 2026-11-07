@@ -68,6 +68,7 @@ help:
     - "<yellow>/argus toggle <check></yellow> <dark_gray>-</dark_gray> <gray>Enable or disable a specific check in real time</gray>"
     - "<yellow>/argus setback <player|global> <mode></yellow> <dark_gray>-</dark_gray> <gray>Diagnose and manage the setback subsystem</gray>"
     - "<yellow>/argus alerts [on|off|status]</yellow> <dark_gray>-</dark_gray> <gray>Mute or restore personal alerts for this login session</gray>"
+    - "<yellow>/argus update [check|download]</yellow> <dark_gray>-</dark_gray> <gray>Check or download the latest release from Modrinth</gray>"
 
 # Detailed command feedback messages
 command:
@@ -132,6 +133,7 @@ command:
     height-bar: "&7[Height Bar]"
     legend: "&7Legend: &aS&7=Legal Origin, &e*&7=Illegal Vector, &cX&7=Forced Setback"
   verify:
+    usage: "<red>Usage: /{label} verify</red>"
     running: "<yellow>Verifying audit log SHA-256 hash chain signatures in background, please wait...</yellow>"
     success: "<green>Hash chain audit passed! All log entries are intact with zero tampering.</green>"
     failed: "<red>Warning! Hash mismatch detected on line {line}. Logs may have been modified!</red>"
@@ -140,7 +142,7 @@ command:
     not-found: "<red>Check module named <yellow>{check}</yellow> was not found!</red>"
     result: "<green>Check module <yellow>{check}</yellow> state updated to: {status}</green>"
   setback:
-    usage: "<red>Usage: /{label} setback <player|global> <disable|soft|hard|default|now|info></red>"
+    usage: "<red>Usage: /{label} setback <player|global> <disable|cancel|soft|hard|default|now|info></red>"
     param-error: "<red>Invalid parameter! Please use on or off.</red>"
     data-error: "<red>Cannot retrieve runtime data for this player.</red>"
     fail-blocked: "<red>Setback failed: no valid location available or destination is obstructed.</red>"
@@ -164,6 +166,24 @@ command:
   purge:
     usage: "<red>Usage: /{label} purge <player></red>"
     success: "<green>Successfully purged all stored audit logs for player <yellow>{player}</yellow>.</green>"
+  update:
+    usage: "<red>Usage: /{label} update [check|download]</red>"
+
+# Modrinth Auto-Updater messages
+updater:
+  checking: "<gray>Checking for new releases via Modrinth API...</gray>"
+  up-to-date: "<green>ArgusAC is currently up to date (v{current}).</green>"
+  update-available: "<gold>[ArgusAC] A new update is available! <yellow>v{current}</yellow> -> <green>v{latest}</green> ({channel})</gold>\n<gray>Release page: <underlined><aqua>{url}</aqua></underlined></gray>"
+  download-hint: "<gray>Auto-download is disabled. Enable auto-download in config.yml or run <yellow>/argus update download</yellow>.</gray>"
+  downloading: "<yellow>Downloading latest release v{latest} from Modrinth, please wait...</yellow>"
+  download-success: "<green>Latest release v{latest} downloaded successfully to <yellow>{path}</yellow>! It will take effect upon server restart.</green>"
+  already-downloaded: "<green>The new version v{latest} has already been downloaded to the update folder and will take effect upon restart.</green>"
+  already-checking: "<yellow>An update check is already in progress, please wait a moment.</yellow>"
+  http-error: "<red>Failed to check for updates: Modrinth API returned HTTP <yellow>{code}</yellow>.</red>"
+  check-failed: "<red>Failed to check for updates: <yellow>{error}</yellow></red>"
+  download-failed: "<red>Failed to download update: <yellow>{error}</yellow></red>"
+  hash-mismatch: "<red>Downloaded file SHA-512 checksum mismatch! Corrupted file safely removed.</red>"
+  no-version-found: "<yellow>No compatible releases found on Modrinth for configured channels ({channels}).</yellow>"
 
 # Multi-version compatibility descriptions and diagnostics
 compat:
@@ -204,4 +224,3 @@ compat:
     adapter: "Adapter Channel: {adapter}"
     matrix: "Capability Matrix: {count} check modules assigned runtime tiers"
     degraded-notice: "[Notice] Some modules are running in degraded compatibility mode. Run /argus compat for details."
-

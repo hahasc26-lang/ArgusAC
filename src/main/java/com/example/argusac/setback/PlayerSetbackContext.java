@@ -316,6 +316,7 @@ public class PlayerSetbackContext {
             this.snapshotHistory.addFirst(reset);
         }
         this.pendingCorrection = null;
+        clearLockedAnchor();
         resetActiveHoverTracking();
     }
 
@@ -329,6 +330,7 @@ public class PlayerSetbackContext {
         this.lastGroundLocation = null;
         this.snapshotHistory.clear();
         this.pendingCorrection = null;
+        clearLockedAnchor();
         resetActiveHoverTracking();
     }
 

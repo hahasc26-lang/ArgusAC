@@ -9,7 +9,42 @@
 
 ---
 
+## [1.2.3] - 2026-11-07
+
+### 修复
+- **快速进食 (`FastEatCheck`) 副手进食与 TPS 波动误报修复**：
+  - 修复了 `PlayerInteractListener#onPlayerInteract` 中主手持有无箭矢的弓/弩、副手吃食物时跳过副手起吃打点，导致进食完成时 100% 误判 `Instant Consume` 的问题。
+  - 在 `PacketPipelineManager` 中新增 `USE_ITEM` 协议级进食打点兜底与 `RELEASE_USE_ITEM` 松开右键动作重置（`data.stopEating()` 与 `data.stopBowCharge()`）。
+  - 新增 `FastEatCheck#isFastEatViolation`，将单向 `||` 判定升级为 Tick 与毫秒耗时联合校验配合 `< 75%` 极端短耗时硬拦截，并将 `PlayerData#startEating` 防重置窗口由 `2000ms` 延长至 `3500ms`，彻底消除服务器 TPS 轻微波动（16~18 TPS）下的误报。
+- **鞘翅滑翔 (`ElytraFlyCheck` / `ElytraFirework`) 俯冲拉平与余速滑翔误报修复**：
+  - 为 `ElytraFirework` 补充起跳宽限期（`!inTakeoffGrace`）、俯冲拉平垂直动量转化豁免（`deltaY >= -0.05 && lastDeltaY >= -0.05`）以及俯冲峰值后自然减速滑翔识别（`ElytraFlyCheck#isDecayingPostDiveGlide`），解决高空俯冲后平飞滑翔被误判为无烟花加速的问题。
+- **反击退检测 (`VelocityCheck`) 网络抖动与减速阻滞方块误报修复**：
+  - 引入 `250ms` 网络抖动观测窗口（`maxWaitTime = Math.min(1000L, minWaitTime + 250L)`）与 `1500ms` 陈旧击退过期保护。
+  - 新增蜘蛛网（`WEB`）、甜浆果丛（`BERRY_BUSH`）、细雪（`POWDER_SNOW`）、蜂蜜块、灵魂沙、粘液块、气泡柱、水体及邻近攀爬物的击退豁免。
+- **快速挖掘 (`FastBreakCheck`) 挖掘疲劳动态阈值与连续挖掘计时修复**：
+  - 新增 `FastBreakCheck#calculateMiningFatigueThresholdMs`，综合挖掘疲劳等级、工具效率附魔（Efficiency）、急迫效果（Haste）与 `time-leniency` 动态计算耗时底线，解决持高效率镐在挖掘疲劳 I 下挖掘普通矿石被一刀切误判的问题。
+  - 修复 `PlayerData#startDigging` 在连续挖掘期间覆盖首次 `diggingStartTime` 导致挖掘计时被截短误判的问题。
+- **潜行搭桥边缘接地判定与栅栏/石墙高度对齐 (`PlayerMoveListener` & `SafeLocationFinder`)**：
+  - 将 `PlayerMoveListener#isGrounded` 升级为支持潜行探出半径（`0.42` 格）的 9 点探针，消除潜行搭桥边缘触发 `NoFall Packet GroundSpoof` 误报。
+  - 在 `SafeLocationFinder#isGrounded` 中补充栅栏（`FENCE`）、石墙（`WALL`）与竹子（`BAMBOO`）的 1.5 格高碰撞箱识别。
+- **异常数据包 (`BadPacketsCheck`) 状态切换宽容与冗余分支清理**：
+  - 为 `Sneak-Sprint` 冲突状态检测增加水平移速门槛（`horizDist > 0.20`），并移除不可达且会误判原版静止保活包的重复位置包分支。
+
+### 优化与清理
+- **离线玩家上下文内存泄漏修复与冗余代码清理**：
+  - 修复 `PlayerLifecycleListener#onPlayerQuit` 调用 `getContext(uuid).clearLockedAnchor()` 导致玩家退出后在 `SetbackManager#contextMap` 中重新创建残留空实例的内存泄漏问题；统一改用 `removeContext(uuid)` 并在只读路径使用 `getExistingContext(uuid)`。
+  - 将 `clearLockedAnchor()` 内聚至 `PlayerSetbackContext#reset` 与 `clear()`，移除监听器中的重复重置逻辑及未使用的死代码 `PunishmentManager#executeDefaultPunishment`。
+  - 新增 `SetbackOverride.CANCEL_ONLY`（`/argus setback <玩家> cancel`），修复 `/argus export` 导出记录条数统计（`LogQueryService.ExportResult`）与 `/argus status` 历史归档文件数统计（`AuditLogManager#getArchiveFileCount`）。
+
 ## [1.2.2] - 2026-10-31
+
+### 新增
+- **基于 Modrinth API v2 的自动更新子系统 (`ModrinthAutoUpdater`)**：
+  - **跨平台多内核独立异步调度**：采用纯 Java 原生 `ScheduledExecutorService` 守护线程池驱动周期性轮询与异步检测，彻底剥离外部未定义调度器依赖，实现跨 Java 8 ~ 26.3+ 及 Spigot / Paper / Purpur / Folia 零异常稳定运行。
+  - **双轨反射安全版本识别**：优先接入 Paper 1.20.4+ 的 `PluginMeta` 现代契约，平滑向下回退至 Bukkit `getDescription()`，彻底消除 `getDescription()` 废弃编译警告。
+  - **多版本双轨 Gson 降级解析机制**：无缝适配 1.12.2 旧版 Gson 与 2.8.6+ 现代 Gson，杜绝在老旧服务端核心上触发 `NoSuchMethodError`。
+  - **SHA-512 流式完整性校验与原子级落盘**：内置 `DigestInputStream` 边下边验哈希防篡改保护，配合 `.part` 临时流与 `ATOMIC_MOVE` 原生原子重命名，确保落盘至 `plugins/update/` 的更新包完整可用并在下次服务端冷启动时由 Bukkit 原生替换生效。
+  - **全链路运维指令与 i18n 多语言联动**：无缝打通 ArgusAC 多语言体系，提供 `/argus update [check|download]` 管理员运维指令及 Tab 自动补全，支持启动自检、周期性轮询与发布渠道（release/beta）筛选。
 
 ### 修复
 - **受箭矢远程射击击退时的 Reach 与 KillAura 误报彻底根除**：
@@ -24,6 +59,22 @@
   - **梯子潜行边缘免检判定**：在 `PlayerEventListener` 与 `FlyCheck` 中全面联动攀爬物环境，在玩家沿带梯子方块边缘挪动时及时重置 `airTicks` 与悬停计时器，彻底根除边缘潜行时的 `Fly (Hover)` 误判。
   - **NoFall 特殊环境联防机制**：将攀爬物临近状态纳入 `specialEnv` 与接地状态机，杜绝客户端在梯子上悬停发包 `onGround=true` 时被误判为 `Packet GroundSpoof`。
   - **回退重力下坠压制隔离**：在 `SetbackManager#directCancel` 中将攀爬环境从真空重力加速度模拟中完全排除，彻底解决梯子边缘被强制向下传送拉扯陷入死循环回退的问题。
+- **Minecraft 1.12.2 到最新版本（1.20.x / 1.21.x / 26.x）全链条跨版本兼容性深度重构**：
+  - **1.12.2 类加载 NoSuchFieldError 隐患根除**：
+    - 移除了 `ElytraFlyCheck` 对高版本材质 `Material.FIREWORK_ROCKET` 与 `Material.BUBBLE_COLUMN` 的直接静态常量引用，重构为具备名称双向回退的兼容判定（`FIREWORK_ROCKET` / `FIREWORK`，`BUBBLE_COLUMN` / `SOUL_SAND`）。
+    - 移除了 `AlertManager` 对 `Sound.BLOCK_NOTE_BLOCK_BASS` 常量的静态编译硬依赖，重构为通过 `VersionAdapter#playSound` 动态调度，并在 `LegacyVersionAdapter` 中自动映射低版本音效名（如 `BLOCK_NOTE_BASS`）。
+    - 移除了 `PlayerEventListener` 对 `Material.ELYTRA` 的字面量硬绑定，提升各平台极端材质别名映射的容错率。
+  - **1.12.2 实体 AABB 反射与多生物碰撞箱精准适配**：
+    - 修复了 `LegacyVersionAdapter` 错误缓存 `CraftPlayer#getHandle` 导致非玩家生物（僵尸、骷髅等）调用抛出 `IllegalArgumentException` 并误将全局 `aabbReflectionFailed` 置为 true 的严重设计缺陷；将其重构为对实体基类 `CraftEntity` 的安全反射，保证攻击怪物与 NPC 时 AABB 采样 100% 正常。
+    - 在 AABB 数学兜底层接入 Bukkit 1.11+ 的 `entity.getWidth()` 与 `entity.getHeight()`，解决所有实体被一律按 0.6x1.8 盒模型估算导致的判定偏差。
+  - **物品耐久接口抽象与 1.12.2 接口缺失隔离**：
+    - 在 `VersionAdapter` 引入统一的 `isItemBroken(ItemStack)` 接口；在 `LegacyVersionAdapter` 中使用原版 `getDurability()`，在 `ModernVersionAdapter` 中使用 1.13+ 的 `org.bukkit.inventory.meta.Damageable`，彻底消除 1.12.2 上引用 `Damageable` 带来的 `NoClassDefFoundError` 隐患。
+  - **1.21.2+ / 1.21.4 / 26.x 属性系统剥离 GENERIC_ 前缀适配**：
+    - 重构了 `ModernVersionAdapter` 与 `LegacyVersionAdapter` 中的属性解析机制（`resolveAttribute` 与 `getAttributeValue`），动态适配 1.21.2+ Mojang 将 `GENERIC_` 前缀剥离（如 `MOVEMENT_SPEED` 替代 `GENERIC_MOVEMENT_SPEED`）的变更，自动优先匹配新版属性名并平滑回退，杜绝新版本核心下的枚举解析异常。
+  - **Adventure / Spigot 纯净旧版本降级保护**：
+    - 优化 `ColorUtil` 与 `LegacyVersionAdapter#sendMessage` / `sendActionBar`：增加运行时 `HAS_ADVENTURE` 类存在性探针，在无 Adventure 库的 1.12.2 Spigot 环境下安全直连原版 `ChatColor.translateAlternateColorCodes` 与 Bungee ActionBar API，避免频繁捕获 `NoSuchMethodError`。
+  - **预测器附魔读取规范化**：
+    - 将 `DeterministicMovePredictor` 中对深海步行的原始枚举调用统一收敛至 `VersionAdapter#getDepthStriderLevel`，实现附魔跨版本平滑适配。
 
 ## [1.2.1] - 2026-10-30
 

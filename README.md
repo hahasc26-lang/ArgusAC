@@ -147,6 +147,7 @@ Main command: **`/argus`** (aliases: **`/ac`**, **`/argusac`**).
 | `/argus toggle <check>` | Toggle a check module on/off at runtime | `argusac.admin` |
 | `/argus setback <player\|global> <disable\|cancel\|soft\|hard\|default\|now\|info>` | Inspect or configure setback engine modes | `argusac.admin` |
 | `/argus alerts [on\|off\|status]` | Mute or restore personal staff alerts for this login session | `argusac.alert` |
+| `/argus update [check\|download]` | Check or download the latest release from Modrinth | `argusac.admin` |
 | `/argus my-data` | View GDPR data retention and anonymization policies | Everyone |
 | `/argus purge <player>` | Safely delete a player's stored logs and generate an audit record | `argusac.admin` |
 
@@ -318,6 +319,7 @@ ArgusAC 在玩家通过移动验证后记录其最后合法位置：
 | `/argus toggle <检测项>` | 运行时热开关指定检测模块 | `argusac.admin` |
 | `/argus setback <玩家\|global> <disable\|cancel\|soft\|hard\|default\|now\|info>` | 管理或诊断状态回退子系统模式 | `argusac.admin` |
 | `/argus alerts [on\|off\|status]` | 本次登录会话期间关闭、恢复或查看个人管理员告警提示 | `argusac.alert` |
+| `/argus update [check\|download]` | 检查或从 Modrinth 下载官方最新发布版本 | `argusac.admin` |
 | `/argus my-data` | 查看 GDPR 个人数据保留策略与匿名化透明度 | 所有人 |
 | `/argus purge <玩家>` | 彻底删除玩家存储记录并生成系统注销审计条目 | `argusac.admin` |
 

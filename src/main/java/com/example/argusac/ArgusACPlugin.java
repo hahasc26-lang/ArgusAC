@@ -4,7 +4,10 @@ import com.example.argusac.command.ArgusCommand;
 import com.example.argusac.command.ArgusTabCompleter;
 import com.example.argusac.manager.CheckManager;
 import com.example.argusac.manager.PlayerManager;
-import com.example.argusac.listener.PlayerEventListener;
+import com.example.argusac.listener.PlayerCombatListener;
+import com.example.argusac.listener.PlayerInteractListener;
+import com.example.argusac.listener.PlayerLifecycleListener;
+import com.example.argusac.listener.PlayerMoveListener;
 import com.example.argusac.manager.AlertManager;
 import com.example.argusac.manager.PunishmentManager;
 import com.example.argusac.manager.SetbackManager;
@@ -55,6 +58,9 @@ public class ArgusACPlugin extends JavaPlugin {
 
     // 实体历史碰撞盒回溯追踪器 (Lag Compensation History)
     private com.example.argusac.history.EntityHistoryTracker historyTracker;
+
+    // Modrinth 官方自动更新管理器
+    private com.example.argusac.util.ModrinthAutoUpdater autoUpdater;
 
     @Override
     public void onLoad() {
@@ -125,9 +131,13 @@ public class ArgusACPlugin extends JavaPlugin {
         this.historyTracker.start();
         this.compatibilityManager.evaluateAllChecks();
 
-        // 7. 注册事件监听器 (包含主事件监听器与独立回退引擎监听器)
-        getServer().getPluginManager().registerEvents(new PlayerEventListener(this), this);
-        getServer().getPluginManager().registerEvents(this.setbackManager, this);
+        // 7. 注册事件监听器 (包含模块化玩家监听器与独立回退引擎监听器)
+        org.bukkit.plugin.PluginManager pm = getServer().getPluginManager();
+        pm.registerEvents(new PlayerLifecycleListener(this), this);
+        pm.registerEvents(new PlayerMoveListener(this), this);
+        pm.registerEvents(new PlayerCombatListener(this), this);
+        pm.registerEvents(new PlayerInteractListener(this), this);
+        pm.registerEvents(this.setbackManager, this);
 
         // 8. 针对 1.13+ 现代专有事件进行条件式动态注册 (杜绝 1.12.2 类装载 NoClassDefFoundError)
         if (com.example.argusac.compat.ServerVersion.isAtLeast(com.example.argusac.compat.ServerVersion.V1_13)) {
@@ -154,7 +164,11 @@ public class ArgusACPlugin extends JavaPlugin {
                     online.getVehicle() != null ? online.getVehicle().getUniqueId() : null);
         }
 
-        // 12. 打印就绪横幅
+        // 12. 初始化并异步启动 Modrinth 自动更新管理器
+        this.autoUpdater = new com.example.argusac.util.ModrinthAutoUpdater(this);
+        this.autoUpdater.start(true);
+
+        // 13. 打印就绪横幅
         printBanner();
     }
 
@@ -204,6 +218,9 @@ public class ArgusACPlugin extends JavaPlugin {
         if (historyTracker != null) {
             historyTracker.stop();
         }
+        if (autoUpdater != null) {
+            autoUpdater.shutdown();
+        }
         try {
             com.github.retrooper.packetevents.PacketEvents.getAPI().terminate();
         } catch (Throwable ignored) {
@@ -236,17 +253,19 @@ public class ArgusACPlugin extends JavaPlugin {
             movePredictor.reloadConfig();
         if (violationManager != null)
             violationManager.startDecayTask();
+        if (autoUpdater != null)
+            autoUpdater.start(false);
     }
 
-    @SuppressWarnings("deprecation")
     private void printBanner() {
+        String ver = com.example.argusac.util.ModrinthAutoUpdater.resolvePluginVersion(this);
         getLogger().info("==================================================");
         getLogger().info("    _                               _     ____  ");
         getLogger().info("   / \\   _ __ __ _ _   _ ___       / \\   / ___| ");
         getLogger().info("  / _ \\ | '__/ _` | | | / __|     / _ \\ | |     ");
         getLogger().info(" / ___ \\| | | (_| | |_| \\__ \\    / ___ \\| |___  ");
         getLogger().info("/_/   \\_\\_|  \\__, |\\__,_|___/   /_/   \\_\\\\____| ");
-        getLogger().info("             |___/    ArgusAC AntiCheat v" + this.getDescription().getVersion());
+        getLogger().info("             |___/    ArgusAC AntiCheat v" + ver);
         getLogger().info("==================================================");
     }
 
@@ -332,6 +351,10 @@ public class ArgusACPlugin extends JavaPlugin {
 
     public com.example.argusac.combat.CombatMitigationHandler getCombatMitigationHandler() {
         return combatMitigationHandler;
+    }
+
+    public com.example.argusac.util.ModrinthAutoUpdater getAutoUpdater() {
+        return autoUpdater;
     }
 
     // ==================== checks.yml 独立配置文件管理 ====================

@@ -134,4 +134,7 @@ public interface VersionAdapter {
 
     // 跨版本安全获取方块硬度 (消除 1.12.2 Material.getHardness 的 NoSuchMethodError)
     float getBlockHardness(Block block);
+
+    // 跨版本安全判断物品是否已损坏或濒临损毁 (消除 1.12.2 Damageable 接口缺失与 NoSuchFieldError)
+    boolean isItemBroken(org.bukkit.inventory.ItemStack item);
 }

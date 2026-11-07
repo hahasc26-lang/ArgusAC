@@ -11,5 +11,7 @@ public enum SetbackOverride {
     /** 强制对该玩家仅允许 SOFT 模式回退 */
     SOFT_ONLY,
     /** 强制对该玩家仅允许 HARD 模式回退 */
-    HARD_ONLY
+    HARD_ONLY,
+    /** 强制对该玩家仅允许 CANCEL 当帧原地取消回退 */
+    CANCEL_ONLY
 }

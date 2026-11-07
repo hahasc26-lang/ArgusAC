@@ -7,7 +7,6 @@ import net.kyori.adventure.text.Component;
 import net.kyori.adventure.text.event.ClickEvent;
 import net.kyori.adventure.text.event.HoverEvent;
 import org.bukkit.Bukkit;
-import org.bukkit.Sound;
 import org.bukkit.configuration.file.FileConfiguration;
 import org.bukkit.entity.Player;
 
@@ -24,7 +23,7 @@ public class AlertManager {
 
     private boolean enabled;
     private boolean soundEnabled;
-    private Sound soundType;
+    private String soundName;
     private float soundVolume;
     private float soundPitch;
     private long cooldownMs;
@@ -44,12 +43,7 @@ public class AlertManager {
         this.cooldownMs = config.getLong("alerts.cooldown-ms", 1000L);
 
         this.soundEnabled = config.getBoolean("alerts.sound.enabled", true);
-        String soundName = config.getString("alerts.sound.type", "BLOCK_NOTE_BLOCK_BASS");
-        try {
-            this.soundType = Sound.valueOf(soundName);
-        } catch (IllegalArgumentException e) {
-            this.soundType = Sound.BLOCK_NOTE_BLOCK_BASS;
-        }
+        this.soundName = config.getString("alerts.sound.type", "BLOCK_NOTE_BLOCK_BASS");
         this.soundVolume = (float) config.getDouble("alerts.sound.volume", 1.0);
         this.soundPitch = (float) config.getDouble("alerts.sound.pitch", 1.2);
     }
@@ -101,8 +95,9 @@ public class AlertManager {
 
                 admin.sendMessage(finalComponent);
 
-                if (soundEnabled && soundType != null) {
-                    admin.playSound(admin.getLocation(), soundType, soundVolume, soundPitch);
+                if (soundEnabled && soundName != null && !soundName.isEmpty()) {
+                    com.example.argusac.compat.VersionAdapterFactory.getAdapter()
+                            .playSound(admin, admin.getLocation(), soundName, soundVolume, soundPitch);
                 }
             }
         }

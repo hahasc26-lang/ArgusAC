@@ -577,12 +577,6 @@ public class DeterministicMovePredictor {
 
     private int getDepthStriderLevel(Player player) {
         if (player == null) return 0;
-        try {
-            org.bukkit.inventory.ItemStack boots = player.getInventory().getBoots();
-            if (boots != null && boots.hasItemMeta()) {
-                return boots.getEnchantmentLevel(org.bukkit.enchantments.Enchantment.DEPTH_STRIDER);
-            }
-        } catch (Throwable ignored) {}
-        return 0;
+        return com.example.argusac.compat.VersionAdapterFactory.getAdapter().getDepthStriderLevel(player);
     }
 }

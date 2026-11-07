@@ -10,7 +10,42 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 ---
 
 <a id="english-changelog"></a>
+## [1.2.3] - 2026-11-07
+
+### Fixed
+- **FastEat False Positives (Offhand Consumption & TPS Fluctuations)**:
+  - Fixed a bug in `PlayerInteractListener#onPlayerInteract` where holding an uncharged bow/crossbow in the main hand while eating food from the offhand skipped the offhand consumption start timestamp, causing 100% `Instant Consume` false flags upon completion.
+  - Added protocol-level `USE_ITEM` consumption tracking and `RELEASE_USE_ITEM` digging action reset (`data.stopEating()` & `data.stopBowCharge()`) in `PacketPipelineManager`.
+  - Upgraded `FastEatCheck` from a single-sided `||` check to a combined tick-and-millisecond validation (`FastEatCheck#isFastEatViolation`) with a `< 75%` extreme short-duration hard threshold, and extended `PlayerData#startEating` re-interact protection window from `2000ms` to `3500ms` to prevent false flags during moderate server TPS drops (16~18 TPS).
+- **ElytraFly (`ElytraFirework`) Post-Dive Pull-Up & Momentum Glide False Positives**:
+  - Added takeoff grace period exemption (`!inTakeoffGrace`), vertical downward momentum conversion exemption (`deltaY >= -0.05 && lastDeltaY >= -0.05`), and post-dive natural deceleration glide recognition (`ElytraFlyCheck#isDecayingPostDiveGlide`) so high-speed glides after steep dives are no longer misflagged as unpropelled firework boosts.
+- **Velocity (`Anti-KB`) Network Jitter & Damping Block False Positives**:
+  - Introduced a `250ms` jitter observation window (`maxWaitTime = Math.min(1000L, minWaitTime + 250L)`) and a `1500ms` stale velocity expiration guard in `VelocityCheck`.
+  - Added exemptions for cobwebs (`WEB`), sweet berry bushes (`BERRY_BUSH`), powder snow (`POWDER_SNOW`), honey blocks, soul sand, slime blocks, bubble columns, water, and adjacent climbables.
+- **FastBreak Mining Fatigue & Continuous Digging False Positives**:
+  - Added dynamic threshold calculation (`FastBreakCheck#calculateMiningFatigueThresholdMs`) factoring in Mining Fatigue amplifier, tool Efficiency enchantment level, Haste effect, and `time-leniency`, resolving false positives when mining normal ores with Efficiency V picks under Mining Fatigue I.
+  - Fixed `PlayerData#startDigging` overwriting the initial `diggingStartTime` during continuous block breaking.
+- **Sneak-Bridging Edge Ground Detection & Fence/Wall Height Alignment**:
+  - Upgraded `PlayerMoveListener#isGrounded` to a 9-point probe supporting a `0.42` sneak edge overhang radius, preventing `NoFall Packet GroundSpoof` false flags while sneak-bridging.
+  - Added `1.5`-block collision height recognition for `FENCE`, `WALL`, and `BAMBOO` in `SafeLocationFinder#isGrounded`.
+- **BadPackets Sneak-Sprint & Stationary Keep-Alive Packet Handling**:
+  - Required actual horizontal speed (`horizDist > 0.20`) before flagging conflicting `Sneak-Sprint` states, and removed the unreachable duplicate move branch that could misflag vanilla stationary 20-tick position packets.
+
+### Changed
+- **Memory Leak Prevention & Redundancy Cleanup**:
+  - Fixed a memory leak in `PlayerLifecycleListener#onPlayerQuit` where calling `getContext(uuid).clearLockedAnchor()` recreated an empty `PlayerSetbackContext` in `SetbackManager#contextMap` after quit; switched to `removeContext(uuid)` and introduced read-only `getExistingContext(uuid)` across `PacketPipelineManager`, `LogQueryService`, and `PlayerData`.
+  - Consolidated `clearLockedAnchor()` into `PlayerSetbackContext#reset` and `clear()`, removing duplicate teleport/lifecycle listener calls and unused `PunishmentManager#executeDefaultPunishment`.
+  - Added `SetbackOverride.CANCEL_ONLY` (`/argus setback <player> cancel`), accurate exported entry counts (`LogQueryService.ExportResult`), and real `.jsonl.gz` archive file counting (`AuditLogManager#getArchiveFileCount`) in `/argus status`.
+
 ## [1.2.2] - 2026-10-31
+
+### Added
+- **Modrinth API v2 Auto-Updater Subsystem (`ModrinthAutoUpdater`)**:
+  - **Cross-Platform Asynchronous Engine**: Driven by a pure Java standard `ScheduledExecutorService` daemon pool for periodic polling and background checks, removing external scheduler dependencies and ensuring zero-exception execution across Java 8 ~ 26.3+ and Spigot / Paper / Purpur / Folia.
+  - **Dual-Track Reflection Plugin Version Resolver**: Prioritizes Paper 1.20.4+ `PluginMeta` APIs with seamless fallback to legacy Bukkit `getDescription()`, completely eliminating deprecated compiler warnings.
+  - **Dual-Track Gson Parsing Compatibility**: Seamlessly adapts between legacy 1.12.2 Gson and modern Gson 2.8.6+, preventing runtime `NoSuchMethodError` across various server distributions.
+  - **Streaming SHA-512 Verification & Atomic File Move**: Employs `DigestInputStream` on-the-fly checksum verification combined with `.part` staging files and `StandardCopyOption.ATOMIC_MOVE` to guarantee corruption-free downloads in `plugins/update/` for Bukkit's native restart replacement.
+  - **Full Operational Integration & i18n Localization**: Deeply coupled with the ArgusAC internationalization architecture, introducing `/argus update [check|download]` admin commands with smart tab completion, configurable startup checks, polling intervals, and channel filtering (release/beta).
 
 ### Fixed
 - **Under-Attack Reach & KillAura False Positives Under Projectile Knockback**:
@@ -25,6 +60,22 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
   - **Sneak Edge Climbable Exemption**: Integrated climbable surroundings into `PlayerEventListener` and `FlyCheck`, actively resetting `airTicks` and hover timers when players sneak along block edges with attached ladders.
   - **NoFall Special Environment Protection**: Included climbable proximity in `specialEnv` and ground-state maintenance, preventing false `Packet GroundSpoof` flags when clients report `onGround=true` while suspended on ladders.
   - **Setback Downward Gravity Isolation**: Exempted climbable environments from vacuum gravity simulation in `SetbackManager#directCancel`, eliminating the downward force-pull that previously dragged sneaking players off ladder edges into a setback loop.
+- **End-to-End Cross-Version Compatibility Overhaul (1.12.2 to Latest 1.20.x / 1.21.x / 26.x)**:
+  - **Eradication of 1.12.2 Classloading NoSuchFieldError Risks**:
+    - Removed direct static constant references to `Material.FIREWORK_ROCKET` and `Material.BUBBLE_COLUMN` in `ElytraFlyCheck`, refactoring them to use dual-string backwards-compatible matching (`FIREWORK_ROCKET` / `FIREWORK`, `BUBBLE_COLUMN` / `SOUL_SAND`).
+    - Removed hard compile-time dependency on `Sound.BLOCK_NOTE_BLOCK_BASS` in `AlertManager`, refactoring sound playback through `VersionAdapter#playSound` with automatic legacy mapping (`BLOCK_NOTE_BASS`).
+    - Decoupled `PlayerEventListener` from direct literal bindings on `Material.ELYTRA`.
+  - **1.12.2 Entity AABB Reflection & Multi-Entity Bounding Box Precision**:
+    - Fixed a critical flaw in `LegacyVersionAdapter` where caching `CraftPlayer#getHandle` caused `IllegalArgumentException` on non-player entities (zombies, skeletons, NPCs) and permanently flagged `aabbReflectionFailed = true`. Refactored to safely reflect on base class `CraftEntity`, ensuring reliable AABB retrieval across all mobs.
+    - Integrated Bukkit 1.11+ `entity.getWidth()` and `entity.getHeight()` into the mathematical fallback to replace rigid 0.6x1.8 bounding box approximations.
+  - **Item Durability Abstraction & 1.12.2 Damageable Isolation**:
+    - Introduced `VersionAdapter#isItemBroken(ItemStack)` to cleanly isolate item durability inspections. Uses native `getDurability()` on 1.12.2 and 1.13+ `Damageable` on modern versions, eradicating `NoClassDefFoundError` risks on legacy servers.
+  - **1.21.2+ / 1.21.4 / 26.x Attribute System Adaptation (Stripped GENERIC_ Prefix)**:
+    - Overhauled attribute resolution in `ModernVersionAdapter` and `LegacyVersionAdapter` (`resolveAttribute` and `getAttributeValue`) to dynamically support Mojang's removal of the `GENERIC_` prefix (e.g., `MOVEMENT_SPEED` replacing `GENERIC_MOVEMENT_SPEED`) in Paper 1.21.2+, with dual-name resolution and caching.
+  - **Adventure / Pure Legacy Spigot Fallback Protection**:
+    - Optimized `ColorUtil` and `LegacyVersionAdapter#sendMessage` / `sendActionBar` with a runtime `HAS_ADVENTURE` probe to gracefully fallback to native `ChatColor.translateAlternateColorCodes` and Bungee ActionBar API on plain 1.12.2 Spigot cores without Adventure.
+  - **Predictor Enchantment Normalization**:
+    - Normalized `DeterministicMovePredictor`'s Depth Strider enchantment lookup to use `VersionAdapter#getDepthStriderLevel`.
 
 ## [1.2.1] - 2026-10-30
 
@@ -149,8 +200,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 ### Changed
 - **Liquid Dynamics**: Refined upward swimming tolerances and consecutive jump impulses.
 
-### Fixed
-- **Fly False Positives**: Fixed illegal ascent misflags during sprint-jump crest phases.
+### 修复
+- **Fly 误报修复**：修复疾跑跳跃达到波峰阶段时的非法拔高误判。
 
 ## [1.1.2] - 2026-10-17
 

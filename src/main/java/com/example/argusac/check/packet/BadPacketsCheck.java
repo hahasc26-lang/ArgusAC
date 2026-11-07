@@ -58,13 +58,18 @@ public class BadPacketsCheck extends AbstractCheck {
             }
         }
 
-        // 3. 冲突状态检测：常规站姿潜行下强开疾跑 (Sneak-Sprint Exploit，排除 1 格高爬行模式并容忍单 tick 状态切换延迟)
+        // 3. 冲突状态检测：常规站姿潜行下强开疾跑且实际产生超出潜行上限的高速位移
+        //    (Sneak-Sprint Exploit，排除 1 格高爬行模式、水流/滑翔以及客户端同时按住 Ctrl+Shift 切状态但实际移速已受潜行限制的正常情况)
         boolean gliding = com.example.argusac.compat.VersionAdapterFactory.getAdapter().isGliding(player);
         boolean swimming = com.example.argusac.compat.VersionAdapterFactory.getAdapter().isSwimming(player);
-        if (player.isSneaking() && player.isSprinting() && !gliding && !swimming && player.getEyeHeight() >= 1.4) {
+        Location from = event.getFrom();
+        double horizDist = Math.hypot(to.getX() - from.getX(), to.getZ() - from.getZ());
+        if (player.isSneaking() && player.isSprinting() && !gliding && !swimming
+                && !player.isFlying() && !player.isInsideVehicle()
+                && player.getEyeHeight() >= 1.4 && horizDist > 0.20) {
             data.incrementSneakSprintTicks();
-            if (data.getSneakSprintTicks() >= 2) {
-                flag(player, 1, "Sneak-Sprint Conflicting State");
+            if (data.getSneakSprintTicks() >= 3) {
+                flag(player, 1, String.format("Sneak-Sprint Conflicting State speed=%.3f", horizDist));
                 player.setSprinting(false);
             }
         } else {
@@ -72,19 +77,9 @@ public class BadPacketsCheck extends AbstractCheck {
         }
 
         // 4. 睡眠状态异常移动检测 (Sleep-Move)
-        if (player.isSleeping() && (event.getFrom().distanceSquared(to) > 0.05)) {
+        if (player.isSleeping() && (from.distanceSquared(to) > 0.05)) {
             event.setCancelled(true);
             flag(player, 2, "Moving while sleeping", event);
-            return;
-        }
-
-        // 5. 客户端重复冗余位置包检测 (Duplicate Move Packets)
-        if (checkDuplicateMove) {
-            Location from = event.getFrom();
-            if (from.getX() == to.getX() && from.getY() == to.getY() && from.getZ() == to.getZ()
-                    && from.getYaw() == to.getYaw() && from.getPitch() == to.getPitch()) {
-                flag(player, 1, "Duplicate redundant move packet", event);
-            }
         }
     }
 

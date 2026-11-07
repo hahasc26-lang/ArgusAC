@@ -68,6 +68,7 @@ help:
     - "<yellow>/argus toggle <检测项></yellow> <dark_gray>-</dark_gray> <gray>实时开启或停用单项反作弊检测</gray>"
     - "<yellow>/argus setback <玩家|global> <模式></yellow> <dark_gray>-</dark_gray> <gray>运维控制与诊断状态回退子系统</gray>"
     - "<yellow>/argus alerts [on|off|status]</yellow> <dark_gray>-</dark_gray> <gray>本次登录期间关闭或恢复个人告警提示</gray>"
+    - "<yellow>/argus update [check|download]</yellow> <dark_gray>-</dark_gray> <gray>检查或下载 Modrinth 官方最新版本</gray>"
 
 # Detailed command feedback messages
 command:
@@ -140,7 +141,7 @@ command:
     not-found: "<red>未找到名为 <yellow>{check}</yellow> 的检测模块！</red>"
     result: "<green>检测模块 <yellow>{check}</yellow> 状态已更新为: {status}</green>"
   setback:
-    usage: "<red>用法: /{label} setback <玩家名|global> <disable|soft|hard|default|now|info></red>"
+    usage: "<red>用法: /{label} setback <玩家名|global> <disable|cancel|soft|hard|default|now|info></red>"
     param-error: "<red>参数错误，请使用 on 或 off</red>"
     data-error: "<red>无法获取该玩家运行时数据。</red>"
     fail-blocked: "<red>回退失败，该玩家暂无可用合法位置或目标已被阻挡。</red>"
@@ -164,6 +165,24 @@ command:
   purge:
     usage: "<red>用法: /{label} purge <玩家名></red>"
     success: "<green>已彻底清除玩家 <yellow>{player}</yellow> 的全部反作弊数据，并已写入系统注销审计日志。</green>"
+  update:
+    usage: "<red>用法: /{label} update [check|download]</red>"
+
+# Modrinth 自动更新系统消息
+updater:
+  checking: "<gray>正在通过 Modrinth API 检查是否有新版本发布...</gray>"
+  up-to-date: "<green>当前反作弊已是最新版本 (v{current})，无需更新。</green>"
+  update-available: "<gold>[ArgusAC] 发现新版本可用！<yellow>v{current}</yellow> -> <green>v{latest}</green> ({channel})</gold>\n<gray>发布页面: <underlined><aqua>{url}</aqua></underlined></gray>"
+  download-hint: "<gray>自动下载已关闭。您可在配置中开启 auto-download 或执行 <yellow>/argus update download</yellow> 自动下载。</gray>"
+  downloading: "<yellow>正在从 Modrinth 下载最新版本 v{latest}，请稍候...</yellow>"
+  download-success: "<green>最新版本 v{latest} 已成功下载至 <yellow>{path}</yellow>！重启服务器即可自动生效。</green>"
+  already-downloaded: "<green>新版本 v{latest} 已经下载至更新目录，重启服务器即可自动替换生效。</green>"
+  already-checking: "<yellow>已有正在进行的更新检查任务，请稍后再试。</yellow>"
+  http-error: "<red>检查更新失败：Modrinth API 返回 HTTP 异常状态码 <yellow>{code}</yellow>。</red>"
+  check-failed: "<red>检查更新失败：<yellow>{error}</yellow></red>"
+  download-failed: "<red>下载更新文件失败：<yellow>{error}</yellow></red>"
+  hash-mismatch: "<red>下载的更新包 SHA-512 校验与官方不匹配，已自动删除损坏文件！</red>"
+  no-version-found: "<yellow>未在 Modrinth 上检索到符合配置渠道 ({channels}) 的可用版本。</yellow>"
 
 # Multi-version compatibility descriptions and diagnostics
 compat:
@@ -204,4 +223,3 @@ compat:
     adapter: "适配器通道: {adapter}"
     matrix: "模块能力矩阵: {count} 个检测项已分配运行等级"
     degraded-notice: "[提示] 检测到部分模块运行在降级兼容模式，使用 /argus compat 可查看详情。"
-

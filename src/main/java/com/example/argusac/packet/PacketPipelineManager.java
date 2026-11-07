@@ -130,6 +130,12 @@ public class PacketPipelineManager extends PacketListenerAbstract {
             } else if (off != null && (off.getType().name().equals("BOW") || off.getType().name().equals("CROSSBOW"))) {
                 plugin.getCheckManager().getFastBowCheck().handleBowStart(player, off);
             }
+            // 协议级进食打点兜底：防止高延迟或插件取消交互事件导致 Bukkit 层漏记进食起点
+            if (main != null && plugin.getCheckManager().getFastEatCheck().isConsumable(main)) {
+                plugin.getCheckManager().getFastEatCheck().handleItemStartUse(player, main);
+            } else if (off != null && plugin.getCheckManager().getFastEatCheck().isConsumable(off)) {
+                plugin.getCheckManager().getFastEatCheck().handleItemStartUse(player, off);
+            }
         } catch (Throwable ignored) {
         }
     }
@@ -151,7 +157,7 @@ public class PacketPipelineManager extends PacketListenerAbstract {
         org.bukkit.Location confirmedTarget = null;
         if (plugin.getSetbackManager() != null) {
             com.example.argusac.setback.PlayerSetbackContext context = plugin.getSetbackManager()
-                    .getContext(player.getUniqueId());
+                    .getExistingContext(player.getUniqueId());
             if (context != null) {
                 confirmedTarget = context.getTeleportInFlightTarget();
                 context.confirmTeleport(teleportId);
@@ -239,7 +245,7 @@ public class PacketPipelineManager extends PacketListenerAbstract {
         // 必须在协议管线最底层直接取消拦截，同时将数据包内部坐标硬重写为锚点坐标，从源头扼死作弊客户端的蹭步蠕动！
         if (plugin.getSetbackManager() != null) {
             com.example.argusac.setback.PlayerSetbackContext setbackCtx = plugin.getSetbackManager()
-                    .getContext(player.getUniqueId());
+                    .getExistingContext(player.getUniqueId());
             if (setbackCtx != null && setbackCtx.isTeleportInFlight()) {
                 org.bukkit.Location target = setbackCtx.getTeleportInFlightTarget();
                 if (target != null) {
@@ -428,7 +434,7 @@ public class PacketPipelineManager extends PacketListenerAbstract {
     private void handleIncomingInteractEntityPacket(Player player, PlayerData data, PacketReceiveEvent event) {
         if (plugin.getSetbackManager() != null) {
             com.example.argusac.setback.PlayerSetbackContext setbackCtx = plugin.getSetbackManager()
-                    .getContext(player.getUniqueId());
+                    .getExistingContext(player.getUniqueId());
             if (setbackCtx != null && (setbackCtx.isTeleportInFlight() || setbackCtx.isUnderViolationLock())) {
                 event.setCancelled(true);
                 return;
@@ -462,7 +468,7 @@ public class PacketPipelineManager extends PacketListenerAbstract {
     private void handleIncomingPlayerDiggingPacket(Player player, PlayerData data, PacketReceiveEvent event) {
         if (plugin.getSetbackManager() != null) {
             com.example.argusac.setback.PlayerSetbackContext setbackCtx = plugin.getSetbackManager()
-                    .getContext(player.getUniqueId());
+                    .getExistingContext(player.getUniqueId());
             if (setbackCtx != null && setbackCtx.isTeleportInFlight()) {
                 event.setCancelled(true);
                 return;
@@ -477,6 +483,10 @@ public class PacketPipelineManager extends PacketListenerAbstract {
                 long now = System.currentTimeMillis();
                 if (actionName.contains("START")) {
                     data.startDigging(now);
+                } else if (actionName.contains("RELEASE_USE_ITEM")) {
+                    // 客户端松开右键停止进食或拉弓时，同步重置进食计时与拉弓状态
+                    data.stopEating();
+                    data.stopBowCharge();
                 } else if (actionName.contains("CANCEL") || actionName.contains("FINISH")
                         || actionName.contains("ABORT") || actionName.contains("STOP")) {
                     data.stopDigging(now);

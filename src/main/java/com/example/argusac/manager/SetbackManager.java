@@ -528,6 +528,8 @@ public class SetbackManager implements Listener {
             effectiveMode = "SOFT";
         } else if (override == SetbackOverride.HARD_ONLY) {
             effectiveMode = "HARD";
+        } else if (override == SetbackOverride.CANCEL_ONLY) {
+            effectiveMode = "CANCEL";
         }
 
         if ("CANCEL".equalsIgnoreCase(effectiveMode) && moveEvent != null) {
@@ -838,6 +840,17 @@ public class SetbackManager implements Listener {
 
     public PlayerSetbackContext getContext(UUID uuid) {
         return contextMap.computeIfAbsent(uuid, k -> new PlayerSetbackContext());
+    }
+
+    public PlayerSetbackContext getExistingContext(UUID uuid) {
+        return uuid != null ? contextMap.get(uuid) : null;
+    }
+
+    public void removeContext(UUID uuid) {
+        if (uuid != null) {
+            contextMap.remove(uuid);
+            selfTeleportingPlayers.remove(uuid);
+        }
     }
 
     public boolean isImmune(UUID uuid) {

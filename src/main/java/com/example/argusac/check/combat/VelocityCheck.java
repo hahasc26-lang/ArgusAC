@@ -88,10 +88,22 @@ public class VelocityCheck extends AbstractCheck {
             return;
         }
 
-        // 校验是否头顶撞墙、处于液体中或可攀爬物中
+        // 校验是否头顶撞墙、处于液体中、可攀爬物中或减速阻滞方块 (蜘蛛网、甜浆果丛、蜂蜜块、细雪等) 中
         com.example.argusac.compat.VersionAdapter adapter = com.example.argusac.compat.VersionAdapterFactory.getAdapter();
         Block feet = from.getBlock();
-        if (hasBlockAbove(from) || hasBlockAbove(to) || adapter.isLiquid(feet) || adapter.isClimbable(feet)) {
+        Block toFeet = to.getBlock();
+        if (hasBlockAbove(from) || hasBlockAbove(to)
+                || adapter.isInWater(player) || adapter.isLiquid(feet) || adapter.isLiquid(toFeet)
+                || adapter.isClimbable(feet) || adapter.isClimbable(toFeet)
+                || adapter.isClimbableAround(player, from) || adapter.isClimbableAround(player, to)
+                || isVelocityDampingBlock(feet, adapter) || isVelocityDampingBlock(toFeet, adapter)
+                || isVelocityDampingBlock(from.clone().subtract(0, 0.2, 0).getBlock(), adapter)) {
+            data.setVelocityHandled(true);
+            return;
+        }
+
+        // 超过 1500ms 的陈旧击退记录自动过期释放，防止长期静止玩家随后移动时误判
+        if (timeSinceVelocity > 1500L) {
             data.setVelocityHandled(true);
             return;
         }
@@ -130,16 +142,21 @@ public class VelocityCheck extends AbstractCheck {
             return;
         }
 
-        // 2. 网络往返延迟等待保护 (Ping Latency Window)
-        // 击退数据包下发到客户端并由客户端发回移动数据包需要至少 1 个 RTT 周期，期间必须静待响应，绝不能将尚未收到击退的位移误判为 Anti-KB
+        // 2. 网络往返延迟与抖动等待窗口 (Ping Latency & Jitter Window)
+        // 击退数据包下发到客户端并由客户端发回移动数据包需要至少 1 个 RTT 周期；
+        // 同时预留 250ms 抖动观测窗口以吸收跨 tick 包排队，在 [minWaitTime, maxWaitTime] 期间若尚未达标则继续观察下一帧，不提前截断判罚
         int ping = adapter.getPing(player);
         long minWaitTime = Math.max(150L, ping + 60L);
+        long maxWaitTime = Math.min(1000L, minWaitTime + 250L);
 
         if (timeSinceVelocity < minWaitTime) {
             return;
         }
+        if (timeSinceVelocity < maxWaitTime && peakY < 0.01 && peakHoriz < 0.01) {
+            return;
+        }
 
-        // 3. 超过延迟等待窗口且在 600ms 内，如果依然完全没有击退位移响应，方才判定为非法消除击退 (Anti-KB)
+        // 3. 完整度过延迟与抖动等待窗口后，如果依然完全没有击退位移响应，方才判定为非法消除击退 (Anti-KB)
         // 仅在期望垂直速度显著且未受下坠重力主导时检测
         if (!satisfiedY && expected.getY() > 0.35 && !falling && peakY < 0.01) {
             flag(player, 2, String.format("Anti-KB(V) deltaY=%.2f, expected=%.2f, ping=%d", peakY, expected.getY(), ping), event);
@@ -177,5 +194,17 @@ public class VelocityCheck extends AbstractCheck {
         com.example.argusac.compat.VersionAdapter adapter = com.example.argusac.compat.VersionAdapterFactory.getAdapter();
         return adapter.isSolidBlock(head) || adapter.isSolidBlock(ceiling)
                 || adapter.isClimbable(head) || adapter.isClimbable(ceiling);
+    }
+
+    private boolean isVelocityDampingBlock(Block block, com.example.argusac.compat.VersionAdapter adapter) {
+        if (block == null) {
+            return false;
+        }
+        if (adapter.isHoney(block) || adapter.isSoulSand(block) || adapter.isSlime(block)) {
+            return true;
+        }
+        String name = block.getType().name();
+        return name.contains("WEB") || name.contains("BERRY_BUSH") || name.contains("POWDER_SNOW")
+                || name.contains("BUBBLE_COLUMN");
     }
 }
