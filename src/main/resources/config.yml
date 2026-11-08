@@ -107,8 +107,6 @@ updater:
   auto-download: false
   # Periodic update check interval in hours (0 to disable periodic checks)
   check-interval-hours: 6
-  # Target Modrinth project slug or project ID
-  project-id: "argusac"
   # Target release channels to accept (release, beta, alpha)
   channels:
     - "release"

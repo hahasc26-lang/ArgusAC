@@ -206,5 +206,55 @@ public class FalsePositiveRegressionTest {
         data.startDigging(t0 + 800L);
         assertEquals(t0 + 800L, data.getDiggingStartTime());
     }
+
+    @Test
+    public void testBowReleaseUseItemPreservesChargeTimestampForShootEvent() {
+        com.example.argusac.data.PlayerData data = new com.example.argusac.data.PlayerData(java.util.UUID.randomUUID(), "haha___1");
+        long startTick = 100L;
+        long startMs = 5000L;
+
+        // 1. 玩家按下右键开始拉弓
+        data.startBowCharge(startTick, startMs);
+        assertTrue(data.isBowCharging());
+        assertEquals(startTick, data.getBowChargeStartTick());
+        assertEquals(startMs, data.getBowChargeStartTimeMs());
+
+        // 2. 玩家拉弓瞄准 4.5 秒期间准星扫过方块再次触发 startBowCharge，不应重置起点
+        data.startBowCharge(startTick + 90L, startMs + 4500L);
+        assertEquals(startTick, data.getBowChargeStartTick(), "持续按住右键拉弓瞄准期间不应重置蓄力起始 Tick");
+        assertEquals(startMs, data.getBowChargeStartTimeMs(), "持续按住右键拉弓瞄准期间不应重置蓄力起始毫秒时间戳");
+
+        // 3. 玩家松开右键射箭：Netty 线程首先收到 RELEASE_USE_ITEM 调用 releaseBowCharge()
+        data.releaseBowCharge();
+        assertFalse(data.isBowCharging(), "松开右键后应解除防抖锁定");
+        assertEquals(startTick, data.getBowChargeStartTick(), "Netty 线程收到 RELEASE_USE_ITEM 时必须保留 startTick 供主线程 EntityShootBowEvent 核验");
+        assertEquals(startMs, data.getBowChargeStartTimeMs(), "Netty 线程收到 RELEASE_USE_ITEM 时必须保留 startMs 供主线程 EntityShootBowEvent 核验");
+
+        // 4. 若上次松手未射出箭（例如蓄力仅 2 ticks 取消），玩家重新按下右键拉弓时必须正常刷新为新起点
+        data.startBowCharge(startTick + 100L, startMs + 5000L);
+        assertTrue(data.isBowCharging());
+        assertEquals(startTick + 100L, data.getBowChargeStartTick(), "松手后重新按下右键拉弓必须更新为新蓄力起点");
+        assertEquals(startMs + 5000L, data.getBowChargeStartTimeMs());
+
+        // 5. 主线程 EntityShootBowEvent 核验完成后调用 stopBowCharge() 清零
+        data.stopBowCharge();
+        assertEquals(-1L, data.getBowChargeStartTick());
+        assertEquals(0L, data.getBowChargeStartTimeMs());
+    }
+
+    @Test
+    public void testFastBowNonlinearForceCurveInverseCalculation() {
+        // 原版拉弓 17 ticks (t = 0.85)，弓力 force = (0.85^2 + 2*0.85)/3 = 0.8075f (>= 0.80f)
+        float force17Ticks = 0.8075f;
+        int expectedTicks = com.example.argusac.check.combat.FastBowCheck.calculateExpectedBowChargeTicks(force17Ticks, 18);
+        long expectedMs = com.example.argusac.check.combat.FastBowCheck.calculateExpectedBowChargeMs(force17Ticks, 850L);
+
+        assertTrue(expectedTicks <= 16, "17 ticks 半蓄力箭 (force=0.8075) 的期望最小 Tick 阈值应按二次曲线反解折算 (<= 16), 实际=" + expectedTicks);
+        assertTrue(expectedMs <= 750L, "17 ticks 半蓄力箭 (force=0.8075) 的期望最小毫秒阈值应 <= 750ms, 实际=" + expectedMs);
+
+        // 满弦箭 (force = 1.0f) 必须维持完整阈值 (18 ticks / 850ms)
+        assertEquals(18, com.example.argusac.check.combat.FastBowCheck.calculateExpectedBowChargeTicks(1.0f, 18));
+        assertEquals(850L, com.example.argusac.check.combat.FastBowCheck.calculateExpectedBowChargeMs(1.0f, 850L));
+    }
 }
 

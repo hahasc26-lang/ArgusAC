@@ -13,10 +13,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 ## [1.2.3] - 2026-11-07
 
 ### Fixed
-- **FastEat False Positives (Offhand Consumption & TPS Fluctuations)**:
+- **FastBow & FastEat False Positives (Release Use Item Timing, Charged Crossbows, Offhand Consumption & TPS Fluctuations)**:
+  - Fixed a critical timing bug in `PacketPipelineManager#handleIncomingPlayerDiggingPacket` where receiving `RELEASE_USE_ITEM` on the Netty thread prematurely invoked `data.stopBowCharge()` and cleared `bowChargeStartTick` / `bowChargeStartTimeMs` before the main thread processed the packet and fired `EntityShootBowEvent`, causing normal bow shots to false-flag `FastBow` (`startTick <= 0`). Introduced `PlayerData#releaseBowCharge` and `PlayerData#releaseEating` to unlock the hold-debounce state without wiping start timestamps prior to main-thread event verification.
+  - Added charged-crossbow detection (`FastBowCheck#isCrossbowCharged`) in `FastBowCheck#handleBowStart` so firing an already-loaded crossbow does not overwrite the charge timestamp with the current tick (`elapsed = 0t/0ms`), and replaced the linear `force < 0.8f` approximation with the exact inverse of vanilla's quadratic bow power curve (`FastBowCheck#calculateExpectedBowChargeTicks` / `calculateExpectedBowChargeMs`).
   - Fixed a bug in `PlayerInteractListener#onPlayerInteract` where holding an uncharged bow/crossbow in the main hand while eating food from the offhand skipped the offhand consumption start timestamp, causing 100% `Instant Consume` false flags upon completion.
-  - Added protocol-level `USE_ITEM` consumption tracking and `RELEASE_USE_ITEM` digging action reset (`data.stopEating()` & `data.stopBowCharge()`) in `PacketPipelineManager`.
-  - Upgraded `FastEatCheck` from a single-sided `||` check to a combined tick-and-millisecond validation (`FastEatCheck#isFastEatViolation`) with a `< 75%` extreme short-duration hard threshold, and extended `PlayerData#startEating` re-interact protection window from `2000ms` to `3500ms` to prevent false flags during moderate server TPS drops (16~18 TPS).
+  - Upgraded `FastEatCheck` from a single-sided `||` check to a combined tick-and-millisecond validation (`FastEatCheck#isFastEatViolation`) with a `< 75%` extreme short-duration hard threshold, and extended `PlayerData#startEating` (`3500ms`) and `PlayerData#startBowCharge` (`15000ms`) hold-debounce windows.
 - **ElytraFly (`ElytraFirework`) Post-Dive Pull-Up & Momentum Glide False Positives**:
   - Added takeoff grace period exemption (`!inTakeoffGrace`), vertical downward momentum conversion exemption (`deltaY >= -0.05 && lastDeltaY >= -0.05`), and post-dive natural deceleration glide recognition (`ElytraFlyCheck#isDecayingPostDiveGlide`) so high-speed glides after steep dives are no longer misflagged as unpropelled firework boosts.
 - **Velocity (`Anti-KB`) Network Jitter & Damping Block False Positives**:

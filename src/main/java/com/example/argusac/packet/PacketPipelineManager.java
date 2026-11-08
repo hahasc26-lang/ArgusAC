@@ -125,13 +125,18 @@ public class PacketPipelineManager extends PacketListenerAbstract {
         try {
             org.bukkit.inventory.ItemStack main = player.getInventory().getItemInMainHand();
             org.bukkit.inventory.ItemStack off = player.getInventory().getItemInOffHand();
-            if (main != null && (main.getType().name().equals("BOW") || main.getType().name().equals("CROSSBOW"))) {
+            boolean mainHandBow = main != null
+                    && (main.getType().name().equals("BOW") || main.getType().name().equals("CROSSBOW"));
+            boolean mainHandConsumable = main != null
+                    && plugin.getCheckManager().getFastEatCheck().isConsumable(main);
+
+            if (mainHandBow) {
                 plugin.getCheckManager().getFastBowCheck().handleBowStart(player, main);
             } else if (off != null && (off.getType().name().equals("BOW") || off.getType().name().equals("CROSSBOW"))) {
                 plugin.getCheckManager().getFastBowCheck().handleBowStart(player, off);
             }
             // 协议级进食打点兜底：防止高延迟或插件取消交互事件导致 Bukkit 层漏记进食起点
-            if (main != null && plugin.getCheckManager().getFastEatCheck().isConsumable(main)) {
+            if (mainHandConsumable) {
                 plugin.getCheckManager().getFastEatCheck().handleItemStartUse(player, main);
             } else if (off != null && plugin.getCheckManager().getFastEatCheck().isConsumable(off)) {
                 plugin.getCheckManager().getFastEatCheck().handleItemStartUse(player, off);
@@ -484,9 +489,11 @@ public class PacketPipelineManager extends PacketListenerAbstract {
                 if (actionName.contains("START")) {
                     data.startDigging(now);
                 } else if (actionName.contains("RELEASE_USE_ITEM")) {
-                    // 客户端松开右键停止进食或拉弓时，同步重置进食计时与拉弓状态
-                    data.stopEating();
-                    data.stopBowCharge();
+                    // 客户端松开右键时：仅解除进食与拉弓的持续按压防抖锁 (releaseEating / releaseBowCharge)，
+                    // 绝不可在 Netty 线程提前清空 bowChargeStartTick / eatStartTick！
+                    // 因为原版松弦射箭正是由 RELEASE_USE_ITEM 触发，主线程稍后处理该包触发 EntityShootBowEvent 时仍需读取蓄力起点。
+                    data.releaseEating();
+                    data.releaseBowCharge();
                 } else if (actionName.contains("CANCEL") || actionName.contains("FINISH")
                         || actionName.contains("ABORT") || actionName.contains("STOP")) {
                     data.stopDigging(now);

@@ -122,7 +122,9 @@ public class FastEatCheck extends AbstractCheck {
         long startTimeMs = data.getEatStartTimeMs();
 
         // 1. 无合法交互记录判定 (Instant Eat / Packet Spoofing)
-        if (!data.isEating() || startTick <= 0 || startTimeMs <= 0) {
+        // 注意：若玩家在完成进食的同一游戏刻恰好松开右键，Netty 线程的 RELEASE_USE_ITEM (releaseEating) 可能早于主线程本事件数毫秒到达，
+        // 因此以 startTick 与 startTimeMs 有效记录为准，并在核验完毕后由 stopEating() 彻底清零
+        if (startTick <= 0 || startTimeMs <= 0) {
             flagViolation(player, data, event, 3,
                     String.format("Instant Consume without start interaction record (Spoof), item=%s", item.getType().name()));
             data.stopEating();

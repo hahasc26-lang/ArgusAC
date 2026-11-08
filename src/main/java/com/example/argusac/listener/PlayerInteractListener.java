@@ -145,6 +145,7 @@ public class PlayerInteractListener implements Listener {
         PlayerData data = plugin.getPlayerManager().getPlayerData(event.getPlayer());
         if (data != null) {
             data.recordSlotSwitch(event.getNewSlot());
+            data.releaseBowCharge();
         }
         checkManager.getFastEatCheck().handleItemStopUse(event.getPlayer());
     }
@@ -201,6 +202,10 @@ public class PlayerInteractListener implements Listener {
 
     @EventHandler(priority = EventPriority.MONITOR, ignoreCancelled = true)
     public void onPlayerDropItem(PlayerDropItemEvent event) {
+        PlayerData data = plugin.getPlayerManager().getPlayerData(event.getPlayer());
+        if (data != null) {
+            data.releaseBowCharge();
+        }
         checkManager.getFastEatCheck().handleItemStopUse(event.getPlayer());
     }
 
@@ -208,8 +213,11 @@ public class PlayerInteractListener implements Listener {
     public void onPlayerSwapHandItems(PlayerSwapHandItemsEvent event) {
         Player player = event.getPlayer();
         PlayerData data = plugin.getPlayerManager().getPlayerData(player);
-        if (data != null && (player.isGliding() || data.isElytraGliding())) {
-            data.getElytraData().recordArmorSwap(System.currentTimeMillis());
+        if (data != null) {
+            if (player.isGliding() || data.isElytraGliding()) {
+                data.getElytraData().recordArmorSwap(System.currentTimeMillis());
+            }
+            data.releaseBowCharge();
         }
         checkManager.getFastEatCheck().handleItemStopUse(player);
     }

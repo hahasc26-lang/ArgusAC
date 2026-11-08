@@ -12,10 +12,11 @@
 ## [1.2.3] - 2026-11-07
 
 ### 修复
-- **快速进食 (`FastEatCheck`) 副手进食与 TPS 波动误报修复**：
+- **快速射箭与快速进食 (`FastBowCheck` / `FastEatCheck`) 松弦时序、装填弩、副手进食与 TPS 波动误报修复**：
+  - 修复了 `PacketPipelineManager#handleIncomingPlayerDiggingPacket` 中在 Netty 线程收到 `RELEASE_USE_ITEM` 时直接调用 `data.stopBowCharge()` 导致在服务端主线程触发 `EntityShootBowEvent` 之前将 `bowChargeStartTick` 与 `bowChargeStartTimeMs` 提前清零，引发正常拉弓射箭 100% 误报 `FastBow (Combat)` 的关键时序问题。引入 `PlayerData#releaseBowCharge` 与 `PlayerData#releaseEating`，仅解除防抖锁定而不抹除蓄力时间戳，交由主线程核验完成后再行清零。
+  - 在 `FastBowCheck#handleBowStart` 中新增已装填弩（`Charged Crossbow`）检测（`FastBowCheck#isCrossbowCharged`），避免射击已上膛弩时将蓄力起点覆盖为当前帧导致 `elapsed = 0t/0ms` 误报；并将原普通弓 `force < 0.8f` 线性估算替换为原版弓力二次函数的精确反解算法（`FastBowCheck#calculateExpectedBowChargeTicks` 与 `calculateExpectedBowChargeMs`）。
   - 修复了 `PlayerInteractListener#onPlayerInteract` 中主手持有无箭矢的弓/弩、副手吃食物时跳过副手起吃打点，导致进食完成时 100% 误判 `Instant Consume` 的问题。
-  - 在 `PacketPipelineManager` 中新增 `USE_ITEM` 协议级进食打点兜底与 `RELEASE_USE_ITEM` 松开右键动作重置（`data.stopEating()` 与 `data.stopBowCharge()`）。
-  - 新增 `FastEatCheck#isFastEatViolation`，将单向 `||` 判定升级为 Tick 与毫秒耗时联合校验配合 `< 75%` 极端短耗时硬拦截，并将 `PlayerData#startEating` 防重置窗口由 `2000ms` 延长至 `3500ms`，彻底消除服务器 TPS 轻微波动（16~18 TPS）下的误报。
+  - 新增 `FastEatCheck#isFastEatViolation`，将单向 `||` 判定升级为 Tick 与毫秒耗时联合校验配合 `< 75%` 极端短耗时硬拦截，并将 `PlayerData#startEating`（`3500ms`）与 `PlayerData#startBowCharge`（`15000ms`）防抖窗口延长，彻底消除服务器 TPS 波动与长时间满弦瞄准下的误报。
 - **鞘翅滑翔 (`ElytraFlyCheck` / `ElytraFirework`) 俯冲拉平与余速滑翔误报修复**：
   - 为 `ElytraFirework` 补充起跳宽限期（`!inTakeoffGrace`）、俯冲拉平垂直动量转化豁免（`deltaY >= -0.05 && lastDeltaY >= -0.05`）以及俯冲峰值后自然减速滑翔识别（`ElytraFlyCheck#isDecayingPostDiveGlide`），解决高空俯冲后平飞滑翔被误判为无烟花加速的问题。
 - **反击退检测 (`VelocityCheck`) 网络抖动与减速阻滞方块误报修复**：

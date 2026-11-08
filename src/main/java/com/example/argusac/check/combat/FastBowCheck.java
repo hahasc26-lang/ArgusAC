@@ -33,6 +33,9 @@ public class FastBowCheck extends AbstractCheck {
     private int maxShotsPerSecond;
     private String mitigationMode;
 
+    private static java.lang.reflect.Method hasChargedProjectilesMethod;
+    private static boolean crossbowMetaResolved = false;
+
     public FastBowCheck(ArgusACPlugin plugin) {
         super(plugin, "FastBow", CheckType.COMBAT);
     }
@@ -61,6 +64,12 @@ public class FastBowCheck extends AbstractCheck {
 
         String itemType = item.getType().name();
         if (!itemType.equals("BOW") && !itemType.equals("CROSSBOW")) {
+            return;
+        }
+
+        // 若为已经装填上膛的弩 (Charged Crossbow)，此时右键是直接扣动扳机发射而非拉弦装填，
+        // 跳过蓄力起点打点，防止覆盖原装填起点导致同帧紧随其后的 EntityShootBowEvent 因 elapsed=0t/0ms 误报
+        if (itemType.equals("CROSSBOW") && isCrossbowCharged(item)) {
             return;
         }
 
@@ -140,11 +149,9 @@ public class FastBowCheck extends AbstractCheck {
             expectedTicks = Math.max(8, 25 - (quickChargeLevel * 5) - 2);
             expectedMs = Math.max(400L, 1250L - (quickChargeLevel * 250L) - 100L);
         } else {
-            // 普通弓根据释放力度 (Force) 进行线性比例降级检验
-            if (force < 0.8f) {
-                expectedTicks = Math.max(3, Math.round(force * minChargeTicks));
-                expectedMs = Math.max(150L, Math.round(force * minChargeMs));
-            }
+            // 普通弓根据释放力度 (Force) 反解原版二次蓄力曲线比例进行检验
+            expectedTicks = calculateExpectedBowChargeTicks(force, minChargeTicks);
+            expectedMs = calculateExpectedBowChargeMs(force, minChargeMs);
         }
 
         boolean insufficientCharge = false;
@@ -195,6 +202,59 @@ public class FastBowCheck extends AbstractCheck {
                 projectile.remove();
             }
         }
+    }
+
+    /**
+     * 根据原版弓力二次函数 force = (t^2 + 2t) / 3 (其中 t = chargeTicks / 20.0)
+     * 精确反解对应的理论蓄力时间比例 t = sqrt(3 * force + 1) - 1，并折算最小要求 Tick 数
+     */
+    public static int calculateExpectedBowChargeTicks(float force, int minChargeTicks) {
+        if (force >= 0.99f) {
+            return minChargeTicks;
+        }
+        double chargeRatio = Math.max(0.0, Math.sqrt(3.0 * Math.max(0.0f, force) + 1.0) - 1.0);
+        return Math.max(2, (int) Math.floor(chargeRatio * minChargeTicks));
+    }
+
+    /**
+     * 根据原版弓力二次函数精确反解对应的最小要求毫秒数
+     */
+    public static long calculateExpectedBowChargeMs(float force, long minChargeMs) {
+        if (force >= 0.99f) {
+            return minChargeMs;
+        }
+        double chargeRatio = Math.max(0.0, Math.sqrt(3.0 * Math.max(0.0f, force) + 1.0) - 1.0);
+        return Math.max(100L, Math.round(chargeRatio * minChargeMs));
+    }
+
+    /**
+     * 跨版本安全判定弩 (Crossbow) 当前是否已处于装填上膛状态 (ChargedProjectiles)
+     */
+    public static boolean isCrossbowCharged(ItemStack item) {
+        if (item == null || !item.hasItemMeta()) {
+            return false;
+        }
+        try {
+            org.bukkit.inventory.meta.ItemMeta meta = item.getItemMeta();
+            if (meta == null) {
+                return false;
+            }
+            if (!crossbowMetaResolved) {
+                crossbowMetaResolved = true;
+                try {
+                    Class<?> crossbowMetaClass = Class.forName("org.bukkit.inventory.meta.CrossbowMeta");
+                    hasChargedProjectilesMethod = crossbowMetaClass.getMethod("hasChargedProjectiles");
+                } catch (Throwable ignored) {
+                }
+            }
+            if (hasChargedProjectilesMethod != null
+                    && hasChargedProjectilesMethod.getDeclaringClass().isInstance(meta)) {
+                Object result = hasChargedProjectilesMethod.invoke(meta);
+                return Boolean.TRUE.equals(result);
+            }
+        } catch (Throwable ignored) {
+        }
+        return false;
     }
 
     private long getCurrentServerTick() {

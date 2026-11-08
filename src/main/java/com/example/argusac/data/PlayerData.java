@@ -1196,6 +1196,14 @@ public class PlayerData {
         this.eatingItemType = itemType;
     }
 
+    /**
+     * 客户端松开右键 (RELEASE_USE_ITEM) 时解除进食防抖锁定，
+     * 允许中断进食后重新按右键刷新起点，同时保留 eatStartTick 与 eatStartTimeMs 以防完成进食同帧松手时主线程误报。
+     */
+    public void releaseEating() {
+        this.eating = false;
+    }
+
     public void stopEating() {
         this.eating = false;
         this.eatStartTick = -1L;
@@ -1220,13 +1228,21 @@ public class PlayerData {
     }
 
     public void startBowCharge(long currentTick, long nowMs) {
-        // 若已经处于拉弓蓄力状态且未超时 (3500ms 内)，避免准星划过方块再次触发交互重置蓄力起点导致 FastBow 误报
-        if (this.bowCharging && this.bowChargeStartTimeMs > 0L && (nowMs - this.bowChargeStartTimeMs) < 3500L) {
+        // 若已经处于按住右键拉弓状态且未超时 (15000ms 内)，避免长时间瞄准期间准星划过方块触发交互重置蓄力起点导致 FastBow 误报
+        if (this.bowCharging && this.bowChargeStartTimeMs > 0L && (nowMs - this.bowChargeStartTimeMs) < 15000L) {
             return;
         }
         this.bowCharging = true;
         this.bowChargeStartTick = currentTick;
         this.bowChargeStartTimeMs = nowMs;
+    }
+
+    /**
+     * 客户端松开右键 (RELEASE_USE_ITEM) 或切换槽位时解除按住右键的防抖锁定，
+     * 但保留 bowChargeStartTick 与 bowChargeStartTimeMs 供紧随其后主线程触发的 EntityShootBowEvent 核验。
+     */
+    public void releaseBowCharge() {
+        this.bowCharging = false;
     }
 
     public void stopBowCharge() {
