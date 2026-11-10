@@ -20,18 +20,18 @@
 
 <a name="english"></a>
 
-> **ArgusAC** is a high-performance, deterministic anti-cheat stopping movement, combat, and timer cheats with zero false flags.
+> **ArgusAC** is a high-performance anti-cheat for Paper and Spigot servers, designed to accurately stop movement, combat, and timer cheats while keeping server tick rates stable.
 
 ---
 
-## Performance & Features
+## Highlights
 
-- **Extreme Performance & Low Overhead (<0.01ms/player)** — Algorithmic approximations avoiding heavy square roots, zero allocation in tick hot paths, and lock-free async logging maintain a rock-solid 20.0 TPS.
-- **Deterministic Physics Simulation** — Evaluates player movement against vanilla kinematic equations, computing theoretical envelopes, residuals, and buffer accumulation to catch mini-speed and micro-hops.
-- **Lag-Compensated Entity Hitbox Backtracking** — Stores per-tick AABB hitboxes over a 1,000 ms sliding window, rewinding to the attacker's perspective to enforce the 3.00-block theoretical reach limit without false flags on knockback.
-- **Protocol-Level Clock-Drift & Timer Engine** — Enforces a 50 ms per-tick nanosecond balance at the network layer to eliminate 1.05x–2.0x timer speedups, packet floods, and fast item consumption.
-- **Zero External Dependencies** — PacketEvents 2.7.0 is shaded and relocated directly into the JAR; plug-and-play out of the box.
-- **Triple Setbacks & Tamper-Evident Logs** — Instant `CANCEL` (Recommended) with packet-level sync and locked anchor state, smooth `SOFT` correction, and authoritative `HARD` teleport setbacks, paired with SHA-256 cryptographic audit logs and ASCII motion trace replays.
+- **High Efficiency** — Highly optimized movement tracking and asynchronous logging ensure smooth server performance without dipping TPS.
+- **Physics-Based Movement Validation** — Validates player motions against vanilla movement physics (friction, gravity, and fluid dynamics) to stop speeds, micro-hops, and fly hacks.
+- **Lag-Compensated Combat Checks** — Tracks recent entity hitboxes to evaluate hit ranges from the attacker's perspective, avoiding reach false flags caused by network latency or knockback.
+- **Timer & Fast Item Defense** — Accurately detects speedhacks (Timer), fast bow firing, and instant eating by tracking client packet arrival rates and server-side action ticks.
+- **Self-Contained** — PacketEvents is shaded into the jar; ready to run without external dependencies.
+- **Flexible Mitigation & Audit Logs** — Supports instant movement cancellation (`CANCEL`), smooth correction (`SOFT`), and traditional teleport setbacks (`HARD`), along with detailed violation history and replay traces.
 
 ---
 
@@ -39,150 +39,115 @@
 
 ### Requirements
 
-- Minecraft server version: **1.12.2–26.3** (Spigot / Paper)
-- **Java 17** runtime
-- **Zero external dependencies** — Self-contained with shaded PacketEvents; plug-and-play!
+- Server version: **1.12.2–26.3** (Spigot / Paper)
+- Runtime: **Java 17+**
+- Dependencies: **None** (Plug and play)
 
 ### Quick Start
 
 1. Download the latest `ArgusAC` JAR from [Releases](../../releases).
 2. Place the JAR into your server's `plugins/` directory.
-3. Start or restart the server to generate configuration files under `plugins/ArgusAC/`.
-4. Run `/argus compat` to verify check compatibility and active adapters.
-5. Customize thresholds in `plugins/ArgusAC/config.yml` and hot-reload via `/argus reload`.
+3. Start or restart the server to generate configuration files in `plugins/ArgusAC/`.
+4. Use `/argus reload` to apply configuration changes at any time.
 
 ---
 
 ## Checks
 
-ArgusAC provides comprehensive, non-intrusive cheat coverage across 28 dedicated check modules and sub-checks:
-
-### 1. Movement Checks (12 Checks)
+### 1. Movement Checks
 
 | Check | Focus Area | Description |
 |---|---|---|
-| `Speed` | Ground & Air | Deterministic kinematic simulation across ground friction (ice, slime, blue ice), water, and air acceleration (bhop) |
-| `Fly` | Vertical Motion | Gravitational simulation, abnormal vertical ascent, anti-gravity floating, and hovering |
-| `NoFall` | Ground State | Packet-level `onGround` spoofing interception verified against server-side physical collision boxes |
-| `InventoryMove` | UI Interaction | Detects moving, sprinting, or jumping while viewing inventories, chests, or container screens |
-| `ElytraSpeed` | Gliding Speed & Energy | Kinematic energy conservation enforcing unpowered speed decay and pitch-assisted dive limits (Anti-ElytraFly / Control Mode) |
-| `ElytraAscend` | Unpowered Climb | Mechanical energy constraints ($E=mgh+\frac{1}{2}mv^2$) blocking unpowered climb and infinite ascent |
-| `ElytraHover` | Mid-Air Stalls & Cruise | Intercepts zero-motion hovering stalls and unpowered flat cruising cheats (PacketFly / Float / Control Mode) |
-| `ElytraBoost` | Propulsion Physics | Validates firework rocket and riptide trident boost duration, impulse decay, and propulsion physics |
-| `ElytraState` | Slot 38 & Durability Lock | Real-time chestplate slot 38 lock & durability verification, intercepting armor hot-swap packet spoofing |
-| `ElytraTimer` | Packet Timing | Enforces client packet timing intervals during high-speed gliding against timer acceleration |
-| `ElytraToggle` | State Toggling Rate Limit | Blocks rapid glide toggling (GlideFlip) used to spoof momentum, phase through blocks, or bypass movement limits |
-| `ElytraNoFall` | Fall Damage Bypass | Prevents toggling elytra glide at the ground proximity to cancel accumulated fall damage |
+| `Speed` | Speed Hacks | Detects abnormal ground and airborne horizontal velocity, factoring in friction, potions, and ice |
+| `Fly` | Flight & Hover | Detects unauthorized vertical ascent, gravity avoidance, and mid-air hovering |
+| `NoFall` | Fall Damage Bypass | Catches packet-level spoofed ground states to prevent skipping fall damage |
+| `InventoryMove` | Container Movement | Prevents walking, sprinting, or jumping while an inventory or chest is open |
+| `ElytraSpeed` | Gliding Speed | Enforces realistic glide speeds, accounting for dive gravity and rocket boosts |
+| `ElytraAscend` | Infinite Ascent | Blocks unpowered vertical climbs and unnatural continuous upward gliding |
+| `ElytraHover` | Air Stall | Detects freezing in mid-air or cruising horizontally without propulsion |
+| `ElytraBoost` | Propulsion | Verifies firework rocket and riptide trident boost durations |
+| `ElytraState` | Chestplate Swapping | Verifies equipped elytra status and durability during flight to prevent hot-swap exploits |
+| `ElytraTimer` | Packet Acceleration | Detects timer speedups during high-speed gliding |
+| `ElytraToggle` | Quick Toggling | Prevents rapidly toggling glide state to gain momentum or bypass physics |
+| `ElytraNoFall` | Gliding Landing Exploit | Prevents tapping elytra flight right before landing to bypass fall damage |
 
-### 2. Combat Checks (7 Checks)
-
-| Check | Focus Area | Description |
-|---|---|---|
-| `Reach` | Attack Distance | Lag-compensated entity bounding box backtracking strictly enforcing the 3.00-block theoretical limit |
-| `AutoClicker` | Click Rate & Patterns | Netty-layer packet sampling checking maximum CPS and statistical interval variance (macro/autoclicker detection) |
-| `KillAura` | Target & Angles | Ray-traced obstacle occlusion, impossible viewing angle deviation, silent aim misses, and rapid multi-target switching |
-| `Velocity` | Knockback Response | Validates horizontal and vertical knockback response ratios and tracks pending server velocity packets (Anti-KB) |
-| `FastBow` | Bow Charge & Burst | Server-side charge tick counter (20-tick baseline with 2-tick tolerance), sliding-window burst protection, shot rate limiting, and dual CANCEL / NERF mitigations |
-| `FastEat` | Item Consumption | Server-side consume tick counter (32-tick baseline with 4-tick jitter tolerance), packet spoofing detection, and Ping-adaptive lag compensation |
-| `Mace` | Heavy Mace & Smash Exploit | Detects 1.21+ mace exploits with fall physics, damage limits, ground-smash checks, and rate limiting |
-
-### 3. World Interaction Checks (3 Checks)
+### 2. Combat Checks
 
 | Check | Focus Area | Description |
 |---|---|---|
-| `FastBreak` | Block Breaking | Calculates theoretical block hardness and tool enchantment digging time to prevent speed breaking |
-| `Nuker` | Mass Block Breaking | Restricts blocks broken per tick and per second to vanilla limits without Haste |
-| `Scaffold` | Automatic Bridging | Analyzes downward pitch angles, sprint bridging without sneaking, and rapid block placement (FastPlace) |
+| `Reach` | Attack Distance | Accurately enforces the 3.0-block vanilla reach limit with latency compensation |
+| `AutoClicker` | Click Speed & Patterns | Detects excessive CPS rates and inhuman click interval patterns |
+| `KillAura` | Aim & Targets | Detects impossible angles, attacking through obstacles, and abnormal multi-target snapping |
+| `Velocity` | Knockback | Verifies that players take appropriate knockback from hits and explosions |
+| `FastBow` | Bow Shooting | Enforces realistic draw time requirements and limits rapid-fire shooting |
+| `FastEat` | Item Consumption | Enforces vanilla item consumption times to prevent instant eating |
+| `Mace` | Heavy Mace | Validates mace smash attacks, fall heights, and damage limits in 1.21+ |
 
-### 4. Packet & Protocol Checks (6 Checks)
+### 3. World Interaction Checks
 
 | Check | Focus Area | Description |
 |---|---|---|
-| `BadPackets (Pitch)` | Protocol Limits | Drops and flags impossible pitch rotations outside [-90.0, 90.0] (Derp / HeadRoll cheats) |
-| `BadPackets (Coordinates)` | Floating Limits | Intercepts NaN, Infinite, and world-border-exceeding raw packet coordinates |
-| `BadPackets (Timer)` | Clock Drift | 50 ms/tick nanosecond balance algorithm catching 1.05x–2.0x game speedups and packet bursts |
-| `BadPackets (GroundSpoof)` | Protocol Integrity | Intercepts airborne packets falsely reporting `onGround=true` before physics processing |
-| `BadPackets (Actions)` | State Sequence | Detects conflicting entity actions (e.g., instant sneak-sprint exploits) and moving while asleep |
-| `BadPackets (Duplicate)` | Packet Redundancy | Filters duplicate position packets sent within the same tick |
+| `FastBreak` | Block Breaking | Calculates valid dig durations based on tool, enchantments, and block hardness |
+| `Nuker` | Mass Destruction | Restricts the number of blocks broken per tick to vanilla possibilities |
+| `Scaffold` | Auto-Bridging | Detects fast bridging with unnatural downward angles and sprint placement |
 
-Check parameters can be tuned in [`checks.yml`](src/main/resources/checks.yml). Use `/argus compat` to verify compatibility across versions.
+### 4. Packet & Protocol Checks
+
+| Check | Focus Area | Description |
+|---|---|---|
+| `BadPackets (Pitch)` | Head Pitch | Drops impossible vertical viewing angles exceeding [-90, 90] |
+| `BadPackets (Coordinates)` | Coordinate Bounds | Filters out invalid coordinates (NaN, Infinity, or out of world limits) |
+| `BadPackets (Timer)` | Game Speedup | Detects client clock acceleration (1.05x–2.0x game speedups) |
+| `BadPackets (GroundSpoof)` | Ground Status | Catches packets falsely reporting on-ground status while suspended |
+| `BadPackets (Actions)` | State Consistency | Blocks conflicting movement states (such as sneaking while sprinting) |
+| `BadPackets (Duplicate)` | Duplicate Packets | Filters redundant position packets sent within the same tick |
 
 ---
 
-## Setback System
+## Setback Modes
 
-ArgusAC caches a player's last validated location after passing check evaluations:
+When irregular movement is detected, ArgusAC can handle it in three ways:
 
-- **`CANCEL` (Recommended)** — Directly cancels the illegal move event in real-time within the tick for instant, zero-latency mitigation without rubberbanding.
-- **`HARD`** — Teleports the player to the validated location on the main thread, resetting velocity and fall distance.
-- **`SOFT`** — Corrects the movement destination within the move event for a smooth, rubberband-free correction.
-
-Setbacks include an adaptive latency-aware immunity window to prevent cascading false flags. If the primary setback point is obstructed, a secondary fallback location is selected automatically.
+- **`CANCEL` (Default & Recommended)** — Immediately cancels the illegal move packet on the current tick. Zero latency, no camera snapping, and no rubberbanding.
+- **`HARD`** — Teleports the player back to their last safe location and resets falling momentum.
+- **`SOFT`** — Adjusts the player's movement target coordinate smoothly within the move event.
 
 ---
 
-## Commands
-
-<details>
-<summary><b>Click to expand / collapse command list</b></summary>
-
-<br>
+## Commands & Permissions
 
 Main command: **`/argus`** (aliases: **`/ac`**, **`/argusac`**).
 
 | Command | Description | Permission |
 |---|---|---|
-| `/argus help` | Show the command list | Everyone |
-| `/argus reload` | Reload configuration, checks, and language files | `argusac.admin` |
-| `/argus vl <player>` | View an online player's current violation levels | `argusac.admin` |
-| `/argus logs <player> [options]` | Query recent memory logs (`--check`, `--since`, `--setback`, `--page`) | `argusac.admin` |
-| `/argus history <player> <days> [options]` | Search historical compressed audit archives | `argusac.admin` |
-| `/argus replay <player> [--side]` | Render an ASCII lightweight movement trace | `argusac.admin` |
-| `/argus export <player>` | Export a player's complete audit records as a ZIP | `argusac.admin` |
-| `/argus top [--since <1h\|24h\|7d>]` | Show the top 10 highest violation counts | `argusac.admin` |
-| `/argus status` | Show audit queue capacity and worker status | `argusac.admin` |
-| `/argus verify` | Verify SHA-256 cryptographic log chain integrity | `argusac.admin` |
-| `/argus debug <check>` | Toggle live debug logging for a check | `argusac.admin` |
-| `/argus compat` | Display multi-version capability matrix and active tiers | `argusac.admin` |
-| `/argus toggle <check>` | Toggle a check module on/off at runtime | `argusac.admin` |
-| `/argus setback <player\|global> <disable\|cancel\|soft\|hard\|default\|now\|info>` | Inspect or configure setback engine modes | `argusac.admin` |
-| `/argus alerts [on\|off\|status]` | Mute or restore personal staff alerts for this login session | `argusac.alert` |
-| `/argus update [check\|download]` | Check or download the latest release from Modrinth | `argusac.admin` |
-| `/argus my-data` | View GDPR data retention and anonymization policies | Everyone |
-| `/argus purge <player>` | Safely delete a player's stored logs and generate an audit record | `argusac.admin` |
+| `/argus help` | Displays available commands | None |
+| `/argus reload` | Reloads configuration, checks, and language files | `argusac.admin` |
+| `/argus vl <player>` | Views violation levels of a player | `argusac.admin` |
+| `/argus logs <player>` | Queries recent in-memory violation records | `argusac.admin` |
+| `/argus history <player> <days>` | Searches through historical audit archives | `argusac.admin` |
+| `/argus replay <player>` | Generates an ASCII movement trace replay | `argusac.admin` |
+| `/argus export <player>` | Exports complete audit records for a player | `argusac.admin` |
+| `/argus top` | Displays players with the highest violation counts | `argusac.admin` |
+| `/argus setback <player\|global> <mode>` | Inspects or overrides the setback mode | `argusac.admin` |
+| `/argus alerts [on\|off]` | Toggles violation alert notifications for staff | `argusac.alert` |
+| `/argus update [check\|download]` | Checks or downloads updates from Modrinth | `argusac.admin` |
 
-</details>
+- `argusac.admin` — Access to all `/argus` management commands (Default: OP)
+- `argusac.alert` — Receive cheat detection notifications (Default: OP)
+- `argusac.bypass` — Exempt from all anti-cheat checks and mitigations (Default: None)
 
 ---
 
-## Permissions
+## Configuration & Logs
 
-<details>
-<summary><b>Click to expand / collapse permissions</b></summary>
-
-<br>
-
-| Permission | Default | Description |
-|---|---|---|
-| `argusac.admin` | OP | Access all `/argus` administration commands |
-| `argusac.alert` | OP | Receive real-time violation and setback alerts |
-| `argusac.bypass` | Nobody | Bypass all checks and setback enforcement |
-
-</details>
-
----
-
-## Configuration and Audit Logs
-
-Configuration resides at `plugins/ArgusAC/config.yml`. It includes i18n settings, version policies, physics prediction tolerances, violation thresholds, alerts, setbacks, and GDPR privacy settings.
-
-Audit logs are stored asynchronously as JSON Lines under `plugins/ArgusAC/logs/setbacks.jsonl`. Supports automated rotation, compression, IP anonymization, and SHA-256 tamper-evident verification.
+- **Configuration**: Located at `plugins/ArgusAC/config.yml`. General settings, violation thresholds, language settings, and alerts can be adjusted here. Check-specific rules are located in `checks.yml`.
+- **Audit Logs**: Saved to `plugins/ArgusAC/logs/setbacks.jsonl`. Supports automatic log compression, player data export, and GDPR deletion via `/argus purge`.
 
 ---
 
 ## License
 
-MIT License.
+[MIT License](LICENSE).
 
 ---
 
@@ -192,166 +157,131 @@ MIT License.
   <b>中文</b> | <a href="#english">English</a>
 </p>
 
-> **ArgusAC** 是一款确定性物理驱动的高性能反作弊，精准拦截移动、战斗与变速作弊，零误判、零卡顿。
+> **ArgusAC** 是一款面向 Paper 与 Spigot 服务端的高性能反作弊插件，专注于精准拦截移动、战斗与变速类作弊，在保障检测准确率的同时最大化节省服务器资源。
 
 ---
 
-## 性能与核心特性
+## 核心特性
 
-- **极致性能与近零开销 (<0.01ms/人)** — 全流程算法优化，严格规避高开销开方运算，热点路径零对象分配，无锁环形异步日志，确保 20.0 TPS 稳定如初。
-- **确定性物理模拟预测 (Deterministic Kinematics)** — 拟合原版运动学微分方程（摩擦力、重力、阻力），以残差（Residual）与缓冲（Buffer）精准捕获微速（Mini-Speed）与慢速微跳。
-- **实体历史碰撞盒延迟补偿回溯 (Lag Backtracking)** — 维护 1000ms 碰撞盒快照，攻击时根据 Ping 回溯历史视野，消灭击退误报并将 Reach 严格锁定在 3.00 格物理极限。
-- **协议级 Timer 时钟平衡引擎 (Clock Drift Engine)** — 50ms/tick 纳秒时钟银行追踪发包时钟漂移，秒级拦截 1.05x ~ 2.0x 变速齿轮、快速进食与发包轰炸。
-- **开箱即用，零外部依赖** — PacketEvents 2.7.0 原生嵌入并包重定向（Shaded Relocation），无需额外安装任何前置插件。
-- **三模回退与防篡改审计** — `CANCEL`（推荐，当帧双重即时阻断、底层发包同步与原位强行锚定）、`HARD`（瞬移）与 `SOFT`（平滑修正），辅以 SHA-256 密码学防篡改日志与 ASCII 轨迹回放。
+- **轻量低开销** — 针对移动与发包校验进行了深度性能优化，配合异步日志审计，保障服务器在高负载下稳定维持 20.0 TPS。
+- **物理运动学校验** — 结合原版物理特性（重力加速度、方块摩擦力、水流与跳跃机制）校验移动轨迹，精准拦截微速加速、空中漂移与非正常起跳。
+- **延迟补偿与回溯** — 记录实体近期碰撞盒，在攻击发生时根据玩家网络延迟还原当时的相对站位，有效防止误判并严格限制攻击距离。
+- **变速齿轮与快速使用防御** — 通过发包频率监控与服务端动作计时，准确拦截变速齿轮（Timer）、快速拉弓与瞬间进食。
+- **开箱即用，免前置** — 内部已集成 PacketEvents 数据包引擎，无需额外安装前置插件即可跨版本运行。
+- **多种处置模式与轨迹回放** — 支持即时拦截（`CANCEL`，不回弹）、平滑修正（`SOFT`）与传统传送拉回（`HARD`），并提供控制台 ASCII 轨迹回放便于管理员复核。
 
 ---
 
-## 安装
+## 安装说明
 
 ### 环境要求
 
-- Minecraft 服务端版本：**1.12.2–26.3** (Spigot / Paper)
-- **Java 17** 运行环境
-- **零外部前置依赖** — 网络协议引擎 PacketEvents 已内置打包，开箱即用！
+- 服务端版本：**1.12.2–26.3** (Spigot / Paper)
+- Java 版本：**Java 17+**
+- 前置要求：**无任何前置依赖**（开箱即用）
 
 ### 快速开始
 
-1. 从 [Releases](../../releases) 下载最新的 `ArgusAC` JAR。
-2. 将 JAR 放入服务端的 `plugins/` 目录。
-3. 启动或重启服务端，插件会在 `plugins/ArgusAC/` 下生成默认配置。
-4. 执行 `/argus compat` 检查当前环境检测项兼容性与适配器状态。
-5. 在 `plugins/ArgusAC/config.yml` 中调整参数，使用 `/argus reload` 热重载生效。
+1. 从 [Releases](../../releases) 页面下载最新的 `ArgusAC.jar`。
+2. 将 jar 放入服务端的 `plugins/` 目录中。
+3. 启动或重启服务端，插件会自动在 `plugins/ArgusAC/` 下生成配置文件。
+4. 修改配置后可随时使用 `/argus reload` 重新加载。
 
 ---
 
-## 检测模块 (Checks)
+## 检测模块
 
-ArgusAC 构建了四层纵深防御体系，共计 28 个独立检测模块与细分子项，全方位覆盖各类作弊行为：
+### 1. 移动类检测
 
-### 1. 移动类检测 (Movement Checks - 12项)
-
-| 检测项 | 核心领域 | 说明 |
+| 检测项 | 检测方向 | 功能说明 |
 |---|---|---|
-| `Speed` | 地面与空中速度 | 确定性运动学微分方程拟合，覆盖冰面摩擦、粘液块、药水加速与空中加速度（BHop） |
-| `Fly` | 垂直移动与重力模拟 | 确定性重力加速度预测，检测反重力上升、慢速微跳（Mini-Jump）与空中悬浮（Hover） |
-| `NoFall` | 接地状态欺诈 | 数据包层虚假接地标志（`onGround`）实时拦截与服务端物理碰撞体着陆校验 |
-| `InventoryMove` | 界面移动交互 | 检测在打开物品栏、箱子或各种容器界面时发生的非法移动、疾跑与起跳 |
-| `ElytraSpeed` | 鞘翅速度与动能衰减 | 运动学机械能守恒，限制平飞与俯冲动能换算，拦截“甲飞”超速机动与 Control Mode |
-| `ElytraAscend` | 无动力仰角爬升 | 机械能守恒约束（$E=mgh+\frac{1}{2}mv^2$），拦截无烟花/激流推进时的反常向上仰角飞升与“甲飞”无限爬升 |
-| `ElytraHover` | 悬停滞空与无限巡航 | 识别空中零动量悬空挂机（PacketFly/悬浮）及无动力定高无限平飞巡航等“甲飞”外挂 |
-| `ElytraBoost` | 冲量与推进物理 | 校验烟花火箭与三叉戟激流加速的推进时限与冲量衰减物理学 |
-| `ElytraState` | 38号槽位与换甲锁定 | 实时强校验胸甲槽位与耐久（耐久$\le 1$不可飞），当帧阻断“换甲-开伞-换回胸甲”偷飞与伪造滑翔姿态 |
-| `ElytraTimer` | 飞行数据包时序 | 限制高速滑翔过程中的数据包发包频率与时钟步进，拦截 Timer 变速发包加速 |
-| `ElytraToggle` | 高频姿态切换限频 | 限制单秒内开关滑翔次数，拦截高频反复开关鞘翅滑翔以刷初速、穿墙或卡滞空的漏洞（GlideFlip） |
-| `ElytraNoFall` | 贴地滑翔免摔伤 | 防止在落地最后一瞬间开启滑翔姿态规避高空坠落摔伤 |
+| `Speed` | 移动速度 | 综合考虑方块摩擦力、药水效果与跳跃状态，拦截地面与空中超速（BHop） |
+| `Fly` | 垂直移动 | 校验垂直加速度与下落行为，拦截反重力上升、异常微跳与空中悬浮 |
+| `NoFall` | 虚假落地 | 拦截客户端伪造的 `onGround` 接地数据包，防止利用漏洞免疫摔伤 |
+| `InventoryMove` | 界面移动 | 检测在打开背包、箱子或各种容器界面时的非法移动、疾跑与起跳 |
+| `ElytraSpeed` | 鞘翅速度 | 校验俯冲与平飞时的滑翔速度，拦截无动力超速巡航与异常机动 |
+| `ElytraAscend` | 异常爬升 | 拦截在缺少烟花或激流推进时的异常垂直向上爬升 |
+| `ElytraHover` | 空中滞空 | 拦截在空中静止悬停或无动力水平长距离巡航 |
+| `ElytraBoost` | 推进持续度 | 校验烟花火箭与三叉戟激流的推进时长与冲量衰减 |
+| `ElytraState` | 换甲飞天 | 实时校验鞘翅装备与耐久状态，拦截通过快速切甲伪造滑翔姿态的行为 |
+| `ElytraTimer` | 滑翔变速 | 限制滑翔过程中的发包频率，防止利用 Timer 加速飞行 |
+| `ElytraToggle` | 姿态快切 | 限制单秒内开关滑翔的频率，防止利用反复开关刷速度或卡模型 |
+| `ElytraNoFall` | 落地免伤 | 拦截在接触地面瞬间开启滑翔以规避坠落伤害的行为 |
 
-### 2. 战斗类检测 (Combat Checks - 7项)
+### 2. 战斗类检测
 
-| 检测项 | 核心领域 | 说明 |
+| 检测项 | 检测方向 | 功能说明 |
 |---|---|---|
-| `Reach` | 攻击距离 | 实体历史碰撞盒延迟补偿回溯，极限收敛在 3.00 格原版理论限制，击退不误判 |
-| `AutoClicker` | 连点频率与规律 | 网络底层纳秒采样，限制极限 CPS 并通过样本标准差识别极其机械的无抖动连点器 |
-| `KillAura` | 视角与隔墙打击 | 回溯坐标计算视角夹角、跨版本安全视线遮挡判定、脱靶命中与极速多目标切换 |
-| `Velocity` | 击退动量响应 | 校验垂直与水平受击退响应比率，追踪服务端下发的待确认击退时序（Anti-KB） |
-| `FastBow` | 弓箭蓄力与射速限制 | 服务端 Tick 级蓄力计时器（20 ticks 基准）、1000ms 滑动窗口防 FakeLag 堆包轰炸与全局射击冷却，专设 CANCEL（静默取消）与 NERF（软绵箭）双模式 |
-| `FastEat` | 快速进食与物品使用 | 服务端 Tick 级食用计时器（32 ticks 基准，4 ticks 抖动容忍）、伪造完成数据包拦截（Instant Eat）与动态 RTT 延迟补偿 |
-| `Mace` | 重锤下落砸击与伤害防护 | 检测 1.21+ 重锤作弊，涵盖下落物理校验、伤害限制、地面砸击拦截与攻击频率限制 |
+| `Reach` | 攻击距离 | 结合延迟补偿严格限制攻击判定范围，防止远距离隔空打击 |
+| `AutoClicker` | 连点频率 | 监控左键攻击频率与点击间隔规律，识别异常高频连点与机械宏 |
+| `KillAura` | 攻击视角 | 检测不可见角度攻击、隔墙打击以及极速多目标切换 |
+| `Velocity` | 击退响应 | 校验玩家受击后的实际击退响应比例，拦截防击退（Anti-KB）外挂 |
+| `FastBow` | 弓箭射速 | 校验拉弓蓄力时长与发射频率，拦截加特林连发与瞬间射箭 |
+| `FastEat` | 进食时间 | 校验使用食物/药水等消耗品的时长，拦截瞬间进食外挂 |
+| `Mace` | 重锤重击 | 校验 1.21+ 重锤的下落高度、攻击间隔与伤害上限，防止平地虚假重击 |
 
-### 3. 世界交互类检测 (World Interaction Checks - 3项)
+### 3. 世界交互类检测
 
-| 检测项 | 核心领域 | 说明 |
+| 检测项 | 检测方向 | 功能说明 |
 |---|---|---|
-| `FastBreak` | 异常方块破坏 | 比对方块硬度、工具挖掘效率与附魔理论时限，阻断加速挖掘 |
-| `Nuker` | 大范围拆除 | 限制单个 Tick 与每秒内破坏方块的上限数量（防暴拆/全自动挖矿） |
-| `Scaffold` | 自动搭桥铺路 | 检测异常低头俯仰角、疾跑倒退搭桥与极速放置方块（FastPlace） |
+| `FastBreak` | 异常破坏 | 根据工具类型、附魔与方块硬度计算合法破坏时长，拦截加速挖掘 |
+| `Nuker` | 大范围拆除 | 限制单 tick 和每秒内破坏方块的上限数量，防止全自动暴拆与矿透快挖 |
+| `Scaffold` | 自动搭桥 | 检测异常俯仰角度、倒退疾跑搭桥与极速放置方块的行为 |
 
-### 4. 数据包与协议类检测 (Packet & Protocol Checks - 6项)
+### 4. 协议与数据包检测
 
-| 检测项 | 核心领域 | 说明 |
+| 检测项 | 检测方向 | 功能说明 |
 |---|---|---|
-| `BadPackets (Pitch)` | 协议视角越界 | 拦截丢弃超越正负 90 度的非法俯仰角（Derp / 倒立视角外挂） |
-| `BadPackets (Coordinates)` | 坐标浮点异常 | 实时过滤拦截 NaN、Infinite 与超出世界边界的恶意异常坐标包 |
-| `BadPackets (Timer)` | 时钟漂移变速 | 50ms/tick 纳秒时钟银行算法，捕捉 1.05x ~ 2.0x 变速齿轮与发包轰炸 |
-| `BadPackets (GroundSpoof)` | 虚假接地欺骗 | 在网络层直接捕获空中伪造 `onGround=true` 的数据包 |
-| `BadPackets (Actions)` | 状态时序冲突 | 拦截潜行疾跑瞬时矛盾动作包与睡眠状态异常移动包 |
-| `BadPackets (Duplicate)` | 数据包冗余 | 过滤客户端同 tick 内发送的重复冗余位置包 |
-
-检测阈值与参数均可在 [`checks.yml`](src/main/resources/checks.yml) 中细致调节。使用 `/argus compat` 查看跨版本能力分配。
+| `BadPackets (Pitch)` | 视角限制 | 拦截并丢弃超出 [-90, 90] 范围的非法仰角数据包 |
+| `BadPackets (Coordinates)` | 异常坐标 | 拦截包含 NaN、无穷大或超出世界边界的异常坐标数据包 |
+| `BadPackets (Timer)` | 游戏变速 | 监测客户端发包时钟漂移，拦截 1.05x ~ 2.0x 游戏加速 |
+| `BadPackets (GroundSpoof)` | 虚假接地 | 在网络层直接拦截身处空中却报告在地面的虚假数据包 |
+| `BadPackets (Actions)` | 动作冲突 | 拦截潜行疾跑同时存在等互相矛盾的状态动作 |
+| `BadPackets (Duplicate)` | 重复发包 | 过滤同 tick 内发送的冗余重复位置数据包 |
 
 ---
 
-## 状态回退与取消系统 (Setback System)
+## 违规处置方式 (Setback)
 
-ArgusAC 在玩家通过移动验证后记录其最后合法位置：
+当玩家触发移动违规时，ArgusAC 提供三种可选处置策略：
 
-- **`CANCEL` (推荐)** — 当帧零延迟直接在事件内取消违规移动，实现类似 GrimAC 的瞬时精准阻断，无拉扯感。
-- **`HARD`** — 主线程传送回已记录位置，清空动量速度与坠落距离。
-- **`SOFT`** — 在移动事件中修正目标坐标，提供无拉扯感平滑修正。
-
-回退引擎内置自适应网络延迟的临时免疫期，避免产生连续误报；若首要位置受阻，自动选取备用合法点。
+- **`CANCEL` (推荐，默认)** — 当帧在移动事件内直接取消违规位移。零延迟阻断违规移动，玩家画面平稳不抽搐，彻底消除频繁拉回感。
+- **`HARD`** — 强制将玩家传送回最近一次经过验证的合法安全位置，并重置动量与下落距离。
+- **`SOFT`** — 在移动事件内平滑修正目标坐标至合法位置，适合需要温和校正的服务器。
 
 ---
 
-## 命令
-
-<details>
-<summary><b>点击展开 / 折叠命令列表</b></summary>
-
-<br>
+## 管理命令与权限
 
 主命令为 **`/argus`**（别名：**`/ac`**、**`/argusac`**）。
 
-| 命令 | 说明 | 权限 |
+| 命令 | 说明 | 权限要求 |
 |---|---|---|
-| `/argus help` | 显示命令列表 | 所有人 |
-| `/argus reload` | 重载配置、检测模块与多语言文件 | `argusac.admin` |
-| `/argus vl <玩家>` | 查看在线玩家的各模块违规等级 (VL) | `argusac.admin` |
-| `/argus logs <玩家> [选项]` | 查询近期内存日志（支持 `--check`、`--since`、`--setback`、`--page`） | `argusac.admin` |
-| `/argus history <玩家> <天数> [选项]` | 异步流式检索历史审计归档文件 | `argusac.admin` |
-| `/argus replay <玩家> [--side]` | 输出 ASCII 轻量二维/三维移动轨迹 | `argusac.admin` |
-| `/argus export <玩家>` | 将玩家审计数据完整打包导出为 ZIP | `argusac.admin` |
-| `/argus top [--since <1h\|24h\|7d>]` | 显示违规次数前十名排行榜 | `argusac.admin` |
-| `/argus status` | 查看审计队列吞吐指标与运行状态 | `argusac.admin` |
-| `/argus verify` | 校验全局日志 SHA-256 哈希链完整性 | `argusac.admin` |
-| `/argus debug <检测项>` | 实时开关指定检测项的调试控制台日志 | `argusac.admin` |
-| `/argus compat` | 查看跨版本能力矩阵与降级自检报告 | `argusac.admin` |
-| `/argus toggle <检测项>` | 运行时热开关指定检测模块 | `argusac.admin` |
-| `/argus setback <玩家\|global> <disable\|cancel\|soft\|hard\|default\|now\|info>` | 管理或诊断状态回退子系统模式 | `argusac.admin` |
-| `/argus alerts [on\|off\|status]` | 本次登录会话期间关闭、恢复或查看个人管理员告警提示 | `argusac.alert` |
-| `/argus update [check\|download]` | 检查或从 Modrinth 下载官方最新发布版本 | `argusac.admin` |
-| `/argus my-data` | 查看 GDPR 个人数据保留策略与匿名化透明度 | 所有人 |
-| `/argus purge <玩家>` | 彻底删除玩家存储记录并生成系统注销审计条目 | `argusac.admin` |
+| `/argus help` | 查看命令帮助菜单 | 无 |
+| `/argus reload` | 重新加载配置文件、检测规则与语言文件 | `argusac.admin` |
+| `/argus vl <玩家>` | 查看目标玩家当前的违规计分（VL） | `argusac.admin` |
+| `/argus logs <玩家>` | 查看目标玩家近期的违规记录 | `argusac.admin` |
+| `/argus history <玩家> <天数>` | 查询指定天数内的历史审计归档 | `argusac.admin` |
+| `/argus replay <玩家>` | 在控制台生成轻量 ASCII 移动轨迹回放 | `argusac.admin` |
+| `/argus export <玩家>` | 将指定玩家的审计数据导出为压缩包 | `argusac.admin` |
+| `/argus top` | 查看全服违规点数前十名玩家列表 | `argusac.admin` |
+| `/argus setback <玩家\|global> <模式>` | 查看或修改当前违规处置模式 | `argusac.admin` |
+| `/argus alerts [on\|off]` | 开关当前登录会话的管理报警提示 | `argusac.alert` |
+| `/argus update [check\|download]` | 检查或下载 Modrinth 发布的最新版本 | `argusac.admin` |
 
-</details>
+- `argusac.admin` — 拥有所有 `/argus` 管理命令的执行权限（默认：OP）
+- `argusac.alert` — 接收违规告警与拦截通知（默认：OP）
+- `argusac.bypass` — 绕过所有检测与处置（默认：无）
 
 ---
 
-## 权限
+## 配置文件与日志
 
-<details>
-<summary><b>点击展开 / 折叠权限节点</b></summary>
-
-<br>
-
-| 权限 | 默认 | 说明 |
-|---|---|---|
-| `argusac.admin` | OP | 拥有所有 `/argus` 管理命令的执行权限 |
-| `argusac.alert` | OP | 接收违规与回退实时告警提示 |
-| `argusac.bypass` | 无人 | 豁免全部作弊检测与状态回退处置 |
-
-</details>
+- **配置文件**：主要设置在 `plugins/ArgusAC/config.yml`（包含全局开关、语言选择、告警设置等），详细检测参数在 `checks.yml` 中配置。
+- **审计日志**：违规记录默认异步存储在 `plugins/ArgusAC/logs/setbacks.jsonl` 中，支持自动压缩、历史检索与通过 `/argus purge` 进行数据安全清理。
 
 ---
 
-## 配置与审计日志
+## 开源协议
 
-默认配置文件生成在 `plugins/ArgusAC/config.yml`，包含多语言选择、版本降级策略、物理预测容差、检测参数、告警、回退策略与 GDPR 隐私选项。
-
-审计日志默认以高性能 JSON Lines 格式异步写入 `plugins/ArgusAC/logs/setbacks.jsonl`，原生支持文件自动轮转、GZIP 压缩归档、IP 哈希加密与 SHA-256 哈希链防伪防篡改。
-
----
-
-## 许可证
-
-MIT 许可证。
+[MIT License](LICENSE)。

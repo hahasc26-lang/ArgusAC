@@ -9,14 +9,14 @@ import com.example.argusac.log.model.ViolationLog;
 import com.example.argusac.model.LegitimateLocation;
 import com.example.argusac.model.SetbackOverride;
 import com.example.argusac.setback.ActiveHoverTracker;
-import com.example.argusac.setback.PendingCorrection;
 import com.example.argusac.setback.PlayerSetbackContext;
 import com.example.argusac.setback.SafeLocationFinder;
 import com.example.argusac.setback.SetbackNotifier;
 import com.example.argusac.setback.SetbackPacketSync;
 import com.example.argusac.setback.SetbackPhysics;
-import com.example.argusac.compat.VersionAdapter;
-import com.example.argusac.compat.VersionAdapterFactory;
+import com.example.argusac.setback.handler.CancelSetbackHandler;
+import com.example.argusac.setback.handler.HardSetbackHandler;
+import com.example.argusac.setback.handler.SoftSetbackHandler;
 import org.bukkit.Bukkit;
 import org.bukkit.GameMode;
 import org.bukkit.Location;
@@ -30,27 +30,33 @@ import org.bukkit.event.player.*;
 import org.bukkit.event.vehicle.VehicleEnterEvent;
 import org.bukkit.event.vehicle.VehicleExitEvent;
 import org.bukkit.scheduler.BukkitTask;
-import org.bukkit.util.Vector;
 
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
-import java.util.logging.Level;
 
 /**
  * 状态回退全能集中门面管理器 (SetbackManager)
  * <p>
  * 采用模块化微内核架构设计，将职责细分解耦至专门子模块：
- * 1. SafeLocationFinder: 负责安全地面与 AABB 碰撞箱 Top-Y 精细贴合探测；
- * 2. SetbackPhysics: 负责原版重力加速度曲线仿真计算与空中下落阻断；
- * 3. SetbackPacketSync: 负责 PacketEvents 协议级网络位置重置报文下发；
- * 4. SetbackNotifier: 负责提示通知、管理广播、安全踢出与防篡改审计日志记录；
- * 5. PlayerSetbackContext: 维护单名玩家的快照历史、锁定锚点与校正时钟状态。
+ * 1. CancelSetbackHandler: 负责 CANCEL 模式的即时当帧拦截、负数 Teleport ID 隔离与锁定锚点防蠕变；
+ * 2. SoftSetbackHandler: 负责 SOFT 模式的目标坐标平滑重写与空中自由落体拟合；
+ * 3. HardSetbackHandler: 负责 HARD 模式的有界合法快照查找、主线程传送与网络校准序列；
+ * 4. SafeLocationFinder: 负责安全地面与 AABB 碰撞箱 Top-Y 精细贴合探测；
+ * 5. SetbackPhysics: 负责原版重力加速度曲线仿真计算；
+ * 6. SetbackPacketSync: 负责 PacketEvents 协议级网络位置重置报文下发；
+ * 7. SetbackNotifier: 负责提示通知、管理广播、安全踢出与防篡改审计日志记录；
+ * 8. PlayerSetbackContext: 维护单名玩家的快照历史、锁定锚点与校正时钟状态。
  */
 public class SetbackManager implements Listener {
 
     private final ArgusACPlugin plugin;
     private final SafeLocationFinder safeLocationFinder;
     private final SetbackNotifier setbackNotifier;
+
+    // 三种独立回退模式处理器
+    private final CancelSetbackHandler cancelHandler;
+    private final SoftSetbackHandler softHandler;
+    private final HardSetbackHandler hardHandler;
 
     // ==================== 配置参数 ====================
     private boolean globalEnabled;
@@ -83,6 +89,10 @@ public class SetbackManager implements Listener {
         this.plugin = plugin;
         this.safeLocationFinder = new SafeLocationFinder();
         this.setbackNotifier = new SetbackNotifier(plugin);
+        this.cancelHandler = new CancelSetbackHandler(plugin, this, safeLocationFinder, setbackNotifier);
+        this.softHandler = new SoftSetbackHandler(plugin, this, setbackNotifier);
+        this.hardHandler = new HardSetbackHandler(plugin, this, safeLocationFinder, setbackNotifier);
+
         this.reloadConfig();
         this.startActiveGravityTask();
     }
@@ -292,47 +302,15 @@ public class SetbackManager implements Listener {
             }
         }
 
-        // 对标 GrimAC：移动类检测彻底废除物理回退的冷却放行时间，杜绝作弊者利用 350ms 冷却窗口蹭步蠕动！
-        // 告警广播与玩家聊天提示的频次限制由 SetbackNotifier 独立控制，物理拦截本身必须当 tick 即时生效
         int requiredVl = check.getSetbackMinVl() > 0 ? check.getSetbackMinVl() : globalMinVl;
         return currentVl >= requiredVl;
     }
 
     /**
      * 判断某个检测模块和玩家当前是否应该执行即时当帧位移取消 (CANCEL 模式)
-     * 严格遵循 min-vl 阈值与世界/权限豁免，杜绝单 tick 抖动引起的误判拉回，并在达标后无冷却持续阻断
      */
     public boolean shouldCancel(Player player, Check check, int currentVl) {
-        if (player == null || check == null) {
-            return false;
-        }
-
-        if (plugin.isPlayerExempt(player)) {
-            return false;
-        }
-
-        if (check.getType() != CheckType.MOVEMENT) {
-            return false;
-        }
-
-        if (player.getWorld() != null && exemptedWorlds.contains(player.getWorld().getName().toLowerCase())) {
-            return false;
-        }
-
-        PlayerSetbackContext context = getContext(player.getUniqueId());
-        SetbackOverride pOverride = context.getOverride();
-        if (pOverride == SetbackOverride.DISABLED) {
-            return false;
-        }
-
-        if (pOverride == SetbackOverride.DEFAULT) {
-            if (!globalEnabled || !check.isSetbackEnabled()) {
-                return false;
-            }
-        }
-
-        int requiredVl = check.getSetbackMinVl() > 0 ? check.getSetbackMinVl() : globalMinVl;
-        return currentVl >= requiredVl;
+        return shouldSetback(player, check, currentVl);
     }
 
     public boolean shouldSetback(Player player, PlayerData data, Check check, int currentVl) {
@@ -364,153 +342,12 @@ public class SetbackManager implements Listener {
      * 零延迟当帧直接取消 (Direct Cancellation) 核心机制
      */
     public boolean directCancel(Player player, Check check, int currentVl, String reason, PlayerMoveEvent moveEvent) {
-        if (player == null || check == null || moveEvent == null) {
-            return false;
-        }
-
-        PlayerSetbackContext context = getContext(player.getUniqueId());
-        PlayerData data = plugin.getPlayerManager().getPlayerData(player);
-        Location from = moveEvent.getFrom();
-        Location to = moveEvent.getTo();
-        if (from == null) {
-            return false;
-        }
-
-        long now = System.currentTimeMillis();
-        long previousCancelTime = context.getLastCancellationViolationTime();
-        context.incrementConsecutiveCancellationViolations();
-        context.setLastSetbackTimestamp(check.getName(), now);
-
-        VersionAdapter adapter = VersionAdapterFactory.getAdapter();
-        boolean inClimbable = adapter.isClimbableAround(player, from) || (to != null && adapter.isClimbableAround(player, to));
-        boolean physicallyGrounded = isGrounded(player, from) || (data != null && data.isOnGround()) || inClimbable;
-        boolean isAirborne = !physicallyGrounded;
-        String checkLower = check.getName().toLowerCase();
-
-        Location lockedAnchor = context.getLockedAnchorLocation();
-        Location cancelTarget;
-
-        if (lockedAnchor != null && from.getWorld() != null && from.getWorld().equals(lockedAnchor.getWorld())
-                && (now - previousCancelTime < 4000L)) {
-            cancelTarget = lockedAnchor.clone();
-            // 校验历史锚点有效性：若锚点低于脚下方块顶面，立即对齐坚实表面，杜绝历史穿模死锁
-            Location anchorGround = findSafeGroundNear(cancelTarget, 0.6);
-            if (anchorGround != null && cancelTarget.getY() < anchorGround.getY()) {
-                cancelTarget.setY(anchorGround.getY());
-            }
-        } else {
-            if (!isAirborne) {
-                // 地面移动或方块边缘：优先吸附对齐台面坚实表面 (Surface Y 与水平安全内侧，杜绝悬崖边缘下坠)
-                Location nearGround = findSafeGroundNear(from, 0.6);
-                if (nearGround != null && Math.abs(nearGround.getY() - from.getY()) <= 0.35) {
-                    cancelTarget = nearGround.clone();
-                } else {
-                    cancelTarget = from.clone();
-                }
-            } else {
-                // 真实空中悬浮滞空：向下搜索最近落脚点
-                Location nearGround = findSafeGroundNear(from, 1.5);
-                if (nearGround != null) {
-                    cancelTarget = nearGround.clone();
-                } else {
-                    cancelTarget = from.clone();
-                }
-            }
-            context.setLockedAnchorLocation(cancelTarget);
-        }
-
-        if (to != null) {
-            cancelTarget.setYaw(to.getYaw());
-            cancelTarget.setPitch(to.getPitch());
-        }
-
-        boolean inLiquid = adapter.isInWater(player)
-                || adapter.isLiquid(cancelTarget.getBlock())
-                || adapter.isLiquid(from.getBlock())
-                || adapter.isLiquid(cancelTarget.clone().subtract(0, 0.4, 0).getBlock());
-
-        // 仅在纯真空空中滞空且非流体非攀爬环境下才模拟原版重力加速度下坠下压；
-        // 流体环境 (水、岩浆) 自带浮力，攀爬环境 (梯子、藤蔓) 支持滞留，绝不执行真空自由落体下坠
-        if (inLiquid && to != null && to.getY() < cancelTarget.getY() && (cancelTarget.getY() - to.getY()) <= 0.5) {
-            // 在水中发生回退锚定时，允许玩家自然下沉入水，防止将玩家死锁在水面表层 (如 Y=62.94) 引发连环 Jesus 误报
-            cancelTarget.setY(to.getY());
-            if (context.getLockedAnchorLocation() != null) {
-                context.getLockedAnchorLocation().setY(to.getY());
-            }
-        }
-        if (isAirborne && !inLiquid && !inClimbable) {
-            // 获取脚下最近的稳固地面支撑高度作为物理硬底线 (Ground Floor)
-            Location groundBelow = findSafeGroundNear(from, 1.5);
-            if (groundBelow == null) {
-                groundBelow = findSafeGroundBelow(from);
-            }
-            double minAllowedY = (groundBelow != null) ? groundBelow.getY() : (from.getWorld() != null ? from.getWorld().getMinHeight() : -64.0);
-
-            if (to != null && to.getY() > cancelTarget.getY()) {
-                cancelTarget.setY(Math.min(cancelTarget.getY(), from.getY()));
-            }
-            int airTicks = (data != null) ? data.getAirTicks() : 1;
-            int consec = context.getConsecutiveCancellationViolations();
-            double expectedFall = computeVanillaGravityFall(Math.max(airTicks, consec));
-            double currentDeltaY = (to != null) ? (to.getY() - from.getY()) : 0.0;
-            if (currentDeltaY > expectedFall) {
-                double targetY = Math.min(cancelTarget.getY(), from.getY() + expectedFall);
-                // 严禁重力加速度将玩家压穿坚实方块表面 (Surface Y)！最低只降至 minAllowedY！
-                double newY = Math.max(minAllowedY, targetY);
-                cancelTarget.setY(newY);
-                if (context.getLockedAnchorLocation() != null) {
-                    context.getLockedAnchorLocation().setY(newY);
-                }
-            }
-        }
-
-        if (player.isInsideVehicle() && player.getVehicle() != null) {
-            org.bukkit.entity.Entity vehicle = player.getVehicle();
-            vehicle.setVelocity(new Vector(0, 0, 0));
-            // 严格对标 GrimAC：强制将违规玩家从载具弹出下马，拉回载具，彻底封死载具插值微位移
-            player.leaveVehicle();
-            if (!isAirborne) {
-                vehicle.teleport(cancelTarget);
-            }
-        }
-
-        moveEvent.setTo(cancelTarget);
-        moveEvent.setCancelled(true);
-
-        if (checkLower.contains("elytra") || checkLower.contains("fly") || player.isGliding()) {
-            player.setGliding(false);
-            if (data != null && data.getElytraData() != null) {
-                data.getElytraData().resetGlideState();
-            }
-        }
-
-        // 生成绝对隔离的负数 Teleport ID 并下发位置同步包 (GrimAC 源码: random.nextInt() | Integer.MIN_VALUE)
-        int teleportId = context.generateSecureTeleportId();
-        context.markTeleportInFlight(teleportId, cancelTarget);
-        sendPositionSyncPacket(player, cancelTarget, teleportId);
-
-        // 速度与运动状态彻底清零，消除作弊客户端本地残留 Motion 再次触发异常位移
-        player.setVelocity(new Vector(0, 0, 0));
-        if (data != null) {
-            data.clearExpectedVelocity();
-            data.setSpeedBuffer(0.0);
-            data.getTimerTracker().reset();
-            data.updatePacketPosition(cancelTarget.getX(), cancelTarget.getY(), cancelTarget.getZ());
-            if (data.getPhysicsState() != null) {
-                data.getPhysicsState().reset(cancelTarget);
-                data.getPhysicsState().clearPendingVelocities();
-            }
-        }
-
-        setbackNotifier.postSetbackSuccess(player, context, check.getName(), currentVl, reason, "DIRECT_CANCEL",
-                SafeLocationFinder.formatLoc(from), SafeLocationFinder.formatLoc(cancelTarget), isAirborne,
-                LegitimateLocation.from(cancelTarget, null, isGrounded(player, cancelTarget), false, null),
-                notifyPlayerChannel, notifyPlayerCooldownMs, notifyAdminEnabled);
-        return true;
+        return cancelHandler.handle(player, check, currentVl, reason, moveEvent);
     }
 
     /**
      * 默认反作弊惩戒统一执行入口 (Mitigate / Setback)
+     * 根据当前配置或覆盖策略智能路由至对应的处理器
      */
     public boolean mitigate(Player player, Check check, int currentVl, String reason, PlayerMoveEvent moveEvent) {
         if (player == null || !player.isOnline() || check == null) {
@@ -533,103 +370,14 @@ public class SetbackManager implements Listener {
         }
 
         if ("CANCEL".equalsIgnoreCase(effectiveMode) && moveEvent != null) {
-            return directCancel(player, check, currentVl, reason, moveEvent);
+            return cancelHandler.handle(player, check, currentVl, reason, moveEvent);
         }
 
         if ("SOFT".equalsIgnoreCase(effectiveMode) && moveEvent != null) {
-            applySafeAirCancellation(moveEvent);
-            Location from = moveEvent.getFrom();
-            Location target = moveEvent.getTo() != null ? moveEvent.getTo() : from;
-            context.setLastSetbackTimestamp(check.getName(), System.currentTimeMillis());
-            setbackNotifier.postSetbackSuccess(player, context, check.getName(), currentVl, reason, "SOFT",
-                    SafeLocationFinder.formatLoc(from), SafeLocationFinder.formatLoc(target), !isGrounded(player, from),
-                    LegitimateLocation.from(target, null, isGrounded(player, target), false, null),
-                    notifyPlayerChannel, notifyPlayerCooldownMs, notifyAdminEnabled);
-            return true;
+            return softHandler.handle(player, check, currentVl, reason, moveEvent);
         }
 
-        if (!Bukkit.isPrimaryThread()) {
-            Bukkit.getScheduler().runTask(plugin, () -> mitigate(player, check, currentVl, reason, null));
-            return true;
-        }
-
-        if (moveEvent != null) {
-            moveEvent.setCancelled(true);
-        }
-        Location curLoc = player.getLocation();
-        String fromLocStr = SafeLocationFinder.formatLoc(curLoc);
-        long now = System.currentTimeMillis();
-
-        UUID curWorldUid = (curLoc.getWorld() != null) ? curLoc.getWorld().getUID() : null;
-        LegitimateLocation target = context.findBoundedLegitimateLocation(
-                curWorldUid,
-                curLoc,
-                maxSetbackDistance,
-                maxSnapshotAgeMs
-        );
-        boolean usedFallback = false;
-
-        if (target == null) {
-            if (context.getLastGroundLocation() != null && context.getLastGroundLocation().isPassable()) {
-                target = context.getLastGroundLocation();
-                usedFallback = true;
-            } else {
-                Location safeGround = findSafeGroundBelow(curLoc);
-                if (safeGround != null) {
-                    target = LegitimateLocation.from(safeGround, null, true, false, null);
-                    usedFallback = true;
-                }
-            }
-
-            if (target == null) {
-                LegitimateLocation relaxedTarget = context.findNearestPassableLocation(curWorldUid, curLoc, maxSetbackDistance * 2.0);
-                if (relaxedTarget != null) {
-                    target = relaxedTarget;
-                    usedFallback = true;
-                } else {
-                    setbackNotifier.recordFailure(player, context, check.getName(), "UNBOUNDED_OR_OCCLUDED", fromLocStr);
-                    if (kickWhenBothBlocked) {
-                        setbackNotifier.dispatchKick(player, kickMessage);
-                    }
-                    return false;
-                }
-            }
-        }
-
-        Location targetLocation = target.toLocation();
-        if (targetLocation == null || targetLocation.getWorld() == null) {
-            setbackNotifier.recordFailure(player, context, check.getName(), "WORLD_UNAVAILABLE", target.toString());
-            return false;
-        }
-
-        targetLocation.setYaw(curLoc.getYaw());
-        targetLocation.setPitch(curLoc.getPitch());
-
-        String toLocStr = SafeLocationFinder.formatLoc(targetLocation);
-
-        int ping = Math.max(0, com.example.argusac.compat.VersionAdapterFactory.getAdapter().getPing(player));
-        long correctionTimeout = Math.min(correctionTimeoutMs, 2L * ping + 150L);
-        long seq = context.getNextSequenceId();
-        context.setActiveSequenceId(seq);
-        context.setPendingCorrection(new PendingCorrection(
-                targetLocation.getX(), targetLocation.getY(), targetLocation.getZ(),
-                targetLocation.getWorld().getUID(),
-                now + correctionTimeout,
-                seq
-        ));
-        context.setLastSetbackTimestamp(check.getName(), now);
-
-        final LegitimateLocation finalTarget = target;
-        final boolean finalUsedFallback = usedFallback;
-
-        if (!Bukkit.isPrimaryThread()) {
-            Bukkit.getScheduler().runTask(plugin, () ->
-                    executeHardSetbackOnMainThread(player, context, targetLocation, finalTarget, check.getName(), currentVl, reason, fromLocStr, toLocStr, finalUsedFallback)
-            );
-        } else {
-            executeHardSetbackOnMainThread(player, context, targetLocation, finalTarget, check.getName(), currentVl, reason, fromLocStr, toLocStr, finalUsedFallback);
-        }
-        return true;
+        return hardHandler.handle(player, check, currentVl, reason, moveEvent);
     }
 
     public boolean execute(Player player, PlayerData data, Check check,
@@ -652,9 +400,7 @@ public class SetbackManager implements Listener {
     }
 
     public void applySafeAirCancellation(PlayerMoveEvent moveEvent) {
-        PlayerData data = (moveEvent != null && moveEvent.getPlayer() != null && plugin.getPlayerManager() != null)
-                ? plugin.getPlayerManager().getPlayerData(moveEvent.getPlayer()) : null;
-        SetbackPhysics.applySafeAirCancellation(moveEvent, data);
+        softHandler.applySafeAirCancellation(moveEvent);
     }
 
     public Location findSafeGroundNear(Location loc, double maxDistance) {
@@ -663,71 +409,6 @@ public class SetbackManager implements Listener {
 
     public Location findSafeGroundBelow(Location loc) {
         return safeLocationFinder.findSafeGroundBelow(loc);
-    }
-
-    private void executeHardSetbackOnMainThread(Player player, PlayerSetbackContext context,
-                                                Location targetLocation, LegitimateLocation target,
-                                                String checkName, int currentVl, String reason,
-                                                String fromLocStr, String toLocStr, boolean usedFallback) {
-        if (!player.isOnline()) {
-            setbackNotifier.recordFailure(player, context, checkName, "PLAYER_OFFLINE", toLocStr);
-            return;
-        }
-
-        try {
-            selfTeleportingPlayers.add(player.getUniqueId());
-
-            if (player.isInsideVehicle() && player.getVehicle() != null) {
-                org.bukkit.entity.Entity vehicle = player.getVehicle();
-                vehicle.setVelocity(new Vector(0, 0, 0));
-                // 严格对标 GrimAC：强制将违规玩家从载具弹出下马并单独拉回载具
-                player.leaveVehicle();
-                vehicle.teleport(targetLocation);
-            }
-
-            int teleportId = context.generateSecureTeleportId();
-            context.markTeleportInFlight(teleportId, targetLocation);
-            sendPositionSyncPacket(player, targetLocation, teleportId);
-
-            boolean teleportSuccess = player.teleport(targetLocation, PlayerTeleportEvent.TeleportCause.PLUGIN);
-
-            if (teleportSuccess) {
-                if (target != null && target.isOnGround()) {
-                    player.setVelocity(new Vector(0, 0, 0));
-                    player.setFallDistance(0.0f);
-                } else {
-                    player.setVelocity(new Vector(0, -0.08, 0));
-                }
-
-                PlayerData data = plugin.getPlayerManager().getPlayerData(player);
-                if (data != null) {
-                    data.clearExpectedVelocity();
-                    data.setSpeedBuffer(0.0);
-                    data.getTimerTracker().reset();
-                    data.updatePacketPosition(targetLocation.getX(), targetLocation.getY(), targetLocation.getZ());
-                    if (data.getPhysicsState() != null) {
-                        data.getPhysicsState().reset(targetLocation);
-                        data.getPhysicsState().clearPendingVelocities();
-                    }
-                }
-
-                if (target != null) {
-                    context.setLastLegitimateLocation(target);
-                }
-
-                setbackNotifier.postSetbackSuccess(player, context, checkName, currentVl, reason, "HARD", fromLocStr, toLocStr, usedFallback, target,
-                        notifyPlayerChannel, notifyPlayerCooldownMs, notifyAdminEnabled);
-            } else {
-                context.confirmTeleport(teleportId);
-                setbackNotifier.recordFailure(player, context, checkName, "TELEPORT_CANCELLED", toLocStr);
-            }
-
-        } catch (Exception ex) {
-            plugin.getLogger().log(Level.WARNING, "Error executing HARD setback for " + player.getName(), ex);
-            setbackNotifier.recordFailure(player, context, checkName, "EXCEPTION_" + ex.getMessage(), toLocStr);
-        } finally {
-            selfTeleportingPlayers.remove(player.getUniqueId());
-        }
     }
 
     public void cleanup() {
@@ -910,6 +591,18 @@ public class SetbackManager implements Listener {
         return playerUuid != null && selfTeleportingPlayers.contains(playerUuid);
     }
 
+    public void addSelfTeleporting(UUID playerUuid) {
+        if (playerUuid != null) {
+            selfTeleportingPlayers.add(playerUuid);
+        }
+    }
+
+    public void removeSelfTeleporting(UUID playerUuid) {
+        if (playerUuid != null) {
+            selfTeleportingPlayers.remove(playerUuid);
+        }
+    }
+
     public boolean isGlobalEnabled() {
         return globalEnabled;
     }
@@ -922,6 +615,54 @@ public class SetbackManager implements Listener {
 
     public String getDefaultMode() {
         return defaultMode;
+    }
+
+    public double getMaxSetbackDistance() {
+        return maxSetbackDistance;
+    }
+
+    public long getMaxSnapshotAgeMs() {
+        return maxSnapshotAgeMs;
+    }
+
+    public int getMaxSnapshotCapacity() {
+        return maxSnapshotCapacity;
+    }
+
+    public long getCorrectionTimeoutMs() {
+        return correctionTimeoutMs;
+    }
+
+    public boolean isKickWhenBothBlocked() {
+        return kickWhenBothBlocked;
+    }
+
+    public String getKickMessage() {
+        return kickMessage;
+    }
+
+    public String getNotifyPlayerChannel() {
+        return notifyPlayerChannel;
+    }
+
+    public long getNotifyPlayerCooldownMs() {
+        return notifyPlayerCooldownMs;
+    }
+
+    public boolean isNotifyAdminEnabled() {
+        return notifyAdminEnabled;
+    }
+
+    public CancelSetbackHandler getCancelHandler() {
+        return cancelHandler;
+    }
+
+    public SoftSetbackHandler getSoftHandler() {
+        return softHandler;
+    }
+
+    public HardSetbackHandler getHardHandler() {
+        return hardHandler;
     }
 
     public void clearPlayerCooldown(UUID uuid) {

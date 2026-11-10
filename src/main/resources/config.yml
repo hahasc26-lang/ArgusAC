@@ -119,8 +119,6 @@ updater:
 # ==============================================================================
 alerts:
   enabled: true
-  # Alert format: {player}=Player, {check}=Check, {vl}=VL, {max_vl}=Threshold, {details}=Data, {ping}=Ping
-  format: "&c[!] &e{player} &7failed &b{check} &8(VL: &c{vl}&8/&7{max_vl}&8) &7- &f{details} &8[&7{ping}ms&8]"
   # Play alert sound to staff with ArgusAC.alert permission
   sound:
     enabled: true
@@ -183,17 +181,15 @@ setback:
     min-duration-ms: 400
     extra-buffer-ms: 150
 
-  # Notification settings
+  # Notification settings (Message contents are localized in lang/*.yml)
   notifications:
     player:
       # Notification channel: ACTIONBAR, CHAT, or NONE
       channel: "ACTIONBAR"
-      message: "&c[ArgusAC] Irregular movement detected, your position has been setback!"
       # Notification cooldown (ms) to avoid spam
       cooldown-ms: 1000
     admin:
       enabled: true
-      format: "&6[Setback] &e{player} &7set back by &c{check} &8(&f{old_loc} &8-> &a{new_loc}&8) &7[&b{mode}&7]"
 
   # Asynchronous disk audit logging (persisted as JSON Lines, one JSON object per line)
   disk-logging:
