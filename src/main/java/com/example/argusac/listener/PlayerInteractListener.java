@@ -17,6 +17,8 @@ import org.bukkit.event.inventory.InventoryOpenEvent;
 import org.bukkit.event.inventory.InventoryType;
 import org.bukkit.event.inventory.ClickType;
 import org.bukkit.event.player.PlayerDropItemEvent;
+import org.bukkit.event.player.PlayerInteractAtEntityEvent;
+import org.bukkit.event.player.PlayerInteractEntityEvent;
 import org.bukkit.event.player.PlayerInteractEvent;
 import org.bukkit.event.player.PlayerItemConsumeEvent;
 import org.bukkit.event.player.PlayerItemHeldEvent;
@@ -48,36 +50,71 @@ public class PlayerInteractListener implements Listener {
         }
         Action action = event.getAction();
         if (action == Action.RIGHT_CLICK_AIR || action == Action.RIGHT_CLICK_BLOCK) {
-            boolean mainHandConsumable = false;
-            boolean mainHandBow = false;
-            if (event.getItem() != null) {
-                String mainType = event.getItem().getType().name();
-                mainHandBow = mainType.equals("BOW") || mainType.equals("CROSSBOW");
-                mainHandConsumable = checkManager.getFastEatCheck().isConsumable(event.getItem());
-                if (mainHandBow) {
-                    checkManager.getFastBowCheck().handleBowStart(event.getPlayer(), event.getItem());
-                }
-                if (mainHandConsumable) {
-                    checkManager.getFastEatCheck().handleItemStartUse(event.getPlayer(), event.getItem());
-                }
-            }
-            Player p = event.getPlayer();
-            if (p.getInventory() != null && p.getInventory().getItemInOffHand() != null) {
-                ItemStack offItem = p.getInventory().getItemInOffHand();
-                if (!mainHandBow) {
-                    checkManager.getFastBowCheck().handleBowStart(p, offItem);
-                }
-                // 即使主手持有无箭矢的弓/弩或其它非食用物品，玩家依然可以使用副手食物进食，必须独立打点防止漏记导致 Instant Consume 误报
-                if (!mainHandConsumable) {
-                    checkManager.getFastEatCheck().handleItemStartUse(p, offItem);
-                }
-            }
+            triggerItemUseCheck(event.getPlayer(), event.getItem());
         } else if (action == Action.LEFT_CLICK_BLOCK) {
             if (data != null) {
                 data.startDigging(System.currentTimeMillis());
             }
         } else if (action == Action.LEFT_CLICK_AIR) {
             recordClickIfFallback(event.getPlayer());
+        }
+    }
+
+    @EventHandler(priority = EventPriority.LOWEST)
+    public void onPlayerInteractEntity(PlayerInteractEntityEvent event) {
+        if (plugin.isPlayerExempt(event.getPlayer())) {
+            return;
+        }
+        triggerItemUseCheck(event.getPlayer(), null);
+    }
+
+    @EventHandler(priority = EventPriority.LOWEST)
+    public void onPlayerInteractAtEntity(PlayerInteractAtEntityEvent event) {
+        if (plugin.isPlayerExempt(event.getPlayer())) {
+            return;
+        }
+        triggerItemUseCheck(event.getPlayer(), null);
+    }
+
+    /**
+     * 统一捕获主手/副手使用物品 (拉弓、吃东西) 的起始交互打点
+     */
+    private void triggerItemUseCheck(Player p, ItemStack directItem) {
+        if (p == null || !p.isOnline()) {
+            return;
+        }
+        ItemStack mainItem = directItem;
+        if (mainItem == null && p.getInventory() != null) {
+            mainItem = p.getInventory().getItemInMainHand();
+        }
+
+        boolean mainHandConsumable = false;
+        boolean mainHandBow = false;
+        if (mainItem != null && mainItem.getType() != null) {
+            String mainType = mainItem.getType().name();
+            mainHandBow = mainType.equals("BOW") || mainType.equals("CROSSBOW");
+            mainHandConsumable = checkManager.getFastEatCheck().isConsumable(mainItem);
+            if (mainHandBow) {
+                checkManager.getFastBowCheck().handleBowStart(p, mainItem);
+            }
+            if (mainHandConsumable) {
+                checkManager.getFastEatCheck().handleItemStartUse(p, mainItem);
+            }
+        }
+
+        if (p.getInventory() != null && p.getInventory().getItemInOffHand() != null) {
+            ItemStack offItem = p.getInventory().getItemInOffHand();
+            if (offItem.getType() != null) {
+                String offType = offItem.getType().name();
+                boolean offHandBow = offType.equals("BOW") || offType.equals("CROSSBOW");
+                boolean offHandConsumable = checkManager.getFastEatCheck().isConsumable(offItem);
+                if (!mainHandBow && offHandBow) {
+                    checkManager.getFastBowCheck().handleBowStart(p, offItem);
+                }
+                if (!mainHandConsumable && offHandConsumable) {
+                    checkManager.getFastEatCheck().handleItemStartUse(p, offItem);
+                }
+            }
         }
     }
 

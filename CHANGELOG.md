@@ -10,9 +10,22 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 ---
 
 <a id="english-changelog"></a>
-## [1.2.3] - 2026-11-07
+## [1.2.3] - 2026-11-10
+
+### Added
+- **Modular Setback Architecture & Mode Handlers (`com.example.argusac.setback.handler`)**:
+  - Decoupled the monolithic `SetbackManager` into dedicated mode handlers implementing the unified `SetbackHandler` contract:
+    - `CancelSetbackHandler`: Handles instant in-event cancellation (`moveEvent.setCancelled(true)`), negative teleport ID binary isolation (`Integer.MIN_VALUE`), locked base anchor (`lockedAnchorLocation`) anti-creeping desync prevention, vehicle ejection, and ground/liquid-adaptive vacuum gravity simulation.
+    - `SoftSetbackHandler`: Handles smooth destination overriding (`moveEvent.setTo(safeTo)`) without firing jarring teleports, locking horizontal X/Z translation while simulating vanilla gravity fall curves.
+    - `HardSetbackHandler`: Handles authoritative sliding-window snapshot retrieval (`LegitimateLocation Snapshots`), safe ground fallback discovery, main-thread synchronized `player.teleport`, and network correction sequences (`PendingCorrection`).
+  - Added dedicated unit test suite `SetbackModeHandlersTest`.
 
 ### Fixed
+- **FastBow Critical False Positives (Netty AsyncCatcher Exception, Entity Aiming, Block Placement & Isolated Shot Deadlock)**:
+  - Fixed a critical issue in `PacketPipelineManager#handleIncomingUseItemPacket` where calling `player.getInventory()` on the Netty network thread triggered Paper's `AsyncCatcher` exception (`IllegalStateException: Asynchronous PlayerInventory access!`), silently crashing the protocol-level bow charge tracker on Paper/Purpur 1.16+~1.21+. Offloaded inventory reads to the main thread via `Bukkit.getScheduler().runTask` and expanded packet interception to cover both `USE_ITEM` (air) and `PLAYER_BLOCK_PLACEMENT` (block).
+  - Fixed missing interaction events in `PlayerInteractListener` by adding `PlayerInteractEntityEvent` and `PlayerInteractAtEntityEvent` listeners, ensuring right-click bow draw actions are 100% captured even when players aim at entities (monsters, animals, villagers, armor stands, or other players).
+  - Fixed a deadlock bug in `FastBowCheck#handleShootBow` where untracked start timestamps (`startTick <= 0`) indiscriminately cancelled isolated single bow shots with `force >= 0.5f`, causing legitimate players to be permanently blocked from shooting arrows once a packet was dropped. Restructured the check to only flag `startTick <= 0` when accompanied by rapid-fire bursts (`(now - lastShotTime) < 1000ms` or `shotsInWindow >= 2`), gracefully self-healing isolated single shots.
+  - Added comprehensive regression test `testFastBowBurstVsIsolatedShotProtection` in `FalsePositiveRegressionTest`.
 - **FastBow & FastEat False Positives (Release Use Item Timing, Charged Crossbows, Offhand Consumption & TPS Fluctuations)**:
   - Fixed a critical timing bug in `PacketPipelineManager#handleIncomingPlayerDiggingPacket` where receiving `RELEASE_USE_ITEM` on the Netty thread prematurely invoked `data.stopBowCharge()` and cleared `bowChargeStartTick` / `bowChargeStartTimeMs` before the main thread processed the packet and fired `EntityShootBowEvent`, causing normal bow shots to false-flag `FastBow` (`startTick <= 0`). Introduced `PlayerData#releaseBowCharge` and `PlayerData#releaseEating` to unlock the hold-debounce state without wiping start timestamps prior to main-thread event verification.
   - Added charged-crossbow detection (`FastBowCheck#isCrossbowCharged`) in `FastBowCheck#handleBowStart` so firing an already-loaded crossbow does not overwrite the charge timestamp with the current tick (`elapsed = 0t/0ms`), and replaced the linear `force < 0.8f` approximation with the exact inverse of vanilla's quadratic bow power curve (`FastBowCheck#calculateExpectedBowChargeTicks` / `calculateExpectedBowChargeMs`).

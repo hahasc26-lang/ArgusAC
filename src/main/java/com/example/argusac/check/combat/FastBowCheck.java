@@ -162,7 +162,11 @@ public class FastBowCheck extends AbstractCheck {
             // 从未经过右键举弓蓄力直接发包射出 (普通弓 No-Draw / Instant Release Spoof)
             // 注意：预先填装好的弩 (Crossbow) 可随时瞬间发包射击，由全局冷却与滑动窗口限制其连发频次，豁免 charge 0 打点
             if (force >= 0.5f && !isCrossbow) {
-                insufficientCharge = true;
+                // 仅在短时间内连发射击 (距上一箭 < 1000ms) 或窗口内多发时判定为恶意 FastBow 瞬射；
+                // 孤立单发射击若因空气右键偶发丢包漏记，允许自愈放行，杜绝正常玩家陷入无休止取消的死循环
+                if (lastShotTime > 0 && (now - lastShotTime) < 1000L || shotsInWindow >= 2) {
+                    insufficientCharge = true;
+                }
             }
         } else {
             elapsedTicks = Math.max(0, currentTick - startTick);

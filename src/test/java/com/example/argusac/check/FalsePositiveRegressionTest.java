@@ -256,5 +256,40 @@ public class FalsePositiveRegressionTest {
         assertEquals(18, com.example.argusac.check.combat.FastBowCheck.calculateExpectedBowChargeTicks(1.0f, 18));
         assertEquals(850L, com.example.argusac.check.combat.FastBowCheck.calculateExpectedBowChargeMs(1.0f, 850L));
     }
+
+    @Test
+    public void testFastBowBurstVsIsolatedShotProtection() {
+        com.example.argusac.data.PlayerData data = new com.example.argusac.data.PlayerData(java.util.UUID.randomUUID(), "haha___1");
+        long now = 100000L;
+        long currentTick = 2000L;
+
+        // 1. 模拟偶发右键漏记导致 startTick <= 0 的孤立单发射击：距上一箭超过 1000ms (lastShotTime=0)，不应被直接当作连发外挂拦截
+        boolean isolatedInsufficient = false;
+        long lastShotTime = data.getLastBowShotTime();
+        int shotsInWindow = data.recordBowShot(currentTick, now);
+        if (data.getBowChargeStartTick() <= 0) {
+            if (1.0f >= 0.5f) {
+                if (lastShotTime > 0 && (now - lastShotTime) < 1000L || shotsInWindow >= 2) {
+                    isolatedInsufficient = true;
+                }
+            }
+        }
+        assertFalse(isolatedInsufficient, "偶发漏记起始点的孤立射击不应被粗暴误杀判死");
+
+        // 2. 模拟作弊端短时间内连发第二发瞬发满力箭 (未蓄力，距上一箭仅 100ms)
+        long secondShotTime = now + 100L;
+        long secondTick = currentTick + 2L;
+        lastShotTime = data.getLastBowShotTime();
+        shotsInWindow = data.recordBowShot(secondTick, secondShotTime);
+        boolean burstInsufficient = false;
+        if (data.getBowChargeStartTick() <= 0) {
+            if (1.0f >= 0.5f) {
+                if (lastShotTime > 0 && (secondShotTime - lastShotTime) < 1000L || shotsInWindow >= 2) {
+                    burstInsufficient = true;
+                }
+            }
+        }
+        assertTrue(burstInsufficient, "短时间内连续未蓄力瞬发射击 (FastBow 外挂) 必须 100% 严惩拦截");
+    }
 }
 

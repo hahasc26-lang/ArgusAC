@@ -95,8 +95,9 @@ public class PacketPipelineManager extends PacketListenerAbstract {
             handleIncomingTeleportConfirm(player, data, event);
         }
 
-        // 6. 拦截客户端使用物品数据包 (Use Item - 弓箭/弩蓄力协议级打点)
-        if (event.getPacketType() == PacketType.Play.Client.USE_ITEM) {
+        // 6. 拦截客户端使用物品数据包 (Use Item & Block Placement - 弓箭/弩蓄力协议级打点)
+        if (event.getPacketType() == PacketType.Play.Client.USE_ITEM
+                || event.getPacketType() == PacketType.Play.Client.PLAYER_BLOCK_PLACEMENT) {
             handleIncomingUseItemPacket(player, data);
         }
 
@@ -121,6 +122,21 @@ public class PacketPipelineManager extends PacketListenerAbstract {
 
     private void handleIncomingUseItemPacket(Player player, PlayerData data) {
         if (player == null || data == null || plugin.getCheckManager() == null)
+            return;
+        if (org.bukkit.Bukkit.isPrimaryThread()) {
+            executeUseItemCheck(player, data);
+        } else {
+            // Paper 1.20+ 异步线程禁止访问 PlayerInventory (AsyncCatcher)，调度至主线程安全执行
+            org.bukkit.Bukkit.getScheduler().runTask(plugin, () -> {
+                if (player.isOnline()) {
+                    executeUseItemCheck(player, data);
+                }
+            });
+        }
+    }
+
+    private void executeUseItemCheck(Player player, PlayerData data) {
+        if (player == null || !player.isOnline() || data == null || plugin.getCheckManager() == null)
             return;
         try {
             org.bukkit.inventory.ItemStack main = player.getInventory().getItemInMainHand();

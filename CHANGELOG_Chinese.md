@@ -9,9 +9,22 @@
 
 ---
 
-## [1.2.3] - 2026-11-07
+## [1.2.3] - 2026-11-10
+
+### 新增
+- **模块化回退子系统与执行器解耦重构 (`com.example.argusac.setback.handler`)**：
+  - 将原单体庞杂的 `SetbackManager` 核心回退逻辑全面拆分解耦至独立的模式处理器，统一实现 `SetbackHandler` 接口：
+    - `CancelSetbackHandler`：负责 `CANCEL` 模式当帧阻断（`moveEvent.setCancelled(true)`）、二进制负数 Teleport ID 隔离（`Integer.MIN_VALUE`）、锁定基准锚点（`lockedAnchorLocation`）防蠕变去同步、强制弹出载具并消除动量，以及方块表面精准贴合与重力加速度防穿模。
+    - `SoftSetbackHandler`：负责 `SOFT` 模式在移动事件内平滑改写目标坐标（`moveEvent.setTo(safeTo)`），不触发主线程强制瞬移拉扯，锁定水平位移并拟合原版自由落体加速度。
+    - `HardSetbackHandler`：负责 `HARD` 模式在已验证合法历史快照池（`LegitimateLocation Snapshots`）中检索有界坐标、下落与动量重置、主线程 `player.teleport` 强制传送及网络校准序列（`PendingCorrection`）发号。
+  - 新增配套单元测试类 `SetbackModeHandlersTest`。
 
 ### 修复
+- **快速射箭 (`FastBowCheck`) Netty 异步异常、实体瞄准漏记、方块交互与单发无限取消死锁彻底根除**：
+  - 修复了 `PacketPipelineManager#handleIncomingUseItemPacket` 在 Netty 异步网络线程中直接调用 `player.getInventory()` 导致在 Paper 1.16+ ~ 1.21+ 上 100% 触发 `AsyncCatcher` 异常（`IllegalStateException: Asynchronous PlayerInventory access!`）并被静默吞掉、使数据包层蓄力打点完全瘫痪的致命缺陷。重构为通过 `Bukkit.getScheduler().runTask` 调度到主线程安全执行，并将拦截范围扩充至 `USE_ITEM`（空气使用）与 `PLAYER_BLOCK_PLACEMENT`（方块右键）。
+  - 在 `PlayerInteractListener` 中补全 `PlayerInteractEntityEvent` 与 `PlayerInteractAtEntityEvent` 实体交互监听，彻底解决玩家准星对准实体（怪物、动物、村民、盔甲架或其他玩家）拉弓瞄准时不触发 `PlayerInteractEvent` 导致蓄力起始点 100% 漏记的严重缺陷。
+  - 修复了 `FastBowCheck#handleShootBow` 中对于未记录到起始点（`startTick <= 0`）的单次正常射击一刀切判定为 `Fast Charge` 违规并取消射击、导致正常玩家一旦漏一次打点就陷入“无论怎么蓄力都射不出一支箭”的无限取消死锁问题。重构为仅在短时间连射（`(now - lastShotTime) < 1000ms`）或窗口内多发（`shotsInWindow >= 2`）时坚决阻断外挂瞬发，对孤立单发射击实现自愈放行。
+  - 在 `FalsePositiveRegressionTest` 中补充针对 FastBow 孤立单发防误杀与连发瞬射强拦截的回归测试 `testFastBowBurstVsIsolatedShotProtection`。
 - **快速射箭与快速进食 (`FastBowCheck` / `FastEatCheck`) 松弦时序、装填弩、副手进食与 TPS 波动误报修复**：
   - 修复了 `PacketPipelineManager#handleIncomingPlayerDiggingPacket` 中在 Netty 线程收到 `RELEASE_USE_ITEM` 时直接调用 `data.stopBowCharge()` 导致在服务端主线程触发 `EntityShootBowEvent` 之前将 `bowChargeStartTick` 与 `bowChargeStartTimeMs` 提前清零，引发正常拉弓射箭 100% 误报 `FastBow (Combat)` 的关键时序问题。引入 `PlayerData#releaseBowCharge` 与 `PlayerData#releaseEating`，仅解除防抖锁定而不抹除蓄力时间戳，交由主线程核验完成后再行清零。
   - 在 `FastBowCheck#handleBowStart` 中新增已装填弩（`Charged Crossbow`）检测（`FastBowCheck#isCrossbowCharged`），避免射击已上膛弩时将蓄力起点覆盖为当前帧导致 `elapsed = 0t/0ms` 误报；并将原普通弓 `force < 0.8f` 线性估算替换为原版弓力二次函数的精确反解算法（`FastBowCheck#calculateExpectedBowChargeTicks` 与 `calculateExpectedBowChargeMs`）。
